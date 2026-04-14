@@ -1,3 +1,6 @@
 .env.local
 .next/
 node_modules/
+SPEC_UI.md
+AGENTS.md
+PROGRESS.md
