@@ -20,6 +20,7 @@ export function CreateAgentModal({
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [agentType, setAgentType] = useState<AgentType>("ephemeral");
+  const [model, setModel] = useState("");
   const [taskDescription, setTaskDescription] = useState("");
   const [tools, setTools] = useState<string[]>(["shell"]);
 
@@ -35,11 +36,13 @@ export function CreateAgentModal({
     onCreate({
       name: name.trim(),
       agent_type: agentType,
+      model: model.trim() || undefined,
       task: taskDescription.trim(),
       tools,
     });
     setOpen(false);
     setName("");
+    setModel("");
     setTaskDescription("");
     setTools(["shell"]);
   }
@@ -76,6 +79,14 @@ export function CreateAgentModal({
                 </button>
               ))}
             </div>
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm text-textSecondary">Model</label>
+            <Input
+              value={model}
+              onChange={(event) => setModel(event.target.value)}
+              placeholder="Leave blank to use the backend default agent model"
+            />
           </div>
           <div className="space-y-2">
             <label className="text-sm text-textSecondary">Task Description</label>

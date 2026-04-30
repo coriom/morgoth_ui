@@ -5,14 +5,16 @@ import { useState } from "react";
 
 import { useAgents } from "@/hooks/useAgents";
 import { useBrainStatus } from "@/hooks/useBrainStatus";
-import { useMarketData } from "@/hooks/useMarketData";
+import { useObjectives } from "@/hooks/useObjectives";
+import { useSelfModifications } from "@/hooks/useSelfModifications";
 import { useWebSocket } from "@/hooks/useWebSocket";
 
 function RealtimeBootstrap() {
   useWebSocket();
   useBrainStatus();
   useAgents();
-  useMarketData();
+  useObjectives();
+  useSelfModifications();
 
   return null;
 }

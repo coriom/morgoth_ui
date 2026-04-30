@@ -26,16 +26,9 @@ export function useBrainStatus() {
     refetchInterval: 10000,
   });
 
-  const selfModificationsQuery = useQuery({
-    queryKey: ["brain", "self-modifications"],
-    queryFn: api.brain.selfModifications,
-    refetchInterval: 30000,
-  });
-
   const statusData = statusQuery.data;
   const logsData = logsQuery.data;
   const tasksData = tasksQuery.data;
-  const selfModificationsData = selfModificationsQuery.data;
 
   useEffect(() => {
     if (statusData) {
@@ -54,17 +47,9 @@ export function useBrainStatus() {
       useBrainStore.getState().setTasks(tasksData);
     }
   }, [tasksData]);
-
-  useEffect(() => {
-    if (selfModificationsData) {
-      useBrainStore.getState().setSelfModifications(selfModificationsData);
-    }
-  }, [selfModificationsData]);
-
   return {
     statusQuery,
     logsQuery,
     tasksQuery,
-    selfModificationsQuery,
   };
 }

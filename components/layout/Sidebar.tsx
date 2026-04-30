@@ -4,8 +4,8 @@ import {
   Bot,
   Brain,
   ChevronLeft,
-  LayoutDashboard,
   MessageSquare,
+  Network,
   Settings,
   TrendingUp,
 } from "lucide-react";
@@ -17,12 +17,12 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { cn } from "@/lib/utils/cn";
 
 const NAV_ITEMS = [
-  { href: "/", icon: LayoutDashboard, label: "Dashboard" },
-  { href: "/chat", icon: MessageSquare, label: "Chat" },
-  { href: "/agents", icon: Bot, label: "Agents" },
-  { href: "/market", icon: TrendingUp, label: "Market" },
-  { href: "/brain", icon: Brain, label: "Brain" },
-  { href: "/admin", icon: Settings, label: "Admin" },
+  { href: "/", icon: Brain, label: "Consciousness" },
+  { href: "/mind", icon: Network, label: "Mind" },
+  { href: "/evolution", icon: TrendingUp, label: "Evolution" },
+  { href: "/warroom", icon: Bot, label: "War Room" },
+  { href: "/chat", icon: MessageSquare, label: "Direct Link" },
+  { href: "/admin", icon: Settings, label: "Control" },
 ];
 
 export function Sidebar() {

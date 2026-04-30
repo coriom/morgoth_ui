@@ -2,7 +2,13 @@ import type {
   Agent,
   BrainStatus,
   ChatMessage,
+  ConceptGraph,
   CreateAgentPayload,
+  EvolutionMetrics,
+  EvolutionPoint,
+  Objective,
+  ObjectiveCategory,
+  ObjectiveStatus,
   LogEntry,
   LogQueryParams,
   MarketStats,
@@ -12,6 +18,7 @@ import type {
   PriceData,
   PricePoint,
   SelfModification,
+  ThoughtCluster,
   Task,
 } from "@/types/morgoth";
 
@@ -87,6 +94,24 @@ interface RawChatResponse {
   tool_results: Array<Record<string, unknown>>;
   model: string;
 }
+
+interface RawEvolutionTimelineResponse {
+  points: EvolutionPoint[];
+}
+
+interface ObjectiveCreatePayload {
+  title: string;
+  description: string;
+  category: ObjectiveCategory;
+  priority: number;
+  user_id?: string;
+}
+
+interface ObjectiveUpdatePayload {
+  status: ObjectiveStatus;
+}
+
+const DEFAULT_USER_ID = "default";
 
 function buildUrl(path: string, query?: Record<string, QueryValue>): string {
   const url = new URL(path, API_BASE);
@@ -214,10 +239,33 @@ function mapHistoryLimit(range: string): number {
   }
 }
 
+function mapSelfModification(item: SelfModification): SelfModification {
+  return {
+    ...item,
+    test_result:
+      item.test_result && typeof item.test_result === "object"
+        ? item.test_result
+        : {
+            passed: false,
+            output: "",
+          },
+  };
+}
+
 export const api = {
+  consciousness: {
+    clusters: async (): Promise<ThoughtCluster[]> => {
+      const response = await GET<{ clusters: ThoughtCluster[] }>("/api/consciousness/clusters");
+      return response.clusters;
+    },
+    concepts: async (): Promise<ConceptGraph> => GET<ConceptGraph>("/api/consciousness/concepts"),
+  },
   chat: {
-    send: async (content: string): Promise<ChatMessage> => {
-      const response = await POST<RawChatResponse, { content: string }>("/api/chat", { content });
+    send: async (content: string, userId: string = DEFAULT_USER_ID): Promise<ChatMessage> => {
+      const response = await POST<RawChatResponse, { content: string; user_id: string }>("/api/chat", {
+        content,
+        user_id: userId,
+      });
       return {
         id: `${Date.now()}-morgoth`,
         role: "morgoth",
@@ -237,11 +285,24 @@ export const api = {
         .sort((left, right) => new Date(left.timestamp).getTime() - new Date(right.timestamp).getTime());
     },
   },
+  objectives: {
+    list: async (): Promise<Objective[]> => unwrapItems(await GET<ItemsResponse<Objective>>("/api/objectives")),
+    create: (data: ObjectiveCreatePayload) => POST<Objective, ObjectiveCreatePayload>("/api/objectives", data),
+    update: (id: string, data: ObjectiveUpdatePayload) =>
+      PATCH<Objective, ObjectiveUpdatePayload>(`/api/objectives/${id}`, data),
+  },
   agents: {
     list: async () => unwrapItems(await GET<ItemsResponse<Agent>>("/api/agents")),
     create: (data: CreateAgentPayload) => POST<Agent, CreateAgentPayload>("/api/agents", data),
     get: (id: string) => GET<Agent>(`/api/agents/${id}`),
     delete: (id: string) => DELETE<void>(`/api/agents/${id}`),
+  },
+  evolution: {
+    metrics: () => GET<EvolutionMetrics>("/api/evolution/metrics"),
+    timeline: async (): Promise<EvolutionPoint[]> => {
+      const response = await GET<RawEvolutionTimelineResponse>("/api/evolution/timeline");
+      return response.points;
+    },
   },
   market: {
     prices: async (): Promise<PriceData[]> => {
@@ -264,7 +325,8 @@ export const api = {
     logs: async (params: LogQueryParams) =>
       unwrapItems(await GET<ItemsResponse<LogEntry>>("/api/brain/logs", params as Record<string, QueryValue>)),
     tasks: async () => unwrapItems(await GET<ItemsResponse<Task>>("/api/brain/tasks")),
-    selfModifications: async (): Promise<SelfModification[]> => [],
+    selfModifications: async (): Promise<SelfModification[]> =>
+      unwrapItems(await GET<ItemsResponse<SelfModification>>("/api/brain/self-modifications")).map(mapSelfModification),
   },
   admin: {
     permissions: async () => mapPermissions(await GET<RawPermissionsDocument>("/api/admin/permissions")),

@@ -1,50 +1,78 @@
 "use client";
 
-import { ActiveAgentsCard } from "@/components/dashboard/ActiveAgentsCard";
-import { AlertsFeed } from "@/components/dashboard/AlertsFeed";
-import { BrainStatusCard } from "@/components/dashboard/BrainStatusCard";
-import { MarketOverviewCard } from "@/components/dashboard/MarketOverviewCard";
-import { RecentLogsCard } from "@/components/dashboard/RecentLogsCard";
-import { PageWrapper } from "@/components/layout/PageWrapper";
-import { useAgents } from "@/hooks/useAgents";
-import { useBrainStatus } from "@/hooks/useBrainStatus";
-import { useMarketData } from "@/hooks/useMarketData";
-import { useAgentsStore } from "@/lib/store/agents.store";
-import { useBrainStore } from "@/lib/store/brain.store";
-import { useMarketStore } from "@/lib/store/market.store";
+import { useEffect, useMemo } from "react";
 
-export default function DashboardPage() {
-  const { statusQuery } = useBrainStatus();
-  const { agentsQuery } = useAgents();
-  const { pricesQuery } = useMarketData();
-  const status = useBrainStore((state) => state.status);
+import { useQuery } from "@tanstack/react-query";
+
+import { ConceptGraph } from "@/components/consciousness/ConceptGraph";
+import { LiveThoughtFeed } from "@/components/consciousness/LiveThoughtFeed";
+import { ThoughtNebula } from "@/components/consciousness/ThoughtNebula";
+import { PageWrapper } from "@/components/layout/PageWrapper";
+import { api } from "@/lib/api";
+import { useConsciousnessStore } from "@/lib/store/consciousness.store";
+import { useBrainStore } from "@/lib/store/brain.store";
+import type { ThoughtEntry } from "@/types/morgoth";
+
+function mapLogToThought(logId: string, timestamp: string, content: string, agent: string): ThoughtEntry {
+  const topic = content.toLowerCase().match(/[a-zA-Z][a-zA-Z0-9_-]{2,}/g)?.[0] ?? "other";
+  return {
+    id: logId,
+    timestamp,
+    content,
+    topic,
+    agent,
+  };
+}
+
+export default function ConsciousnessPage() {
+  const clusters = useConsciousnessStore((state) => state.clusters);
+  const concepts = useConsciousnessStore((state) => state.concepts);
+  const liveThoughts = useConsciousnessStore((state) => state.liveThoughts);
+  const setClusters = useConsciousnessStore((state) => state.setClusters);
+  const setConcepts = useConsciousnessStore((state) => state.setConcepts);
   const logs = useBrainStore((state) => state.logs);
-  const agents = useAgentsStore((state) => state.agents);
-  const prices = useMarketStore((state) => Object.values(state.prices));
+
+  const clustersQuery = useQuery({
+    queryKey: ["consciousness", "clusters"],
+    queryFn: api.consciousness.clusters,
+    refetchInterval: 15000,
+  });
+
+  const conceptsQuery = useQuery({
+    queryKey: ["consciousness", "concepts"],
+    queryFn: api.consciousness.concepts,
+    refetchInterval: 15000,
+  });
+
+  useEffect(() => {
+    if (clustersQuery.data) {
+      setClusters(clustersQuery.data);
+    }
+  }, [clustersQuery.data, setClusters]);
+
+  useEffect(() => {
+    if (conceptsQuery.data) {
+      setConcepts(conceptsQuery.data);
+    }
+  }, [conceptsQuery.data, setConcepts]);
+
+  const thoughts = useMemo(() => {
+    if (liveThoughts.length > 0) {
+      return liveThoughts;
+    }
+
+    return logs
+      .filter((log) => log.level === "THOUGHT")
+      .map((log) => mapLogToThought(log.log_id, log.timestamp, log.content, log.agent));
+  }, [liveThoughts, logs]);
 
   return (
-    <PageWrapper className="grid gap-6 xl:grid-cols-[1.2fr_1.2fr_0.9fr]">
-      <div className="space-y-6 xl:col-span-2">
-        <div className="grid gap-6 lg:grid-cols-2">
-          <BrainStatusCard
-            status={status}
-            isLoading={statusQuery.isLoading}
-            isError={statusQuery.isError}
-          />
-          <MarketOverviewCard
-            prices={prices}
-            isLoading={pricesQuery.isLoading}
-            isError={pricesQuery.isError}
-          />
-        </div>
-        <ActiveAgentsCard
-          agents={agents}
-          isLoading={agentsQuery.isLoading}
-          isError={agentsQuery.isError}
-        />
-        <RecentLogsCard logs={logs} />
+    <PageWrapper className="space-y-6">
+      <div className="grid gap-6 xl:grid-cols-[1.45fr_0.95fr]">
+        <ThoughtNebula clusters={clusters} isLoading={clustersQuery.isLoading} />
+        <LiveThoughtFeed thoughts={thoughts} isLoading={clustersQuery.isLoading && thoughts.length === 0} />
       </div>
-      <AlertsFeed alerts={logs.filter((log) => log.level === "ERROR" || log.level === "SYSTEM")} />
+      <ConceptGraph graph={concepts} isLoading={conceptsQuery.isLoading} />
     </PageWrapper>
   );
 }

@@ -27,7 +27,8 @@ export function useAgents() {
 
   const createAgentMutation = useMutation({
     mutationFn: (payload: CreateAgentPayload) => api.agents.create(payload),
-    onSuccess: () => {
+    onSuccess: (agent) => {
+      useAgentsStore.getState().upsertAgent(agent);
       void queryClient.invalidateQueries({ queryKey: ["agents"] });
     },
   });

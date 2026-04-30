@@ -9,6 +9,7 @@ import { TaskQueue } from "@/components/brain/TaskQueue";
 import { PageWrapper } from "@/components/layout/PageWrapper";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useBrainStatus } from "@/hooks/useBrainStatus";
+import { useSelfModifications } from "@/hooks/useSelfModifications";
 import { useBrainStore } from "@/lib/store/brain.store";
 
 function matchesRange(timestamp: string, range: string): boolean {
@@ -24,7 +25,8 @@ function matchesRange(timestamp: string, range: string): boolean {
 }
 
 export default function BrainPage() {
-  const { tasksQuery, selfModificationsQuery } = useBrainStatus();
+  const { tasksQuery } = useBrainStatus();
+  const { selfModificationsQuery } = useSelfModifications();
   const logs = useBrainStore((state) => state.logs);
   const tasks = useBrainStore((state) => state.tasks);
   const selfModifications = useBrainStore((state) => state.selfModifications);

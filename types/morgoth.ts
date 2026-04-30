@@ -1,11 +1,15 @@
 export type LogLevel = "THOUGHT" | "ACTION" | "RESULT" | "ERROR" | "SYSTEM";
 export type AgentType = "ephemeral" | "persistent";
 export type AgentStatus = "idle" | "running" | "paused" | "completed" | "failed";
+export type AgentSpecialization = "general" | "research" | "sentiment" | "macro";
 export type TaskPriority = 0 | 1 | 2 | 3;
 export type TaskType = "one_shot" | "recurring" | "triggered";
 export type TaskStatus = "pending" | "running" | "completed" | "failed";
 export type MarketRange = "1D" | "7D" | "30D" | "90D";
 export type ConnectionStatus = "CONNECTED" | "RECONNECTING" | "DISCONNECTED";
+export type ThoughtColorDomain = "code" | "research" | "finance" | "system" | "other";
+export type ObjectiveCategory = "research" | "capability" | "monitoring" | "optimization";
+export type ObjectiveStatus = "pending" | "in_progress" | "completed" | "failed" | "blocked";
 export type WSMessageType =
   | "thought"
   | "action"
@@ -36,6 +40,8 @@ export interface Agent {
   user_id: string;
   stopped_at?: string | null;
   current_task?: string | null;
+  last_error?: string | null;
+  specialization?: AgentSpecialization;
 }
 
 export interface Task {
@@ -76,6 +82,75 @@ export interface BrainStatus {
   primary_model: string;
   agent_model: string;
   max_concurrent_agents: number;
+}
+
+export interface ThoughtCluster {
+  topic: string;
+  count: number;
+  last_thought: string;
+  color_domain: ThoughtColorDomain;
+}
+
+export interface ConceptGraphNode {
+  id: string;
+  label: string;
+  domain: string;
+  weight: number;
+}
+
+export interface ConceptGraphEdge {
+  source: string;
+  target: string;
+  weight: number;
+}
+
+export interface ConceptGraph {
+  nodes: ConceptGraphNode[];
+  edges: ConceptGraphEdge[];
+}
+
+export interface ThoughtEntry {
+  id: string;
+  timestamp: string;
+  content: string;
+  topic: string;
+  agent: string;
+}
+
+export interface Objective {
+  objective_id: string;
+  title: string;
+  description: string;
+  category: ObjectiveCategory;
+  priority: number;
+  generated_by: "morgoth" | "human";
+  status: ObjectiveStatus;
+  evidence: Array<Record<string, unknown>> | Record<string, unknown>;
+  created_at: string;
+  completed_at: string | null;
+}
+
+export interface KnowledgeDomain {
+  domain: string;
+  fact_count: number;
+  confidence: number;
+  last_updated: string;
+  subtopics: string[];
+}
+
+export interface EvolutionMetrics {
+  self_modifications: number;
+  tools_created: number;
+  agents_spawned: number;
+  knowledge_nodes: number;
+}
+
+export interface EvolutionPoint {
+  timestamp: string;
+  self_mods: number;
+  tools: number;
+  agents: number;
+  knowledge: number;
 }
 
 export interface SelfModification {
@@ -136,6 +211,7 @@ export interface ChatMessage {
 export interface CreateAgentPayload {
   name: string;
   agent_type: AgentType;
+  model?: string;
   task: string;
   tools: string[];
   user_id?: string;
@@ -154,6 +230,65 @@ export interface MarketStats {
   eth_dominance: number | null;
   fear_and_greed_index?: number | null;
   last_updated: string;
+}
+
+export interface FredSeriesSummary {
+  series_id: string;
+  title: string;
+  frequency: string | null;
+  units: string | null;
+  seasonal_adjustment: string | null;
+  popularity: number | null;
+}
+
+export interface FredObservation {
+  date: string;
+  value: number | null;
+  realtime_start: string | null;
+  realtime_end: string | null;
+}
+
+export interface FredSeriesObservationsResult {
+  series_id: string;
+  observations: FredObservation[];
+}
+
+export interface RedditPost {
+  id: string;
+  subreddit: string;
+  title: string;
+  author: string | null;
+  score: number;
+  comments: number;
+  url: string;
+  permalink: string;
+  created_utc: number | null;
+  selftext: string;
+}
+
+export interface MovingAverageSnapshot {
+  short_period: number;
+  long_period: number;
+  short_sma: number | null;
+  long_sma: number | null;
+  short_ema: number | null;
+  long_ema: number | null;
+}
+
+export interface MacdSnapshot {
+  macd: number | null;
+  signal: number | null;
+  histogram: number | null;
+}
+
+export interface TechnicalAnalysisSnapshot {
+  sample_size: number;
+  latest_price: number | null;
+  rsi_period: number;
+  rsi: number | null;
+  moving_averages: MovingAverageSnapshot;
+  macd: MacdSnapshot;
+  trend: "bullish" | "bearish" | "mixed";
 }
 
 export interface ModelConfig {

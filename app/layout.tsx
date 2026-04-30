@@ -18,8 +18,8 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Morgoth UI",
-  description: "Realtime operational console for Morgoth.",
+  title: "Morgoth Consciousness Viewer",
+  description: "A realtime window into Morgoth's consciousness, evolution, and active agents.",
 };
 
 export default function RootLayout({

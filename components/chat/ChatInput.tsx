@@ -6,6 +6,8 @@ import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
+import { wsClient } from "@/lib/ws-client";
+import { useBrainStore } from "@/lib/store/brain.store";
 import { useChatStore } from "@/lib/store/chat.store";
 
 export function ChatInput() {
@@ -13,10 +15,12 @@ export function ChatInput() {
   const addMessage = useChatStore((state) => state.addMessage);
   const isThinking = useChatStore((state) => state.isThinking);
   const setThinking = useChatStore((state) => state.setThinking);
+  const connectionStatus = useBrainStore((state) => state.connectionStatus);
   const rows = useMemo(() => Math.min(Math.max(value.split("\n").length, 1), 6), [value]);
+  const userId = "default";
 
   const sendMessageMutation = useMutation({
-    mutationFn: (content: string) => api.chat.send(content),
+    mutationFn: (content: string) => api.chat.send(content, userId),
     onSuccess: (message) => {
       addMessage(message);
       setThinking(false);
@@ -41,6 +45,16 @@ export function ChatInput() {
     });
     setThinking(true);
     setValue("");
+    if (connectionStatus === "CONNECTED") {
+      try {
+        wsClient.send({ type: "chat", content, user_id: userId });
+        return;
+      } catch {
+        sendMessageMutation.mutate(content);
+        return;
+      }
+    }
+
     sendMessageMutation.mutate(content);
   }
 
