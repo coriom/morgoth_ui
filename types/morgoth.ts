@@ -82,6 +82,18 @@ export interface BrainStatus {
   primary_model: string;
   agent_model: string;
   max_concurrent_agents: number;
+  // Extended fields — added in backend TODO, may be absent
+  uptime_seconds?: number;
+  cycle_count?: number;
+  last_cycle_at?: string | null;
+  vram_used_mb?: number | null;
+  vram_total_mb?: number | null;
+}
+
+export interface ObjectiveStats {
+  total: number;
+  by_status: Record<string, number>;
+  auto_completed?: number;
 }
 
 export interface ThoughtCluster {
@@ -222,6 +234,7 @@ export interface LogQueryParams {
   agent?: string;
   range?: string;
   search?: string;
+  limit?: number;
 }
 
 export interface MarketStats {

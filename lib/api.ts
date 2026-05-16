@@ -8,6 +8,7 @@ import type {
   EvolutionPoint,
   Objective,
   ObjectiveCategory,
+  ObjectiveStats,
   ObjectiveStatus,
   LogEntry,
   LogQueryParams,
@@ -287,6 +288,7 @@ export const api = {
   },
   objectives: {
     list: async (): Promise<Objective[]> => unwrapItems(await GET<ItemsResponse<Objective>>("/api/objectives")),
+    stats: () => GET<ObjectiveStats>("/api/objectives/stats"),
     create: (data: ObjectiveCreatePayload) => POST<Objective, ObjectiveCreatePayload>("/api/objectives", data),
     update: (id: string, data: ObjectiveUpdatePayload) =>
       PATCH<Objective, ObjectiveUpdatePayload>(`/api/objectives/${id}`, data),
