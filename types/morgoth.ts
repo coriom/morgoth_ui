@@ -82,12 +82,22 @@ export interface BrainStatus {
   primary_model: string;
   agent_model: string;
   max_concurrent_agents: number;
-  // Extended fields — added in backend TODO, may be absent
   uptime_seconds?: number;
-  cycle_count?: number;
+  total_cycles_completed?: number;
   last_cycle_at?: string | null;
+  last_cycle_action?: string | null;
   vram_used_mb?: number | null;
   vram_total_mb?: number | null;
+}
+
+export type CycleFeedLevel = 'THOUGHT' | 'ACTION' | 'OK' | 'ERROR' | 'SYSTEM';
+
+export interface CycleFeedEntry {
+  ts: string;
+  level: CycleFeedLevel;
+  tool: string | null;
+  duration_ms: number | null;
+  message: string;
 }
 
 export interface ObjectiveStats {

@@ -5,22 +5,18 @@ Add these endpoints/fields and update the corresponding TypeScript types in `typ
 
 ---
 
-## 1. `GET /api/brain/status` — Missing Fields
+## 1. `GET /api/brain/status` — Missing Fields ✅ DONE (2026-05-16)
 
-Current response: `{ ready, primary_model, agent_model, max_concurrent_agents }`
+Current response now includes all fields.
 
-**Add these fields to the backend `get_status()` response:**
-
-| Field | Type | Description |
+| Field | Type | Status |
 |---|---|---|
-| `uptime_seconds` | `number` | Seconds since the brain process started |
-| `cycle_count` | `number` | Total number of autonomous cycles completed |
-| `last_cycle_at` | `string \| null` | ISO timestamp of the last cycle completion |
-| `vram_used_mb` | `number \| null` | Current VRAM usage in MB (call `nvidia-smi` or Ollama metrics) |
-| `vram_total_mb` | `number \| null` | Total VRAM available in MB |
-
-**Where to add:** `morgoth/core/brain.py` → `get_status()` method.  
-**Fallback behavior:** All fields are optional in TypeScript; the UI shows "N/A" if absent.
+| `uptime_seconds` | `number` | ✅ implemented |
+| `total_cycles_completed` | `number` | ✅ was already present |
+| `last_cycle_at` | `string \| null` | ✅ implemented |
+| `last_cycle_action` | `string \| null` | ✅ implemented |
+| `vram_used_mb` | `number \| null` | ✅ implemented (null if Ollama unreachable) |
+| `vram_total_mb` | `number` | ✅ hardcoded 6144 (RTX 3060) |
 
 ---
 
@@ -106,6 +102,15 @@ async def get_evolution_timeline(request: Request) -> dict:
         ]
     }
 ```
+
+---
+
+## 5b. `GET /api/brain/cycle-feed?limit=N` ✅ DONE (2026-05-16)
+
+In-memory ring buffer (maxlen=200) of cycle events. Returns newest-first JSON array.
+Each entry: `{ ts, level, tool, duration_ms, message }`.
+Levels: `THOUGHT | ACTION | OK | ERROR | SYSTEM`.
+Populated by: cycle start/end, tool call start/end, auto-completion, errors.
 
 ---
 
