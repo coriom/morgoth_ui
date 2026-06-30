@@ -3,6 +3,7 @@ import type {
   BrainStatus,
   ChatMessage,
   ConceptGraph,
+  Contradiction,
   CreateAgentPayload,
   EvolutionMetrics,
   EvolutionPoint,
@@ -19,6 +20,7 @@ import type {
   PriceData,
   PricePoint,
   SelfModification,
+  Thesis,
   ThoughtCluster,
   Task,
 } from "@/types/morgoth";
@@ -329,6 +331,12 @@ export const api = {
     tasks: async () => unwrapItems(await GET<ItemsResponse<Task>>("/api/brain/tasks")),
     selfModifications: async (): Promise<SelfModification[]> =>
       unwrapItems(await GET<ItemsResponse<SelfModification>>("/api/brain/self-modifications")).map(mapSelfModification),
+  },
+  knowledge: {
+    theses: async (params?: { status?: string; subject?: string }): Promise<Thesis[]> =>
+      unwrapItems(await GET<ItemsResponse<Thesis>>("/api/theses", params as Record<string, QueryValue>)),
+    contradictions: async (): Promise<Contradiction[]> =>
+      unwrapItems(await GET<ItemsResponse<Contradiction>>("/api/contradictions")),
   },
   admin: {
     permissions: async () => mapPermissions(await GET<RawPermissionsDocument>("/api/admin/permissions")),

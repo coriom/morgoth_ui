@@ -340,3 +340,40 @@ export interface WSOutboundMessage {
   content: string;
   user_id: string;
 }
+
+export type ThesisStatus = "active" | "contradicted" | "stale";
+export type ThesisConfidence = "low" | "medium" | "high";
+
+export interface ThesisEvidenceItem {
+  source: string;
+  detail: string;
+}
+
+export interface Thesis {
+  thesis_id: string;
+  subject: string;
+  claim: string;
+  confidence: ThesisConfidence;
+  evidence: ThesisEvidenceItem[];
+  status: ThesisStatus;
+  objective_id: string;
+  created_at: string;
+}
+
+// Resolved-pair shape inside a Contradiction. May expose the full Thesis fields
+// but only these are guaranteed for display.
+export interface ContradictionThesis {
+  subject: string;
+  claim: string;
+  confidence: ThesisConfidence;
+  status: ThesisStatus;
+}
+
+export interface Contradiction {
+  contradiction_id: string;
+  subject_group: string | null;
+  detected_at: string;
+  // LEFT JOIN: either side may be null if the underlying thesis was deleted.
+  thesis_a: ContradictionThesis | null;
+  thesis_b: ContradictionThesis | null;
+}

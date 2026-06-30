@@ -4,6 +4,7 @@ import {
   Bot,
   Brain,
   ChevronLeft,
+  GitBranch,
   MessageSquare,
   Network,
   Settings,
@@ -19,6 +20,7 @@ import { cn } from "@/lib/utils/cn";
 const NAV_ITEMS = [
   { href: "/", icon: Brain, label: "Consciousness" },
   { href: "/mind", icon: Network, label: "Mind" },
+  { href: "/knowledge", icon: GitBranch, label: "Knowledge" },
   { href: "/evolution", icon: TrendingUp, label: "Evolution" },
   { href: "/warroom", icon: Bot, label: "War Room" },
   { href: "/chat", icon: MessageSquare, label: "Direct Link" },
