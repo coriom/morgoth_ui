@@ -77,10 +77,10 @@ export function StatusBar() {
 
       {/* Cycle info */}
       <div className="flex items-center gap-2 text-zinc-500">
-        {status?.cycle_count !== undefined ? (
+        {status?.total_cycles_completed !== undefined ? (
           <>
             <span>
-              CYCLE <span className="text-cyan-400">#{status.cycle_count.toLocaleString()}</span>
+              CYCLE <span className="text-cyan-400">#{status.total_cycles_completed.toLocaleString()}</span>
             </span>
             {status.last_cycle_at ? (
               <span>
