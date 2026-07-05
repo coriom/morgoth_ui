@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  BookOpen,
   Bot,
   Brain,
   ChevronLeft,
@@ -21,6 +22,7 @@ const NAV_ITEMS = [
   { href: "/", icon: Brain, label: "Consciousness" },
   { href: "/mind", icon: Network, label: "Mind" },
   { href: "/knowledge", icon: GitBranch, label: "Knowledge" },
+  { href: "/wiki", icon: BookOpen, label: "Wiki" },
   { href: "/evolution", icon: TrendingUp, label: "Evolution" },
   { href: "/warroom", icon: Bot, label: "War Room" },
   { href: "/chat", icon: MessageSquare, label: "Direct Link" },
@@ -48,7 +50,7 @@ export function Sidebar() {
         </button>
         <nav className="space-y-2">
           {NAV_ITEMS.map(({ href, icon: Icon, label }) => {
-            const active = pathname === href;
+            const active = href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`);
             const link = (
               <Link
                 href={href}

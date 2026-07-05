@@ -114,6 +114,23 @@ interface ObjectiveUpdatePayload {
   status: ObjectiveStatus;
 }
 
+export interface WikiPageSummary {
+  path: string;
+  title: string;
+  section: string;
+}
+
+export interface WikiManifest {
+  compiled_at: string | null;
+  pages: WikiPageSummary[];
+}
+
+export interface WikiPage {
+  path: string;
+  content: string;
+  mtime: string;
+}
+
 const DEFAULT_USER_ID = "default";
 
 function buildUrl(path: string, query?: Record<string, QueryValue>): string {
@@ -337,6 +354,13 @@ export const api = {
       unwrapItems(await GET<ItemsResponse<Thesis>>("/api/theses", params as Record<string, QueryValue>)),
     contradictions: async (): Promise<Contradiction[]> =>
       unwrapItems(await GET<ItemsResponse<Contradiction>>("/api/contradictions")),
+  },
+  wiki: {
+    manifest: (): Promise<WikiManifest> => GET<WikiManifest>("/api/wiki/manifest"),
+    page: (path: string): Promise<WikiPage> =>
+      GET<WikiPage>("/api/wiki/page", { path }),
+    compile: (): Promise<Record<string, unknown>> =>
+      POST<Record<string, unknown>, Record<string, never>>("/api/wiki/compile", {}),
   },
   admin: {
     permissions: async () => mapPermissions(await GET<RawPermissionsDocument>("/api/admin/permissions")),

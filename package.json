@@ -21,8 +21,9 @@
     "next": "^14.2.30",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-markdown": "^9.0.1",
+    "react-markdown": "^9.1.0",
     "recharts": "^2.13.3",
+    "remark-gfm": "^4.0.1",
     "tailwind-merge": "^2.5.5",
     "zustand": "^4.5.5"
   },
