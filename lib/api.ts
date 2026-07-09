@@ -131,6 +131,23 @@ export interface WikiPage {
   mtime: string;
 }
 
+export interface WikiGraphNode {
+  id: string;
+  title: string;
+  section: "root" | "entities" | "system" | "missing" | string;
+  degree: number;
+}
+
+export interface WikiGraphEdge {
+  source: string;
+  target: string;
+}
+
+export interface WikiGraph {
+  nodes: WikiGraphNode[];
+  edges: WikiGraphEdge[];
+}
+
 const DEFAULT_USER_ID = "default";
 
 function buildUrl(path: string, query?: Record<string, QueryValue>): string {
@@ -359,6 +376,7 @@ export const api = {
     manifest: (): Promise<WikiManifest> => GET<WikiManifest>("/api/wiki/manifest"),
     page: (path: string): Promise<WikiPage> =>
       GET<WikiPage>("/api/wiki/page", { path }),
+    graph: (): Promise<WikiGraph> => GET<WikiGraph>("/api/wiki/graph"),
     compile: (): Promise<Record<string, unknown>> =>
       POST<Record<string, unknown>, Record<string, never>>("/api/wiki/compile", {}),
   },

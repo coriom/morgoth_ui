@@ -41,7 +41,10 @@ export default function WikiPage() {
 
   return (
     <PageWrapper className="space-y-4">
-      <WikiHeader compiledAt={manifestQuery.data?.compiled_at ?? null} />
+      <WikiHeader
+        compiledAt={manifestQuery.data?.compiled_at ?? null}
+        view="list"
+      />
       <div className="grid gap-6 lg:grid-cols-[16rem_minmax(0,1fr)]">
         <aside className="rounded-lg border border-border bg-surface p-4">
           <WikiNav
