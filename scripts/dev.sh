@@ -1,50 +1,71 @@
 #!/usr/bin/env bash
-# Launch Next.js dev server with LOUD failure — no silent port drift.
+# Launch Next.js dev server on Morgoth territory (3010-3019).
 #
-# Failure chain this closes:
-#   1. Residual node process squats :3000 (usually a prior next dev
-#      that didn't shut down cleanly).
-#   2. `next dev` auto-shifts to :3001 without a warning that reads
-#      like a warning.
-#   3. Backend CORS allowlist knew only :3000 → every fetch blocked.
-#   4. Operator sees a wall of CORS errors on a working backend.
+# Territory (operator-declared):
+#   8000        backend        — fixed, never moved
+#   3010        Morgoth front  — default
+#   3011-3019   Morgoth spillover — safe to set PORT= into this range
+#   3000-3001   operator's other projects — NEVER touched, NEVER killed
 #
-# Contract: 3000 (or $PORT) or LOUD failure. Next's auto-shift is
-# never allowed to engage — the script pre-clears the port and
-# verifies right before exec.
+# Contract:
+#   - Default port comes from $MORGOTH_UI_PORT (via .env.local) with a
+#     3010 fallback. Operator override wins: PORT=<n> beats the file.
+#   - Reclaim rule (self-only): kill ONLY a node process whose /proc
+#     cwd is THIS repo. Anything else — foreign node, python, the
+#     invisible WSL relay, postgres, kernel — triggers a LOUD abort.
+#     The old "kill any node on the port" rule is REVOKED — the
+#     contested party is now the operator's own project.
+#   - .env.local preflight, backend warn-not-block, pre-exec port-free
+#     verify (no Next auto-shift, ever).
 set -euo pipefail
 
-PORT="${PORT:-3000}"
-API="${NEXT_PUBLIC_API_URL:-http://localhost:8000}"
+# Load .env.local so MORGOTH_UI_PORT is picked up without exporting
+# it in the shell. We only source it if it exists — the preflight
+# below still enforces its presence for the wiki-reader vars.
+if [[ -f .env.local ]]; then
+    # shellcheck disable=SC1091
+    set -a; source .env.local; set +a
+fi
 
-# ---- port reclaim (node/next only) -----------------------------------
-# Extract PIDs holding the port. ss -H hides the header; sport = :N
-# is ss's own filter syntax. sort -u collapses multi-thread listings.
+PORT="${PORT:-${MORGOTH_UI_PORT:-3010}}"
+API="${NEXT_PUBLIC_API_URL:-http://localhost:8000}"
+REPO_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# ---- port reclaim (own-repo node only) -----------------------------
 pids=$(ss -tlnpH "sport = :$PORT" 2>/dev/null | grep -o 'pid=[0-9]*' | cut -d= -f2 | sort -u || true)
 
 if [[ -n "$pids" ]]; then
-    # Look up each PID's comm. Kill only if EVERY squatter is
-    # node/next — a python/postgres/other process squatting the port
-    # is an operator concern, not something a UI dev script should
-    # silently murder.
-    all_safe=1
-    names=""
+    # Any pid whose comm we can't read at all (kernel-namespaced,
+    # WSL relay, cross-user, etc.) is by definition NOT this repo's
+    # node process → abort. Same for any non-node comm.
+    all_own_repo=1
+    holders=""
     for pid in $pids; do
-        comm=$(ps -o comm= -p "$pid" 2>/dev/null || echo "?")
-        names="$names $pid=$comm"
-        # comm can carry a version tail, e.g. ``next-server (v14`` (Linux
-        # truncates comm to 15 chars). Substring match on the safe
-        # roots, not exact equality, so a residual next dev is
-        # reclaimable — that's the primary failure case this script
-        # exists to fix.
+        comm=$(ps -o comm= -p "$pid" 2>/dev/null || true)
+        cwd=$(readlink "/proc/$pid/cwd" 2>/dev/null || true)
+        # Empty comm means the process is not visible to this user
+        # (Windows-side WSL relay is the classic case). NEVER kill.
+        if [[ -z "$comm" ]]; then
+            holders="$holders pid=$pid comm=invisible cwd=?"
+            all_own_repo=0
+            continue
+        fi
+        holders="$holders pid=$pid comm=$comm cwd=${cwd:-?}"
+        # comm may be truncated (Linux caps to 15) — accept the
+        # node/next-* family, but ONLY if cwd matches this repo.
         case "$comm" in
-            node|node[!a-zA-Z0-9-]*|next|next-*|next-server*) ;;
-            *) all_safe=0 ;;
+            node|next|next-*|next-server*) ;;
+            *) all_own_repo=0; continue ;;
         esac
+        # cwd resolution failed OR cwd is not this repo → foreign
+        # process, hands off.
+        if [[ -z "$cwd" || "$cwd" != "$REPO_DIR"* ]]; then
+            all_own_repo=0
+        fi
     done
-    if [[ $all_safe -eq 1 ]]; then
-        echo "reclaiming :$PORT from pid(s):$names"
-        # SIGTERM first, then SIGKILL 1s later on stragglers.
+
+    if [[ $all_own_repo -eq 1 ]]; then
+        echo "reclaimed :$PORT from stale morgoth_ui pid(s):$holders"
         for pid in $pids; do
             kill -TERM "$pid" 2>/dev/null || true
         done
@@ -56,32 +77,26 @@ if [[ -n "$pids" ]]; then
         done
         sleep 1
     else
-        echo "ABORT: port $PORT held by non-node process(es):$names" >&2
-        echo "       free the port manually or set PORT=<other> to launch elsewhere." >&2
+        echo "ABORT: port $PORT held by:${holders}" >&2
+        echo "       — likely another project or the WSL relay." >&2
+        echo "       Morgoth territory is 3010-3019 —" \
+             "set PORT=3011..3019 or free the port." >&2
         exit 1
     fi
 fi
 
-# ---- env preflight ---------------------------------------------------
-# .env.local carries NEXT_PUBLIC_API_URL for the wiki reader; without
-# it the client falls through to a default that may not match the
-# operator's backend.
+# ---- env preflight -------------------------------------------------
 if [[ ! -f .env.local ]]; then
-    echo "ABORT: missing .env.local (NEXT_PUBLIC_API_URL) — create it first" >&2
+    echo "ABORT: missing .env.local (NEXT_PUBLIC_API_URL, MORGOTH_UI_PORT) — create it first" >&2
     exit 1
 fi
 
-# ---- backend preflight (warn, don't block) --------------------------
-# Front-end dev without backend is legitimate (component work); the
-# warning surfaces the eventual page errors before they happen.
+# ---- backend preflight (warn, don't block) ------------------------
 if ! curl -sf --max-time 2 "$API/api/brain/status" >/dev/null 2>&1; then
     echo "WARN: backend not responding at $API — pages will error until \`morgoth start\`" >&2
 fi
 
-# ---- final port verification -----------------------------------------
-# Between reclaim and exec, race window: verify the port is actually
-# free NOW. If a straggler survived both signals, we exit loud —
-# rather than let Next auto-shift.
+# ---- final port verification --------------------------------------
 remaining=$(ss -tlnpH "sport = :$PORT" 2>/dev/null | grep -o 'pid=[0-9]*' | cut -d= -f2 | sort -u || true)
 if [[ -n "$remaining" ]]; then
     holder=$(ps -o pid=,comm= -p $remaining 2>/dev/null | tr -s ' ')
@@ -89,5 +104,5 @@ if [[ -n "$remaining" ]]; then
     exit 1
 fi
 
-# ---- launch ----------------------------------------------------------
+echo "launching next dev on :$PORT (Morgoth territory)"
 exec npx next dev -p "$PORT"

@@ -1,20 +1,26 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+Morgoth's Next.js front-end.
+
+## Port territory
+
+Operator-declared, respected by `scripts/dev.sh`:
+
+| Port range | Owner | Behavior |
+|------------|-------|----------|
+| 8000       | Morgoth backend | Fixed. Never moved. |
+| 3010       | Morgoth front (default) | `.env.local: MORGOTH_UI_PORT=3010` |
+| 3011-3019  | Morgoth spillover | Safe to `PORT=3011 npm run dev` |
+| 3000-3001  | Operator's other projects | **Never touched. Never killed.** |
+
+`scripts/dev.sh` will reclaim only a stale morgoth_ui process (verified by `/proc/<pid>/cwd`); anything else on the target port produces a loud abort naming the holder.
 
 ## Getting Started
 
-First, run the development server:
-
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm run dev            # bash scripts/dev.sh — port 3010, loud on conflict
+npm run dev:raw        # next dev — escape hatch, no port hygiene
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3010](http://localhost:3010) with your browser to see the result.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
