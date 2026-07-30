@@ -36,15 +36,39 @@ export function ChatWindow({
   className?: string;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [autoScroll, setAutoScroll] = useState(true);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const autoScrollRef = useRef(true);
+  const [, force] = useState(0); // trigger re-render on autoscroll flip
 
-  const renderedMessages = useMemo(() => messages, [messages]);
+  // Belt-and-braces chronological sort. The store's addMessage APPENDS
+  // and api.chat.history sorts ascending, so the array SHOULD already
+  // be oldest→newest — but a WS `result` for an older timestamp (backend
+  // replaying buffered log entries on connect) could otherwise land
+  // out of order. Sort is stable + cheap; guarantees oldest→newest at
+  // top→bottom regardless of source.
+  const renderedMessages = useMemo(
+    () =>
+      [...messages].sort(
+        (a, b) =>
+          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+      ),
+    [messages],
+  );
 
+  // Auto-scroll to bottom whenever a message is added AND the user is
+  // already near the bottom. If they've scrolled up to read history,
+  // do NOT yank them back — that's the standard chat convention.
+  // Two rAF ticks lets late-rendering content (font metric flash,
+  // markdown bubble expansion) settle before we pin.
   useEffect(() => {
-    if (autoScroll && containerRef.current) {
-      containerRef.current.scrollTop = containerRef.current.scrollHeight;
-    }
-  }, [autoScroll, renderedMessages]);
+    if (!autoScrollRef.current || !bottomRef.current) return;
+    const el = bottomRef.current;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        el.scrollIntoView({ block: "end", behavior: "auto" });
+      });
+    });
+  }, [renderedMessages.length]);
 
   return (
     <Card className={className ?? "flex min-h-[70vh] flex-col"}>
@@ -58,10 +82,14 @@ export function ChatWindow({
         ref={containerRef}
         onScroll={(event) => {
           const target = event.currentTarget;
-          const nearBottom = target.scrollHeight - target.scrollTop - target.clientHeight < 64;
-          setAutoScroll(nearBottom);
+          const nearBottom =
+            target.scrollHeight - target.scrollTop - target.clientHeight < 64;
+          if (autoScrollRef.current !== nearBottom) {
+            autoScrollRef.current = nearBottom;
+            force((n) => n + 1);
+          }
         }}
-        className="flex-1 space-y-4 overflow-y-auto"
+        className="flex flex-1 flex-col space-y-4 overflow-y-auto"
       >
         {isLoading ? <ChatWindowSkeleton /> : null}
         {!isLoading && renderedMessages.length === 0 ? (
@@ -72,6 +100,9 @@ export function ChatWindow({
         {!isLoading
           ? renderedMessages.map((message) => <MessageBubble key={message.id} message={message} />)
           : null}
+        {/* Sentinel: scrollIntoView target so auto-scroll pins to the
+            true bottom regardless of container-height mid-render. */}
+        <div ref={bottomRef} aria-hidden />
       </CardContent>
     </Card>
   );
