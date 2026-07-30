@@ -2,13 +2,19 @@
 
 import { useMutation } from "@tanstack/react-query";
 import { Loader2, Send } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 import { wsClient } from "@/lib/ws-client";
 import { useBrainStore } from "@/lib/store/brain.store";
 import { useChatStore } from "@/lib/store/chat.store";
+
+// Watchdog: if the WS response never lands (backend crashed mid-cycle,
+// broadcast dropped, agent_id != morgoth_core), isThinking would stay
+// true forever and wedge the textarea — the operator sees "chat is
+// dead: cannot type". Reset after 60s and let the user try again.
+const THINKING_WATCHDOG_MS = 60_000;
 
 export function ChatInput() {
   const [value, setValue] = useState("");
@@ -18,6 +24,21 @@ export function ChatInput() {
   const connectionStatus = useBrainStore((state) => state.connectionStatus);
   const rows = useMemo(() => Math.min(Math.max(value.split("\n").length, 1), 6), [value]);
   const userId = "default";
+  const watchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (isThinking) {
+      watchdogRef.current = setTimeout(() => {
+        setThinking(false);
+      }, THINKING_WATCHDOG_MS);
+    }
+    return () => {
+      if (watchdogRef.current) {
+        clearTimeout(watchdogRef.current);
+        watchdogRef.current = null;
+      }
+    };
+  }, [isThinking, setThinking]);
 
   const sendMessageMutation = useMutation({
     mutationFn: (content: string) => api.chat.send(content, userId),

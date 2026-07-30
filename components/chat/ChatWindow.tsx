@@ -21,9 +21,19 @@ function ChatWindowSkeleton() {
 export function ChatWindow({
   messages,
   isLoading,
+  className,
 }: {
   messages: ChatMessage[];
   isLoading: boolean;
+  /**
+   * Override the Card height. Default `min-h-[70vh]` fits the
+   * standalone /chat page (Direct Link). The cockpit passes a
+   * `min-h-0 flex-1` variant so ChatInput stays above the fold —
+   * before the override, ChatWindow's fixed 70vh pushed ChatInput
+   * below the viewport on the cockpit, which read as "chat is dead:
+   * cannot type/send" from the operator's perspective.
+   */
+  className?: string;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
@@ -37,7 +47,7 @@ export function ChatWindow({
   }, [autoScroll, renderedMessages]);
 
   return (
-    <Card className="flex min-h-[70vh] flex-col">
+    <Card className={className ?? "flex min-h-[70vh] flex-col"}>
       <CardHeader>
         <CardTitle>Chat Window</CardTitle>
         <p className="text-sm text-textSecondary">
