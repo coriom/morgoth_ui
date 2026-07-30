@@ -380,6 +380,14 @@ export const api = {
     compile: (): Promise<Record<string, unknown>> =>
       POST<Record<string, unknown>, Record<string, never>>("/api/wiki/compile", {}),
   },
+  proposals: {
+    // Slice 1: stub — the badge structure is in place but the backend
+    // read endpoint lands in slice 2 (per operator's staged plan:
+    // slice 1 is "no new endpoints"). When slice 2 lands, this call
+    // becomes GET /api/proposals?status=pending_approval and the
+    // badge lights up automatically without any UI change.
+    pendingCount: async (): Promise<number> => 0,
+  },
   admin: {
     permissions: async () => mapPermissions(await GET<RawPermissionsDocument>("/api/admin/permissions")),
     updatePermissions: (data: PermissionsResponse) =>

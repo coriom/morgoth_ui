@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 
+import { PendingBadge } from "@/components/cockpit/PendingBadge";
 import { useAgentsStore } from "@/lib/store/agents.store";
 import { useBrainStore } from "@/lib/store/brain.store";
 import { cn } from "@/lib/utils/cn";
@@ -30,6 +31,7 @@ export function TopBar() {
   return (
     <header className="flex h-12 items-center gap-4 border-b border-border bg-surface px-6">
       <div className="font-mono text-sm font-semibold uppercase tracking-[0.24em] text-primary">Morgoth</div>
+      <PendingBadge />
       <div className="flex-1" />
       <Link href="/admin" className="text-xs text-textSecondary transition hover:text-textPrimary">
         Model: <span className="font-mono text-textPrimary">{model}</span>

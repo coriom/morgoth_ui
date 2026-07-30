@@ -6,6 +6,7 @@ import {
   Brain,
   ChevronLeft,
   GitBranch,
+  LayoutDashboard,
   MessageSquare,
   Network,
   Settings,
@@ -19,7 +20,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { cn } from "@/lib/utils/cn";
 
 const NAV_ITEMS = [
-  { href: "/", icon: Brain, label: "Consciousness" },
+  { href: "/", icon: Brain, label: "Cockpit" },
+  { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
   { href: "/mind", icon: Network, label: "Mind" },
   { href: "/knowledge", icon: GitBranch, label: "Knowledge" },
   { href: "/wiki", icon: BookOpen, label: "Wiki" },
