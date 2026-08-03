@@ -1,5 +1,6 @@
 import type {
   Agent,
+  ApplyStatus,
   BrainStatus,
   ChatMessage,
   ConceptGraph,
@@ -19,6 +20,7 @@ import type {
   PermissionsResponse,
   PriceData,
   PricePoint,
+  ProposalRow,
   SelfModification,
   Thesis,
   ThoughtCluster,
@@ -381,12 +383,51 @@ export const api = {
       POST<Record<string, unknown>, Record<string, never>>("/api/wiki/compile", {}),
   },
   proposals: {
-    // Slice 1: stub — the badge structure is in place but the backend
-    // read endpoint lands in slice 2 (per operator's staged plan:
-    // slice 1 is "no new endpoints"). When slice 2 lands, this call
-    // becomes GET /api/proposals?status=pending_approval and the
-    // badge lights up automatically without any UI change.
-    pendingCount: async (): Promise<number> => 0,
+    // Reads go DIRECT to the backend — no side effect, no auth needed.
+    // Mutations go through Next.js server routes (see /app/api/proposals/*)
+    // so the operator's X-Morgoth-Token stays in the Node process and
+    // never crosses the network to the browser.
+    pendingCount: async (): Promise<number> => {
+      const response = await GET<{ count: number }>("/api/proposals/pending-count");
+      return response.count;
+    },
+    list: async (limit?: number): Promise<ProposalRow[]> => {
+      const response = await GET<ItemsResponse<ProposalRow>>("/api/proposals", { limit });
+      return unwrapItems(response);
+    },
+    get: (id: string): Promise<ProposalRow> => GET<ProposalRow>(`/api/proposals/${id}`),
+    approve: async (id: string, comment?: string): Promise<{ proposal_id: string; status: string }> => {
+      const res = await fetch(`/api/proposals/${id}/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ comment: comment ?? null }),
+      });
+      if (!res.ok) {
+        throw new ApiError(await res.text().catch(() => res.statusText), res.status);
+      }
+      return res.json();
+    },
+    reject: async (id: string, reason: string): Promise<{ proposal_id: string; status: string }> => {
+      const res = await fetch(`/api/proposals/${id}/reject`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason }),
+      });
+      if (!res.ok) {
+        throw new ApiError(await res.text().catch(() => res.statusText), res.status);
+      }
+      return res.json();
+    },
+    apply: async (id: string): Promise<{ proposal_id: string; queued: boolean }> => {
+      const res = await fetch(`/api/proposals/${id}/apply`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        throw new ApiError(await res.text().catch(() => res.statusText), res.status);
+      }
+      return res.json();
+    },
+    applyStatus: (id: string): Promise<ApplyStatus> => GET<ApplyStatus>(`/api/proposals/${id}/apply-status`),
   },
   admin: {
     permissions: async () => mapPermissions(await GET<RawPermissionsDocument>("/api/admin/permissions")),

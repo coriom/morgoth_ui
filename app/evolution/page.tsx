@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { GitBranch } from "lucide-react";
 
 import { PageWrapper } from "@/components/layout/PageWrapper";
+import { ProposalDossier } from "@/components/evolution/ProposalDossier";
 import { SelfModifyLog } from "@/components/evolution/SelfModifyLog";
 import { api } from "@/lib/api";
 import { useBrainStore } from "@/lib/store/brain.store";
@@ -45,6 +46,16 @@ export default function EvolutionPage() {
     staleTime: 30_000,
   });
 
+  // Decision cockpit — pending_approval + approved_pending_apply rows
+  // that the operator needs to act on. Refresh often enough that a
+  // reflect run's freshly submitted row appears without a manual reload.
+  const proposalsQuery = useQuery({
+    queryKey: ["proposals", "list"],
+    queryFn: () => api.proposals.list(50),
+    refetchInterval: 15_000,
+    staleTime: 5_000,
+  });
+
   const metricsQuery = useQuery({
     queryKey: ["evolution", "metrics"],
     queryFn: api.evolution.metrics,
@@ -64,6 +75,10 @@ export default function EvolutionPage() {
   const metrics = metricsQuery.data;
   const hasNoEvolutions = !selfModsQuery.isLoading && selfModifications.length === 0;
 
+  const decisionRows = (proposalsQuery.data ?? []).filter(
+    (p) => p.status === "pending_approval" || p.status === "approved_pending_apply",
+  );
+
   return (
     <PageWrapper className="space-y-4">
       {/* Header */}
@@ -75,6 +90,26 @@ export default function EvolutionPage() {
           Every change Morgoth applies to its own code, with diffs and test results.
         </p>
       </div>
+
+      {/* Decision cockpit — pending + approved-pending-apply */}
+      <section className="space-y-3">
+        <h2 className="font-mono text-xs font-semibold uppercase tracking-widest text-zinc-400">
+          Awaiting your decision
+        </h2>
+        {proposalsQuery.isLoading ? (
+          <div className="rounded-lg border border-dashed border-border p-6 text-sm text-textSecondary">
+            Loading proposals…
+          </div>
+        ) : decisionRows.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-border p-6 text-sm text-textSecondary">
+            No proposals awaiting your decision.
+          </div>
+        ) : (
+          decisionRows.map((row) => (
+            <ProposalDossier key={row.proposal_id} proposal={row} />
+          ))
+        )}
+      </section>
 
       {/* Metrics strip */}
       {(metricsQuery.isLoading || metrics) ? (

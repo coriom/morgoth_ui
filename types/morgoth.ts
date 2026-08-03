@@ -377,3 +377,65 @@ export interface Contradiction {
   thesis_a: ContradictionThesis | null;
   thesis_b: ContradictionThesis | null;
 }
+
+// ---- Self-modification proposals (gate 3 in the UI) -----------------------
+
+// String enum to keep the switch statements exhaustive at the type level.
+// Mirrors self_modify.proposals STATUS_* constants; if the backend adds a
+// new status the union widens here, forcing every consumer to handle it.
+export type ProposalStatus =
+  | "submitted"
+  | "malformed"
+  | "zone_rejected"
+  | "tests_failed"
+  | "pending_approval"
+  | "approved_pending_apply"
+  | "rejected"
+  | "rejected_name"
+  | "rejected_endpoint"
+  | "rejected_smoke"
+  | "rejected_shape"
+  | "rejected_stale"
+  | "rejected_static"
+  | "pending_key"
+  | "shadow_rejected"
+  | "applied"
+  | "apply_failed_rolled_back";
+
+export interface ShadowVerdict {
+  id: string;
+  proposal_id: string;
+  verdict: string;
+  axes: Record<string, string>;
+  reasons: string[];
+  engine: string;
+  prompt_version: string;
+  created_at: string;
+}
+
+export interface ProposalRow {
+  proposal_id: string;
+  target_path: string;
+  change_type: string;
+  content: string;
+  rationale: string | null;
+  status: ProposalStatus;
+  status_reason: string | null;
+  proposed_by: string;
+  engine: string;
+  retry_of: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  shadow_verdicts: ShadowVerdict[];
+}
+
+export interface ApplyStatus {
+  proposal_id: string;
+  // Coarse in-memory marker.
+  step: "idle" | "queued" | "running" | "done" | "crashed";
+  // The final DB status when the job finished; null while running.
+  terminal: ProposalStatus | null;
+  // Authoritative current status from the DB row.
+  status: ProposalStatus;
+  status_reason: string;
+}
