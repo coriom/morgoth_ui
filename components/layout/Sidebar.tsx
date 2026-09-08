@@ -2,11 +2,9 @@
 
 import {
   BookOpen,
-  Bot,
   Brain,
   ChevronLeft,
   GitBranch,
-  LayoutDashboard,
   MessageSquare,
   Network,
   Settings,
@@ -19,14 +17,21 @@ import { useState } from "react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils/cn";
 
+// PRUNING PASS (2026-09-08). Nav items follow USAGE EVIDENCE:
+//   · /market removed (no page.tsx — 404 on click; deleted from disk).
+//   · /warroom parked (page.tsx retained — /api/agents returns [] and
+//     create_agent isn't in CHAT_TOOL_NAMES today; feature is dormant,
+//     revives when the cycle starts spawning agents).
+//   · /dashboard parked (log presentation duplicates /brain LogFeed +
+//     operator feedback: "dashboard logs presented that way, what for?").
+//     ObjectivesPanel is preserved on Cockpit `/`.
+// All parked pages are reachable by URL — code intact — just off the nav.
 const NAV_ITEMS = [
   { href: "/", icon: Brain, label: "Cockpit" },
-  { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
   { href: "/mind", icon: Network, label: "Mind" },
   { href: "/knowledge", icon: GitBranch, label: "Knowledge" },
   { href: "/wiki", icon: BookOpen, label: "Wiki" },
   { href: "/evolution", icon: TrendingUp, label: "Evolution" },
-  { href: "/warroom", icon: Bot, label: "War Room" },
   { href: "/chat", icon: MessageSquare, label: "Direct Link" },
   { href: "/admin", icon: Settings, label: "Control" },
 ];
