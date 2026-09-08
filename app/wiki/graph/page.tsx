@@ -28,6 +28,11 @@ interface GraphNode extends WikiGraphNode {
   y?: number;
   vx?: number;
   vy?: number;
+  // Written by onNodeDragEnd to PIN the node in place. Cleared (set to
+  // undefined) by right-click. When set, the layout engine treats the
+  // node as fixed. Matches react-force-graph-2d's own NodeObject shape.
+  fx?: number;
+  fy?: number;
 }
 
 // Section → design-token color. Missing pages are dimmed so a dangling
@@ -41,7 +46,19 @@ const SECTION_COLOR: Record<string, string> = {
 
 // Persist labels only above this degree to avoid a wall of text on the
 // dense center. Hover always shows the label regardless.
-const LABEL_MIN_DEGREE = 8;
+// Was 8; dropped to 5 per the polish brief — the vault post-fix (86
+// nodes) has fewer hubs and more headroom for standing labels.
+const LABEL_MIN_DEGREE = 5;
+
+// Hover behaviour: focus node scales +40%, its edges + direct neighbours
+// render at full opacity, everything else dims to the ratio below.
+const DIM_OPACITY = 0.15;
+
+// Force-graph tuning.
+const CHARGE_STRENGTH = -300;   // repulsion between all nodes
+const LINK_DISTANCE = 40;        // base spring rest length
+const LINK_DISTANCE_CROSS_SECTION = 90;  // longer between different sections
+const COLLISION_PAD = 4;         // node radius + this = collision radius
 
 function colorForSection(section: string): string {
   return SECTION_COLOR[section] ?? SECTION_COLOR.root;
@@ -108,6 +125,79 @@ export default function WikiGraphPage() {
     [router],
   );
 
+  // Hover state: which node the cursor is over; its neighbours (ids reached
+  // via any edge). Everything else dims. Computed once per graph payload.
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const neighbourMap = useMemo(() => {
+    const m = new Map<string, Set<string>>();
+    if (!graphQuery.data) return m;
+    for (const e of graphQuery.data.edges) {
+      if (!m.has(e.source)) m.set(e.source, new Set());
+      if (!m.has(e.target)) m.set(e.target, new Set());
+      m.get(e.source)!.add(e.target);
+      m.get(e.target)!.add(e.source);
+    }
+    return m;
+  }, [graphQuery.data]);
+
+  const isFocused = useCallback(
+    (id: string): boolean => {
+      if (!hoveredId) return true;
+      if (id === hoveredId) return true;
+      return neighbourMap.get(hoveredId)?.has(id) ?? false;
+    },
+    [hoveredId, neighbourMap],
+  );
+
+  // Drag → pin: onNodeDragEnd sets fx/fy so the layout engine holds the
+  // node in place. Right-click (react-force-graph's onNodeRightClick)
+  // releases (clears fx/fy) so the node rejoins the simulation.
+  // (react-force-graph-2d doesn't expose onNodeDoubleClick; right-click
+  //  is the standard release gesture for this lib.)
+  const handleNodeDragEnd = useCallback((n: unknown) => {
+    const node = n as GraphNode;
+    if (typeof node.x === "number") node.fx = node.x;
+    if (typeof node.y === "number") node.fy = node.y;
+  }, []);
+  const handleDoubleClick = useCallback((n: unknown) => {
+    const node = n as GraphNode;
+    node.fx = undefined;
+    node.fy = undefined;
+  }, []);
+
+  // Apply d3-force tuning once the graph engine is mounted. The lib
+  // exposes .d3Force(name, obj) — we can only tweak strengths on the
+  // built-in charge/link forces, plus attach a collision force sized
+  // by node degree.
+  useEffect(() => {
+    const g = graphRef.current as {
+      d3Force?: (name: string, force?: unknown) => unknown;
+    } | null;
+    if (!g?.d3Force) return;
+    // d3-force is a transitive dep of react-force-graph-2d — dynamic
+    // string import so tsc doesn't require type declarations.
+    (import(/* webpackIgnore: true */ "d3-force" as string) as Promise<{
+      forceCollide: (r: (n: unknown) => number) => unknown;
+    }>).then((d3) => {
+      const charge = g.d3Force?.("charge") as
+        | { strength?: (v: number) => void }
+        | undefined;
+      charge?.strength?.(CHARGE_STRENGTH);
+      const link = g.d3Force?.("link") as
+        | { distance?: (fn: (l: { source: GraphNode; target: GraphNode }) => number) => void }
+        | undefined;
+      link?.distance?.((l) =>
+        l.source.section === l.target.section ? LINK_DISTANCE : LINK_DISTANCE_CROSS_SECTION,
+      );
+      g.d3Force?.(
+        "collision",
+        d3.forceCollide((n: unknown) => nodeRadius((n as GraphNode).degree) + COLLISION_PAD),
+      );
+    }).catch(() => {
+      // Import failure → we lose collision but the graph still renders.
+    });
+  }, [graphQuery.data]);
+
   // Force-graph mutates the array — pass a fresh shallow copy each time.
   const graphData = useMemo(() => {
     if (!graphQuery.data) return { nodes: [], links: [] };
@@ -152,33 +242,65 @@ export default function WikiGraphPage() {
               height={dims.h}
               backgroundColor="rgba(0,0,0,0)"
               nodeRelSize={4}
-              linkColor={() => "#2a2a3a"}
-              linkWidth={0.6}
+              linkColor={(l) => {
+                const src = (l as { source: GraphNode }).source;
+                const tgt = (l as { target: GraphNode }).target;
+                const focused = isFocused(src.id) && isFocused(tgt.id);
+                return focused ? "#4a4a6a" : "#2a2a3a20";
+              }}
+              linkWidth={(l) => {
+                const src = (l as { source: GraphNode }).source;
+                const tgt = (l as { target: GraphNode }).target;
+                return isFocused(src.id) && isFocused(tgt.id) ? 1.2 : 0.4;
+              }}
               cooldownTicks={200}
               onNodeClick={handleNodeClick}
+              onNodeHover={(n) => setHoveredId(n ? (n as GraphNode).id : null)}
+              onNodeDragEnd={handleNodeDragEnd}
+              onNodeRightClick={handleDoubleClick}
               nodeLabel={(n) => {
                 const node = n as GraphNode;
                 return `${node.title}  ·  ${node.section}  ·  deg ${node.degree}`;
               }}
               nodeCanvasObject={(n, ctx, scale) => {
                 const node = n as GraphNode;
-                const r = nodeRadius(node.degree);
+                const focused = isFocused(node.id);
+                const focus_scale = node.id === hoveredId ? 1.4 : 1.0;
+                // Missing nodes render smaller — they're absence markers.
+                const baseR = nodeRadius(node.degree) * (node.section === "missing" ? 0.7 : 1);
+                const r = baseR * focus_scale;
                 const x = node.x ?? 0;
                 const y = node.y ?? 0;
+                // Global alpha applied per-node so hovered neighbourhood stays crisp.
+                const prev = ctx.globalAlpha;
+                ctx.globalAlpha = focused ? 1.0 : DIM_OPACITY;
                 ctx.beginPath();
                 ctx.arc(x, y, r, 0, 2 * Math.PI);
                 ctx.fillStyle = colorForSection(node.section);
                 ctx.fill();
-                // Persistent label for hub nodes only.
-                if (node.degree >= LABEL_MIN_DEGREE) {
+                // Pinned-node ring (subtle) so the operator sees which nodes
+                // they've dragged into place.
+                if (node.fx != null || node.fy != null) {
+                  ctx.strokeStyle = "#f1f5f9";
+                  ctx.lineWidth = 1 / scale;
+                  ctx.stroke();
+                }
+                // Label policy: hub nodes always; hovered node always;
+                // missing nodes never (they carry no title worth reading).
+                const isHoverThis = node.id === hoveredId;
+                const showLabel =
+                  node.section !== "missing" &&
+                  (node.degree >= LABEL_MIN_DEGREE || isHoverThis);
+                if (showLabel) {
                   const label = node.title;
                   const fontSize = Math.max(10 / scale, 10);
-                  ctx.font = `${fontSize}px sans-serif`;
+                  ctx.font = `${isHoverThis ? "bold " : ""}${fontSize}px sans-serif`;
                   ctx.textAlign = "center";
                   ctx.textBaseline = "bottom";
                   ctx.fillStyle = "#f1f5f9";
                   ctx.fillText(label, x, y - r - 2);
                 }
+                ctx.globalAlpha = prev;
               }}
               nodeCanvasObjectMode={() => "replace"}
             />

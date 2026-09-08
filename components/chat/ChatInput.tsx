@@ -10,9 +10,27 @@ import { useChatStore } from "@/lib/store/chat.store";
 
 // Watchdog: if the WS `result` never lands (backend crashed mid-cycle,
 // broadcast dropped, agent_id != morgoth_core), isThinking would stay
-// true forever and wedge the textarea. Reset after 60s so the user
-// can try again.
-const THINKING_WATCHDOG_MS = 60_000;
+// true forever and wedge the textarea. Reset so the user can try again.
+//
+// Source of truth: the backend's REFLECT_LLM_TIMEOUT_SECONDS (default
+// 600 s = 10 min — see core.llm.providers._DEFAULT_TIMEOUT_SECS). The
+// frontend learns it via NEXT_PUBLIC_LLM_TIMEOUT_SECONDS at build time
+// (fallback: 600 s matches the backend default). A hard 15-minute
+// ceiling caps any misconfigured override — the textarea can never
+// wedge longer than that regardless of env.
+//
+// Pre-fix value was 60 s. The chat task's LLM budget is 600 s under
+// claude-cli/api — the old 60 s watchdog silently unlocked the textarea
+// while the backend was still processing, causing the "sent → nothing
+// happens" symptom during long reflections.
+const HARD_CEILING_MS = 15 * 60_000;
+const DEFAULT_LLM_TIMEOUT_MS = 600_000;
+const _envRaw = process.env.NEXT_PUBLIC_LLM_TIMEOUT_SECONDS;
+const _envMs = _envRaw ? Number(_envRaw) * 1000 : NaN;
+const THINKING_WATCHDOG_MS = Math.min(
+  HARD_CEILING_MS,
+  Number.isFinite(_envMs) && _envMs > 0 ? _envMs : DEFAULT_LLM_TIMEOUT_MS,
+);
 
 export function ChatInput() {
   const [value, setValue] = useState("");
@@ -49,7 +67,7 @@ export function ChatInput() {
   //   - connectionStatus !== "CONNECTED"  → the ws-client is reconnecting
   //     (exponential backoff; never a permanent lock)
   //   - isThinking                        → cleared by the WS `result`
-  //     handler in useWebSocket (line 104), or by the 60s watchdog above
+  //     handler in useWebSocket (line 104), or by the LLM-budget watchdog above
   // No external REST state ever gates the input.
   const connected = connectionStatus === "CONNECTED";
   const inputLocked = !connected || isThinking;
