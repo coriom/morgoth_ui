@@ -1,5 +1,14 @@
 # PROGRESS.md — Morgoth UI Development Tracker
 
+## 2026-09-29 — Project runtime contract mirror
+
+Added immutable ProjectConfig and Project types in types/morgoth.ts to mirror the
+backend model: identity, Domain reference, paths/namespaces, optional LLM routes and
+metadata. No new endpoint or UI flow. TypeScript check (`tsc --noEmit --incremental
+false`) passed. No new dependencies. Future desktop is a client/process supervisor;
+Python remains the engine and desktop does not require a Next.js server.
+
+
 ## Current Status
 **Phase**: 3 — Intelligence Expansion UI  
 **Overall**: Phase 2b refactor complete; Phase 3 War Room integration complete for Steps 7-8  

@@ -439,3 +439,19 @@ export interface ApplyStatus {
   status: ProposalStatus;
   status_reason: string;
 }
+
+/** Immutable engine Project contract; Domain supplies research semantics. */
+export interface ProjectConfig {
+  readonly id: string;
+  readonly name: string;
+  readonly domain: string;
+  readonly workspace_root: string | null;
+  readonly postgres_schema: string;
+  readonly chroma_prefix: string;
+  readonly vault_dir: string;
+  readonly runtime_dir: string;
+  readonly llm_overrides: Readonly<Record<string, string>>;
+  readonly metadata: Readonly<Record<string, string>>;
+}
+
+export type Project = ProjectConfig;
