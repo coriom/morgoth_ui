@@ -7,6 +7,19 @@ export type TaskType = "one_shot" | "recurring" | "triggered";
 export type TaskStatus = "pending" | "running" | "completed" | "failed";
 export type MarketRange = "1D" | "7D" | "30D" | "90D";
 export type ConnectionStatus = "CONNECTED" | "RECONNECTING" | "DISCONNECTED";
+
+/** An installed implementation; Domain rail membership controls activation. */
+export interface InstalledToolCatalogItem {
+  name: string;
+  active: boolean;
+}
+
+/** Tool available to the selected Domain at registration and execution. */
+export interface ActiveToolItem {
+  name: string;
+  is_data_source: boolean;
+  is_chat_tool: boolean;
+}
 export type ThoughtColorDomain = "code" | "research" | "finance" | "system" | "other";
 export type ObjectiveCategory = "research" | "capability" | "monitoring" | "optimization";
 export type ObjectiveStatus = "pending" | "in_progress" | "completed" | "failed" | "blocked";

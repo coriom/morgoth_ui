@@ -1,5 +1,11 @@
 # PROGRESS.md — Morgoth UI Development Tracker
 
+## 2026-09-30 — Tool rail endpoint DTOs
+
+Mirrored the backend `/api/tools` active-tool and `/api/tools/catalog` installed-tool
+response shapes in `types/morgoth.ts`; no UI behavior or API calls changed.
+
+
 ## 2026-09-29 — Project runtime contract mirror
 
 Added immutable ProjectConfig and Project types in types/morgoth.ts to mirror the
