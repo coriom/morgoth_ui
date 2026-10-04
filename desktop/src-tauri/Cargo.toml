@@ -1,0 +1,40 @@
+[package]
+name = "morgoth-desktop"
+version = "0.1.0"
+edition = "2021"
+build = "build.rs"
+
+[lib]
+name = "morgoth_desktop"
+path = "src/lib.rs"
+
+[[bin]]
+name = "morgoth-desktop"
+path = "src/main.rs"
+required-features = ["desktop"]
+
+[features]
+default = []
+desktop = ["dep:tauri", "dep:tauri-build"]
+
+[dependencies]
+base64 = "0.22.1"
+futures-util = "0.3.31"
+libc = "0.2.183"
+reqwest = { version = "=0.12.28", default-features = false, features = ["rustls-tls", "json", "stream"] }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.149"
+tauri = { version = "=2.12.1", optional = true, default-features = false, features = ["wry", "common-controls-v6", "rustls-tls"] }
+tokio = { version = "1.49.0", features = ["macros", "rt-multi-thread", "time"] }
+
+[build-dependencies]
+tauri-build = { version = "=2.7.1", optional = true }
+
+[dev-dependencies]
+tempfile = "3.24.0"
+
+[profile.dev]
+debug = 0
+
+[profile.release]
+strip = true

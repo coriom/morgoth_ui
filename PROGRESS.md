@@ -1,5 +1,20 @@
 # PROGRESS.md — Morgoth UI Development Tracker
 
+## 2026-10-04 — Desktop Project configuration slice (feature branch)
+
+Added an independent Tauri 2 + React/Vite `desktop/` package on `desktop-projects-v1`.
+Pinned the backend Management API V1 OpenAPI artifact at `3b84197`, generated
+TypeScript types, and checked Rust transport DTOs/operations against it.
+Six window-scoped native commands connect to the existing ProjectManager through
+authenticated loopback HTTP; React manages list/show/validate/create with
+explicit disconnected, conflict, uncertain and durability states. Synthetic
+Rust-to-real-API smoke created two same-Domain Projects in a disposable catalog
+and the canonical Python loader accepted them. Native Linux compilation/window
+remain blocked by missing GLib/GTK/WebKit development libraries on this WSL host;
+the unchanged Next.js app typechecks, while its production build is blocked by
+timed-out Google Fonts downloads from its existing `app/layout.tsx`.
+No installer, engine supervision or production deployment was attempted.
+
 ## 2026-09-30 — Tool rail endpoint DTOs
 
 Mirrored the backend `/api/tools` active-tool and `/api/tools/catalog` installed-tool
