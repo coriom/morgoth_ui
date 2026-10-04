@@ -13,7 +13,11 @@ The pinned backend is `3b84197ac101c35f29149173eac64cb1465a9101`. `contracts/man
 
 Node 22.22.3, npm 10.9.8, React 18.3.1, Vite 8.3.2, TypeScript 5.9.3, Tauri API/CLI 2.12.1, Rust/Cargo 1.95.0, tauri crate 2.12.1, reqwest 0.12.28. Dependency lockfiles are `package-lock.json` and `src-tauri/Cargo.lock`. Host target: `x86_64-unknown-linux-gnu` on WSL2. This does not imply a Windows executable or macOS support.
 
-Native compilation is currently **blocked** on this host: `pkg-config` cannot find `glib-2.0.pc` (and the GTK3/WebKit2GTK 4.1 development packages are absent). No system packages or WSL settings were changed. After an operator supplies the official [Tauri Linux prerequisites](https://v2.tauri.app/start/prerequisites/), verify with `pkg-config --modversion glib-2.0 gtk+-3.0 webkit2gtk-4.1 libsoup-3.0`, then run `CARGO_BUILD_JOBS=2 cargo build --locked --features desktop --bin morgoth-desktop` in `src-tauri`. A native window and React→Tauri create click remain unverified until that build succeeds. WSLg would still be a Linux build.
+The operator supplied the [Tauri Linux prerequisites](https://v2.tauri.app/start/prerequisites/): GLib 2.80.0, GTK3 3.24.41, WebKit2GTK 4.1 2.52.6 and libsoup 3.0 3.4.4. The Tauri 2.12.1 native build now succeeds on `x86_64-unknown-linux-gnu`; the binary is `src-tauri/target/debug/morgoth-desktop` (ELF x86-64, 27,505,448 bytes). This is a Linux executable under WSL2/WSLg, **not** a Windows-native executable.
+
+Tauri's Unix context generator uses `src-tauri/icons/icon.png` by default when no bundle icon is configured. This 256×256 RGBA PNG is converted locally from the tracked `../app/favicon.ico` 256×256 frame with `ffmpeg -i ../app/favicon.ico -map 0:v:3 -frames:v 1 src-tauri/icons/icon.png`; it is not a renamed ICO. No icon family or network asset is needed for the tested target.
+
+The actual native window opened through WSLg against a disposable pinned Management API. It displayed the connected state, legacy Project and installed Crypto/Weather Domain choices. Automated native form entry was **not** completed: XWayland reported no input focus for synthetic X11 keyboard events, and WebKit's AT-SPI entries did not expose `EditableText`. Thus the React→Tauri create click remains unproven. The separately guarded Rust→HTTP→ProjectManager smoke did create, retrieve and validate two disposable Projects. No production home or service was used.
 
 ## Reproducible checks and disposable demo
 
@@ -28,6 +32,7 @@ cd src-tauri
 CARGO_BUILD_JOBS=2 cargo fmt --check
 CARGO_BUILD_JOBS=2 cargo test --locked
 CARGO_BUILD_JOBS=2 cargo clippy --locked --all-targets -- -D warnings
+CARGO_BUILD_JOBS=2 cargo build --locked --features desktop --bin morgoth-desktop
 cd ..
 python3 scripts/smoke.py --backend /home/corio/Morgoth/dev-management-api-v1 --python /home/corio/Morgoth/morgoth/.venv/bin/python
 ```

@@ -425,7 +425,7 @@ impl ManagementClient {
 #[cfg(feature = "desktop")]
 mod desktop {
     use super::*;
-    use tauri::{Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+    use tauri::{State, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
     fn main_only(window: &WebviewWindow) -> Result<(), NativeError> {
         if window.label() == "main" {
             Ok(())

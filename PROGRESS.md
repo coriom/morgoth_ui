@@ -1,5 +1,17 @@
 # PROGRESS.md — Morgoth UI Development Tracker
 
+## 2026-10-04 — Native desktop qualification (feature branch)
+
+The missing Tauri context icon is now a PNG converted locally from the tracked
+favicon; the unused `Manager` import is removed. Linux x86-64 native build,
+frontend contract/tests/assets, Rust tests, formatting and Clippy pass under
+WSL2. The WSLg window opened against a disposable API and displayed connected
+management, the legacy Project and installed Domain choices. Automated form
+entry is still unproven because XWayland synthetic keyboard focus stayed `None`
+and WebKit's AT-SPI entries lacked `EditableText`; the separate real Rust client
+smoke did create and validate disposable Projects. No dependencies, backend,
+production checkout, service or WSL configuration were changed.
+
 ## 2026-10-04 — Desktop Project configuration slice (feature branch)
 
 Added an independent Tauri 2 + React/Vite `desktop/` package on `desktop-projects-v1`.
@@ -9,8 +21,8 @@ Six window-scoped native commands connect to the existing ProjectManager through
 authenticated loopback HTTP; React manages list/show/validate/create with
 explicit disconnected, conflict, uncertain and durability states. Synthetic
 Rust-to-real-API smoke created two same-Domain Projects in a disposable catalog
-and the canonical Python loader accepted them. Native Linux compilation/window
-remain blocked by missing GLib/GTK/WebKit development libraries on this WSL host;
+and the canonical Python loader accepted them. Native compilation was then
+blocked by missing GLib/GTK/WebKit development libraries on this WSL host;
 the unchanged Next.js app typechecks, while its production build is blocked by
 timed-out Google Fonts downloads from its existing `app/layout.tsx`.
 No installer, engine supervision or production deployment was attempted.
