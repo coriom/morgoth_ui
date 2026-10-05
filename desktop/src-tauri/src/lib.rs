@@ -5,6 +5,9 @@ use reqwest::{header, Method};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{io::Read, path::Path, time::Duration};
 
+#[cfg(target_os = "linux")]
+pub mod supervisor;
+
 const PREFIX: &str = "/management/v1";
 const MAX_BODY: usize = 65_536;
 
@@ -117,6 +120,7 @@ struct ApiError {
 }
 
 /// Native-only state. Its token is never serialized, formatted or returned to JS.
+#[derive(Clone)]
 pub struct ManagementClient {
     http: reqwest::Client,
     port: u16,
@@ -286,11 +290,33 @@ impl ManagementClient {
         if let Some(value) = body {
             request = request.json(value);
         }
-        let response = request.send().await.map_err(|_| {
+        let response = request.send().await.map_err(|error| {
             if is_post {
-                uncertain()
+                let mut safe = uncertain();
+                safe.code = Some(
+                    if error.is_timeout() {
+                        "TIMEOUT"
+                    } else if error.is_connect() {
+                        "CONNECT"
+                    } else {
+                        "OTHER"
+                    }
+                    .into(),
+                );
+                safe
             } else {
-                NativeError::new("TRANSPORT", "API locale indisponible.")
+                let mut safe = NativeError::new("TRANSPORT", "API locale indisponible.");
+                safe.code = Some(
+                    if error.is_timeout() {
+                        "TIMEOUT"
+                    } else if error.is_connect() {
+                        "CONNECT"
+                    } else {
+                        "OTHER"
+                    }
+                    .into(),
+                );
+                safe
             }
         })?;
         let status = response.status();
@@ -425,6 +451,7 @@ impl ManagementClient {
 #[cfg(feature = "desktop")]
 mod desktop {
     use super::*;
+    use crate::supervisor::{ManagementRuntimeStatus, ManagementSupervisor, SupervisorConfig};
     use tauri::{State, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
     fn main_only(window: &WebviewWindow) -> Result<(), NativeError> {
         if window.label() == "main" {
@@ -434,61 +461,70 @@ mod desktop {
         }
     }
     #[tauri::command]
+    pub fn management_runtime_status(
+        window: WebviewWindow,
+        supervisor: State<'_, ManagementSupervisor>,
+    ) -> Result<ManagementRuntimeStatus, NativeError> {
+        main_only(&window)?;
+        Ok(supervisor.status())
+    }
+    #[tauri::command]
     pub async fn management_status(
         window: WebviewWindow,
-        client: State<'_, ManagementClient>,
+        supervisor: State<'_, ManagementSupervisor>,
     ) -> Result<ManagementStatus, NativeError> {
         main_only(&window)?;
+        let client = supervisor.client()?;
         client.management_status().await
     }
     #[tauri::command]
     pub async fn list_domains(
         window: WebviewWindow,
-        client: State<'_, ManagementClient>,
+        supervisor: State<'_, ManagementSupervisor>,
     ) -> Result<DomainList, NativeError> {
         main_only(&window)?;
-        client.list_domains().await
+        supervisor.client()?.list_domains().await
     }
     #[tauri::command]
     pub async fn list_projects(
         window: WebviewWindow,
-        client: State<'_, ManagementClient>,
+        supervisor: State<'_, ManagementSupervisor>,
     ) -> Result<ProjectList, NativeError> {
         main_only(&window)?;
-        client.list_projects().await
+        supervisor.client()?.list_projects().await
     }
     #[tauri::command]
     pub async fn get_project(
         window: WebviewWindow,
-        client: State<'_, ManagementClient>,
+        supervisor: State<'_, ManagementSupervisor>,
         project_id: String,
     ) -> Result<ProjectView, NativeError> {
         main_only(&window)?;
-        client.get_project(&project_id).await
+        supervisor.client()?.get_project(&project_id).await
     }
     #[tauri::command]
     pub async fn validate_project(
         window: WebviewWindow,
-        client: State<'_, ManagementClient>,
+        supervisor: State<'_, ManagementSupervisor>,
         project_id: String,
     ) -> Result<ProjectValidation, NativeError> {
         main_only(&window)?;
-        client.validate_project(&project_id).await
+        supervisor.client()?.validate_project(&project_id).await
     }
     #[tauri::command]
     pub async fn create_project(
         window: WebviewWindow,
-        client: State<'_, ManagementClient>,
+        supervisor: State<'_, ManagementSupervisor>,
         input: CreateProjectRequest,
     ) -> Result<ProjectCreation, NativeError> {
         main_only(&window)?;
-        client.create_project(&input).await
+        supervisor.client()?.create_project(&input).await
     }
     pub fn run() {
-        let client =
-            ManagementClient::from_environment().expect("configuration locale de gestion invalide");
-        tauri::Builder::default()
-            .manage(client)
+        let supervisor = ManagementSupervisor::start(SupervisorConfig::from_environment());
+        let on_exit = supervisor.clone();
+        let app = tauri::Builder::default()
+            .manage(supervisor)
             .setup(|app| {
                 let expected = if cfg!(debug_assertions) {
                     "http://127.0.0.1:5173"
@@ -507,6 +543,7 @@ mod desktop {
                 Ok(())
             })
             .invoke_handler(tauri::generate_handler![
+                management_runtime_status,
                 management_status,
                 list_domains,
                 list_projects,
@@ -514,8 +551,13 @@ mod desktop {
                 validate_project,
                 create_project
             ])
-            .run(tauri::generate_context!())
+            .build(tauri::generate_context!())
             .expect("Morgoth desktop runtime failed");
+        app.run(move |_, event| {
+            if let tauri::RunEvent::Exit = event {
+                on_exit.stop();
+            }
+        });
     }
 }
 #[cfg(feature = "desktop")]

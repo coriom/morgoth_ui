@@ -86,6 +86,23 @@ async fn fixed_path_auth_and_no_origin() {
 }
 
 #[tokio::test]
+async fn wrong_management_api_version_is_rejected() {
+    let (_dir, token) = token_file();
+    let (port, _, task) = server(
+        "200 OK",
+        r#"{"api_version":"2","management_available":true}"#,
+        "",
+    );
+    let error = ManagementClient::new(port, &token)
+        .unwrap()
+        .management_status()
+        .await
+        .unwrap_err();
+    task.join().unwrap();
+    assert_eq!(error.kind, "INCOMPATIBLE_RESPONSE");
+}
+
+#[tokio::test]
 async fn auth_redirect_malformed_and_size_errors() {
     let (_dir, token) = token_file();
     let (port, _, task) = server(

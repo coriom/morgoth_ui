@@ -13,6 +13,7 @@ const project = (id: string): Project => ({
 });
 function mockTransport(overrides: Partial<ManagementTransport> = {}): ManagementTransport {
   return {
+    runtimeStatus: vi.fn(async () => ({ state: "READY" as const, diagnostic: null })),
     status: vi.fn(async () => ({ api_version: "1", management_available: true })),
     domains: vi.fn(async () => ({ domains: [
       { id: "crypto", tagline: "Marchés", configuration_valid: true, diagnostic: null },
@@ -37,7 +38,7 @@ describe("Projects screen", () => {
   it("keeps loading and catalog failure states explicit", async () => {
     const pending = new Promise<Awaited<ReturnType<ManagementTransport["status"]>>>(() => {});
     const first = render(<App transport={mockTransport({ status: vi.fn(() => pending) })} />);
-    expect(screen.getByText("Connexion en cours…")).toBeTruthy();
+    expect(screen.getByText("Démarrage de la gestion…")).toBeTruthy();
     first.unmount();
     render(<App transport={mockTransport({ projects: vi.fn(async () => { throw new Error("offline catalog"); }) })} />);
     expect(await screen.findByText(/Catalogue indisponible/)).toBeTruthy();
@@ -45,8 +46,21 @@ describe("Projects screen", () => {
   it("shows disconnected state without loading catalog", async () => {
     const transport = mockTransport({ status: vi.fn(async () => { throw new Error("offline"); }) });
     render(<App transport={transport} />);
-    expect(await screen.findByText("API de gestion indisponible")).toBeTruthy();
+    expect(await screen.findByText("Gestion locale indisponible")).toBeTruthy();
     expect(transport.projects).not.toHaveBeenCalled();
+  });
+  it("opens in STARTING and FAILED without calling project operations", async () => {
+    const pending = new Promise<Awaited<ReturnType<ManagementTransport["runtimeStatus"]>>>(() => {});
+    const starting = mockTransport({ runtimeStatus: vi.fn(() => pending) });
+    const first = render(<App transport={starting} />);
+    expect(screen.getByText("Démarrage de la gestion…")).toBeTruthy();
+    expect(starting.projects).not.toHaveBeenCalled();
+    first.unmount();
+    const failed = mockTransport({ runtimeStatus: vi.fn(async () => ({ state: "FAILED" as const, diagnostic: "BACKEND_MISMATCH" })) });
+    render(<App transport={failed} />);
+    expect(await screen.findByText("Gestion locale indisponible")).toBeTruthy();
+    expect(failed.status).not.toHaveBeenCalled();
+    expect(failed.projects).not.toHaveBeenCalled();
   });
   it("loads domains and separates project details and validation", async () => {
     const transport = mockTransport();

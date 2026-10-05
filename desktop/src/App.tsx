@@ -24,8 +24,12 @@ export function ProjectsScreen({ transport }: { transport: ManagementTransport }
   const [id, setId] = useState("");
   const [domain, setDomain] = useState("");
   const [notice, setNotice] = useState("");
-  const status = useQuery({ queryKey: [connection, "status"], queryFn: transport.status });
-  const connected = status.isSuccess && status.data.management_available;
+  const runtime = useQuery({ queryKey: [connection, "runtime"], queryFn: transport.runtimeStatus,
+    refetchInterval: (query) => query.state.data?.state === "READY" ? 2000 : query.state.data?.state === "STARTING" ? 500 : false });
+  const ready = runtime.data?.state === "READY";
+  const status = useQuery({ queryKey: [connection, "status"], queryFn: transport.status, enabled: ready });
+  const connected = ready && status.isSuccess && status.data.management_available;
+  const starting = runtime.isPending || runtime.data?.state === "STARTING" || (ready && status.isPending);
   const domains = useQuery({ queryKey: [connection, "domains"], queryFn: transport.domains, enabled: connected });
   const projects = useQuery({ queryKey: [connection, "projects"], queryFn: transport.projects, enabled: connected });
   const selected = useQuery({ queryKey: [connection, "project", selectedId],
@@ -58,9 +62,9 @@ export function ProjectsScreen({ transport }: { transport: ManagementTransport }
     <header className="masthead"><span className="eyebrow">MORGOTH / LOCAL</span><h1>Projets</h1>
       <p>Configurez des espaces de recherche isolés. Aucune recherche n’est lancée ici.</p></header>
     <section className="connection panel" aria-label="Connexion de gestion">
-      <div><h2>Service de gestion</h2><p>{status.isPending ? "Connexion en cours…" : connected ? "API de gestion connectée" : "API de gestion indisponible"}</p></div>
-      <span className={connected ? "pill good" : "pill"}>{connected ? "Connectée" : "Non connectée"}</span>
-      {!connected && !status.isPending && <button type="button" onClick={() => status.refetch()}>Réessayer</button>}
+      <div><h2>Service de gestion</h2><p>{starting ? "Démarrage de la gestion…" : connected ? "Gestion connectée" : "Gestion locale indisponible"}</p></div>
+      <span className={connected ? "pill good" : "pill"}>{starting ? "Démarrage" : connected ? "Connectée" : "Non connectée"}</span>
+      {!connected && !starting && <button type="button" onClick={() => { runtime.refetch(); if (ready) status.refetch(); }}>Vérifier</button>}
     </section>
     {connected && <div className="grid">
       <section className="panel" aria-label="Liste des projets">

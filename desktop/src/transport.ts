@@ -8,8 +8,10 @@ export type Project = components["schemas"]["ProjectView"];
 export type Validation = components["schemas"]["ProjectValidation"];
 export type Creation = components["schemas"]["ProjectCreation"];
 export type CreateInput = components["schemas"]["CreateProjectRequest"];
+export type RuntimeStatus = { state: "STARTING" | "READY" | "FAILED" | "STOPPING" | "STOPPED"; diagnostic: string | null };
 
 export interface ManagementTransport {
+  runtimeStatus(): Promise<RuntimeStatus>;
   status(): Promise<Status>;
   domains(): Promise<DomainList>;
   projects(): Promise<ProjectList>;
@@ -20,6 +22,7 @@ export interface ManagementTransport {
 
 /** Only fixed commands cross the WebView-to-native boundary. */
 export const nativeManagement: ManagementTransport = {
+  runtimeStatus: () => invoke<RuntimeStatus>("management_runtime_status"),
   status: () => invoke<Status>("management_status"),
   domains: () => invoke<DomainList>("list_domains"),
   projects: () => invoke<ProjectList>("list_projects"),

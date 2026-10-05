@@ -1,5 +1,20 @@
 # PROGRESS.md — Morgoth UI Development Tracker
 
+## 2026-10-05 — Native Management API supervision (feature branch)
+
+The Linux desktop now starts one pinned, clean Management API checkout as a
+Rust-owned child in an explicitly private disposable application home. Rust
+creates and removes its own short-lived token file, validates the owned loopback
+listener and API version, exposes only a bounded status to React, and reaps the
+exact child on normal exit. A native WSLg window reached connected state without
+a manually started API or supplied token; a bad-backend window stayed open and
+showed unavailable. The supervisor-owned real-process smoke created and
+validated two isolated Projects. A second simultaneous desktop supervisor used
+its own child/catalog; a stalled synthetic child timed out and was reaped.
+React form entry remains unproven under WSLg input automation. Multiple
+instances use separate children and authority;
+research-engine supervision, packaging and Windows/macOS remain deferred.
+
 ## 2026-10-04 — Native desktop qualification (feature branch)
 
 The missing Tauri context icon is now a PNG converted locally from the tracked

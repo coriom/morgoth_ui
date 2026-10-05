@@ -6,7 +6,8 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke }));
 beforeEach(() => invoke.mockClear());
 
 describe("fixed native transport", () => {
-  it("uses only the six explicit Tauri commands", async () => {
+  it("uses only the seven explicit Tauri commands", async () => {
+    await nativeManagement.runtimeStatus();
     await nativeManagement.status();
     await nativeManagement.domains();
     await nativeManagement.projects();
@@ -14,9 +15,9 @@ describe("fixed native transport", () => {
     await nativeManagement.validation("research_a");
     await nativeManagement.create({ id: "research_a", name: "A", domain: "crypto" });
     expect(invoke.mock.calls.map((call) => call[0])).toEqual([
-      "management_status", "list_domains", "list_projects", "get_project", "validate_project", "create_project",
+      "management_runtime_status", "management_status", "list_domains", "list_projects", "get_project", "validate_project", "create_project",
     ]);
-    expect(invoke.mock.calls[3]?.[1]).toEqual({ projectId: "research_a" });
-    expect(invoke.mock.calls[5]?.[1]).toEqual({ input: { id: "research_a", name: "A", domain: "crypto" } });
+    expect(invoke.mock.calls[4]?.[1]).toEqual({ projectId: "research_a" });
+    expect(invoke.mock.calls[6]?.[1]).toEqual({ input: { id: "research_a", name: "A", domain: "crypto" } });
   });
 });
