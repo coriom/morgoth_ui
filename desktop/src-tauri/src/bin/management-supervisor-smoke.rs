@@ -128,7 +128,11 @@ fn main() {
         home: home.path().to_path_buf(),
     }));
     let deadline = Instant::now() + Duration::from_secs(19);
-    while stalled.status().state == ManagementPhase::Starting && Instant::now() < deadline {
+    while matches!(
+        stalled.status().state,
+        ManagementPhase::Starting | ManagementPhase::Stopping
+    ) && Instant::now() < deadline
+    {
         thread::sleep(Duration::from_millis(100));
     }
     assert_eq!(stalled.status().state, ManagementPhase::Failed);

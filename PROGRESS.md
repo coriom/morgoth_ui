@@ -1,5 +1,25 @@
 # PROGRESS.md — Morgoth UI Development Tracker
 
+## 2026-10-06 — Real supervised Desktop PAUSED integration (feature branch)
+
+Pinned both Rust supervisors to clean backend `1afa971`; the actual Management
+OpenAPI regeneration and both committed artifacts have the same SHA-256.
+Added a bounded disposable `morgoth_test` + fake-Ollama smoke in which the
+actual Rust ResearchEngineSupervisor launches the actual Crypto and Weather
+Python research engines sequentially into authenticated PAUSED, without START
+or inference. A duplicate actual launcher is rejected by the Project lease;
+stop/reap releases it and a later Rust launch reacquires it. Real profile
+responses show Codex BLOCKED; a missing local model yields inspectable
+NOT_READY while Management remains alive. The synthetic START proof remains
+separate. No backend, production Project, service, profile, or database was
+changed; no new dependency was added. Autonomous research, provider inference,
+packaging and cross-platform qualification remain deferred.
+The Linux WSLg native window also opened with a disposable Project created
+through the real Management API; its accessibility tree showed Crypto/Weather
+Domains and the Project. Selecting that Project exposed the real research
+initialization control, without pressing it. Native PAUSED click-through was
+not claimed; Rust-owned real-process PAUSED is the authoritative proof.
+
 ## 2026-10-05 — One managed-Project research supervisor (feature branch)
 
 Pinned both native supervisors to backend `3da091c`; the Management OpenAPI

@@ -1209,7 +1209,7 @@ mod tests {
                 let mut received = [0_u8; 4096];
                 let size = stream.read(&mut received).unwrap();
                 requests.push(String::from_utf8_lossy(&received[..size]).into_owned());
-                let header = format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n", reply.len());
+                let header = format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: {}\r\n\r\n", reply.len());
                 stream.write_all(header.as_bytes()).unwrap();
                 stream.write_all(&reply).unwrap();
             }
