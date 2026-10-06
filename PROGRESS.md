@@ -1,5 +1,21 @@
 # PROGRESS.md — Morgoth UI Development Tracker
 
+## 2026-10-05 — One managed-Project research supervisor (feature branch)
+
+Pinned both native supervisors to backend `3da091c`; the Management OpenAPI
+artifact is byte-identical to the earlier `3b84197` artifact. Added a
+Rust-owned, single-child ResearchEngineSupervisor with exact listener/PID and
+Project-token checks, explicit minimal child environment, PAUSED/NOT_READY/
+RUNNING status, fixed authenticated runtime calls, and exact-child stop/reap.
+React now exposes explicit initialize, qualified-profile select, start and stop
+controls while leaving Project selection and Management independent. Codex stays
+BLOCKED; no profile or autonomous research starts automatically. Frontend tests,
+Rust tests including a synthetic owned-child lifecycle, Clippy, native Linux
+build, real disposable Management smoke and research failure-containment smoke
+pass. A WSLg window opens; direct native
+research button interaction and live Brain startup remain unproven. No backend,
+production Project, service or database was changed.
+
 ## 2026-10-05 — Native Management API supervision (feature branch)
 
 The Linux desktop now starts one pinned, clean Management API checkout as a

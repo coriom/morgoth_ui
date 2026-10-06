@@ -31,6 +31,40 @@ export const nativeManagement: ManagementTransport = {
   create: (input) => invoke<Creation>("create_project", { input }),
 };
 
+export type ResearchPhase = "STOPPED" | "STARTING" | "PAUSED" | "NOT_READY" | "RUNNING" | "FAILED" | "STOPPING";
+export type BackendRuntime = {
+  schema_version: number; project: string; domain: string; code_sha: string | null;
+  initialized: boolean; awakening_ready: boolean; research_state: string;
+  autonomous_task_alive: boolean; profile: string; profile_status: "READY" | "BLOCKED" | "UNAVAILABLE";
+};
+export type ResearchEngineStatus = {
+  state: ResearchPhase; project_id: string | null; domain: string | null;
+  diagnostic: string | null; runtime: BackendRuntime | null;
+};
+export type ResearchProfiles = {
+  schema_version: number; current: string; recommended: string | null;
+  profiles: Array<{ id: string; status: "READY" | "BLOCKED" | "UNAVAILABLE";
+    reason: string; providers: Record<string, string> }>;
+};
+export interface ResearchTransport {
+  status(): Promise<ResearchEngineStatus>;
+  initialize(projectId: string): Promise<ResearchEngineStatus>;
+  profiles(): Promise<ResearchProfiles>;
+  selectProfile(profileId: string): Promise<ResearchProfiles>;
+  start(): Promise<ResearchEngineStatus>;
+  stop(): Promise<ResearchEngineStatus>;
+}
+
+/** Native authority is limited to six fixed research operations. */
+export const nativeResearch: ResearchTransport = {
+  status: () => invoke<ResearchEngineStatus>("research_engine_status"),
+  initialize: (projectId) => invoke<ResearchEngineStatus>("initialize_research_engine", { projectId }),
+  profiles: () => invoke<ResearchProfiles>("research_profiles"),
+  selectProfile: (profileId) => invoke<ResearchProfiles>("select_research_profile", { profileId }),
+  start: () => invoke<ResearchEngineStatus>("start_research"),
+  stop: () => invoke<ResearchEngineStatus>("stop_research_engine"),
+};
+
 export type NativeError = { kind?: string; code?: string; status?: number };
 export function managementError(error: unknown): NativeError {
   if (typeof error !== "object" || error === null) return { kind: "UNKNOWN" };

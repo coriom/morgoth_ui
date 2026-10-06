@@ -9,6 +9,12 @@ fn main() {
             "get_project",
             "validate_project",
             "create_project",
+            "research_engine_status",
+            "initialize_research_engine",
+            "research_profiles",
+            "select_research_profile",
+            "start_research",
+            "stop_research_engine",
         ]),
     ))
     .expect("Tauri capability build failed");

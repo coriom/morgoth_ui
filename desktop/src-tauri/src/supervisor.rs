@@ -14,7 +14,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-const BACKEND_SHA: &str = "3b84197ac101c35f29149173eac64cb1465a9101";
+pub const BACKEND_SHA: &str = "3da091c8d8a2b9d5407a6eaf07cd615b0be01d3b";
 const STARTUP_LIMIT: Duration = Duration::from_secs(15);
 const STOP_GRACE: Duration = Duration::from_secs(3);
 
@@ -56,7 +56,7 @@ impl SupervisorConfig {
         })
     }
 
-    fn validate(&self) -> Result<(), &'static str> {
+    pub(crate) fn validate(&self) -> Result<(), &'static str> {
         for path in [&self.backend_root, &self.python, &self.home] {
             if !path.is_absolute() || path.components().any(|c| c == Component::ParentDir) {
                 return Err("CONFIG_PATH_INVALID");
@@ -70,6 +70,10 @@ impl SupervisorConfig {
             || !self
                 .backend_root
                 .join("docs/management_api_v1.openapi.json")
+                .is_file()
+            || !self
+                .backend_root
+                .join("scripts/research_engine.py")
                 .is_file()
         {
             return Err("BACKEND_UNAVAILABLE");
@@ -129,7 +133,7 @@ fn git(root: &Path, args: &[&str]) -> Result<String, &'static str> {
         .map_err(|_| "BACKEND_UNAVAILABLE")
 }
 
-fn child_owns_listener(port: u16, pid: u32) -> Result<bool, &'static str> {
+pub(crate) fn child_owns_listener(port: u16, pid: u32) -> Result<bool, &'static str> {
     let table = fs::read_to_string("/proc/net/tcp").map_err(|_| "PORT_UNVERIFIABLE")?;
     let address = format!("0100007F:{port:04X}");
     for row in table.lines().skip(1) {
@@ -498,7 +502,7 @@ impl ManagementSupervisor {
     }
 }
 
-fn drain<R: Read + Send + 'static>(pipe: Option<R>) {
+pub(crate) fn drain<R: Read + Send + 'static>(pipe: Option<R>) {
     if let Some(mut pipe) = pipe {
         thread::spawn(move || {
             let mut buffer = [0_u8; 1024];
@@ -605,6 +609,11 @@ mod tests {
         fs::create_dir(root.path().join("docs")).unwrap();
         fs::write(
             root.path().join("scripts/management_api.py"),
+            b"# fixture\n",
+        )
+        .unwrap();
+        fs::write(
+            root.path().join("scripts/research_engine.py"),
             b"# fixture\n",
         )
         .unwrap();

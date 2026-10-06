@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { App } from "./App";
-import type { ManagementTransport, Project } from "./transport";
+import { App as DesktopApp } from "./App";
+import type { ManagementTransport, Project, ResearchTransport, ResearchEngineStatus } from "./transport";
 
 afterEach(cleanup);
 
@@ -26,6 +26,18 @@ function mockTransport(overrides: Partial<ManagementTransport> = {}): Management
       engine_started: false, storage_initialized: false })),
     ...overrides,
   };
+}
+const stopped: ResearchEngineStatus = { state: "STOPPED", project_id: null, domain: null, diagnostic: null, runtime: null };
+function mockResearch(overrides: Partial<ResearchTransport> = {}): ResearchTransport {
+  return {
+    status: vi.fn(async () => stopped), initialize: vi.fn(async () => stopped),
+    profiles: vi.fn(async () => ({ schema_version: 1, current: "legacy", recommended: "claude", profiles: [] })),
+    selectProfile: vi.fn(async () => ({ schema_version: 1, current: "claude", recommended: "claude", profiles: [] })),
+    start: vi.fn(async () => stopped), stop: vi.fn(async () => stopped), ...overrides,
+  };
+}
+function App({ transport, research = mockResearch() }: { transport: ManagementTransport; research?: ResearchTransport }) {
+  return <DesktopApp transport={transport} research={research} />;
 }
 async function fillAndCreate(id = "new_project") {
   fireEvent.change(screen.getByLabelText("Nom affiché"), { target: { value: "Nouveau projet" } });
@@ -112,5 +124,53 @@ describe("Projects screen", () => {
   it("shows empty catalog honestly", async () => {
     render(<App transport={mockTransport({ projects: vi.fn(async () => ({ projects: [], configuration_valid: true, runtime_checked: false })) })} />);
     expect(await screen.findByText("Aucun projet configuré.")).toBeTruthy();
+  });
+});
+
+describe("one selected research engine", () => {
+  const paused: ResearchEngineStatus = { state: "PAUSED", project_id: "research_a", domain: "crypto", diagnostic: null,
+    runtime: { schema_version: 1, project: "research_a", domain: "crypto", code_sha: "a".repeat(40),
+      initialized: true, awakening_ready: true, research_state: "PAUSED", autonomous_task_alive: false,
+      profile: "legacy", profile_status: "BLOCKED" } };
+  const profileList = { schema_version: 1, current: "legacy", recommended: "claude", profiles: [
+    { id: "legacy", status: "BLOCKED" as const, reason: "synthetic", providers: {} },
+    { id: "claude", status: "READY" as const, reason: "synthetic", providers: {} },
+    { id: "codex", status: "BLOCKED" as const, reason: "synthetic", providers: {} },
+  ] };
+
+  it("initializes only after explicit click and keeps other Project active", async () => {
+    const research = mockResearch({ initialize: vi.fn(async () => ({ ...paused, state: "STARTING" as const })) });
+    render(<App transport={mockTransport()} research={research} />);
+    fireEvent.click(await screen.findByRole("button", { name: /research_a/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Initialiser le moteur" }));
+    await waitFor(() => expect(research.initialize).toHaveBeenCalledWith("research_a"));
+  });
+  it("shows blocked Codex, explicit Claude choice, and no start before readiness", async () => {
+    const research = mockResearch({ status: vi.fn(async () => paused), profiles: vi.fn(async () => profileList),
+      selectProfile: vi.fn(async () => ({ ...profileList, current: "claude" })) });
+    render(<App transport={mockTransport()} research={research} />);
+    fireEvent.click(await screen.findByRole("button", { name: /research_a/ }));
+    expect(await screen.findByText(/Moteur prêt · recherche en pause/)).toBeTruthy();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Sélectionner codex" })).toHaveProperty("disabled", true));
+    expect(screen.getByRole("button", { name: "Sélectionner codex" }).closest("li")?.textContent).toContain("codex · BLOCKED");
+    expect(screen.queryByRole("button", { name: "Démarrer la recherche" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Sélectionner claude" }));
+    await waitFor(() => expect(research.selectProfile).toHaveBeenCalledWith("claude"));
+  });
+  it("does not rebind a running engine when another Project is selected", async () => {
+    const running = { ...paused, state: "RUNNING" as const, runtime: { ...paused.runtime!, research_state: "RUNNING" } };
+    const research = mockResearch({ status: vi.fn(async () => running), profiles: vi.fn(async () => profileList) });
+    render(<App transport={mockTransport()} research={research} />);
+    fireEvent.click(await screen.findByRole("button", { name: /research_b/ }));
+    expect(await screen.findByText(/Le moteur du projet research_a reste actif/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Initialiser le moteur" })).toBeNull();
+    expect(research.stop).not.toHaveBeenCalled();
+  });
+  it("management remains usable when research status fails", async () => {
+    const research = mockResearch({ status: vi.fn(async () => { throw { kind: "RESEARCH_UNAVAILABLE" }; }) });
+    render(<App transport={mockTransport()} research={research} />);
+    fireEvent.click(await screen.findByRole("button", { name: /research_a/ }));
+    expect(await screen.findByText(/État du moteur indisponible/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /research_b/ })).toBeTruthy();
   });
 });

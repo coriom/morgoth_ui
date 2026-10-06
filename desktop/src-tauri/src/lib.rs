@@ -6,6 +6,8 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{io::Read, path::Path, time::Duration};
 
 #[cfg(target_os = "linux")]
+pub mod research;
+#[cfg(target_os = "linux")]
 pub mod supervisor;
 
 const PREFIX: &str = "/management/v1";
@@ -451,6 +453,7 @@ impl ManagementClient {
 #[cfg(feature = "desktop")]
 mod desktop {
     use super::*;
+    use crate::research::{ProfilesResponse, ResearchEngineStatus, ResearchEngineSupervisor};
     use crate::supervisor::{ManagementRuntimeStatus, ManagementSupervisor, SupervisorConfig};
     use tauri::{State, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
     fn main_only(window: &WebviewWindow) -> Result<(), NativeError> {
@@ -520,11 +523,71 @@ mod desktop {
         main_only(&window)?;
         supervisor.client()?.create_project(&input).await
     }
+    #[tauri::command]
+    pub fn research_engine_status(
+        window: WebviewWindow,
+        supervisor: State<'_, ResearchEngineSupervisor>,
+    ) -> Result<ResearchEngineStatus, NativeError> {
+        main_only(&window)?;
+        Ok(supervisor.status())
+    }
+    #[tauri::command]
+    pub async fn initialize_research_engine(
+        window: WebviewWindow,
+        supervisor: State<'_, ResearchEngineSupervisor>,
+        project_id: String,
+    ) -> Result<ResearchEngineStatus, NativeError> {
+        main_only(&window)?;
+        supervisor.initialize(project_id).await
+    }
+    #[tauri::command]
+    pub async fn research_profiles(
+        window: WebviewWindow,
+        supervisor: State<'_, ResearchEngineSupervisor>,
+    ) -> Result<ProfilesResponse, NativeError> {
+        main_only(&window)?;
+        supervisor.profiles().await
+    }
+    #[tauri::command]
+    pub async fn select_research_profile(
+        window: WebviewWindow,
+        supervisor: State<'_, ResearchEngineSupervisor>,
+        profile_id: String,
+    ) -> Result<ProfilesResponse, NativeError> {
+        main_only(&window)?;
+        supervisor.select_profile(&profile_id).await
+    }
+    #[tauri::command]
+    pub async fn start_research(
+        window: WebviewWindow,
+        supervisor: State<'_, ResearchEngineSupervisor>,
+    ) -> Result<ResearchEngineStatus, NativeError> {
+        main_only(&window)?;
+        supervisor.start().await
+    }
+    #[tauri::command]
+    pub async fn stop_research_engine(
+        window: WebviewWindow,
+        supervisor: State<'_, ResearchEngineSupervisor>,
+    ) -> Result<ResearchEngineStatus, NativeError> {
+        main_only(&window)?;
+        let owned = supervisor.inner().clone();
+        tauri::async_runtime::spawn_blocking(move || owned.stop())
+            .await
+            .map_err(|_| {
+                NativeError::new("RESEARCH_STOP_FAILED", "Arrêt du moteur non confirmé.")
+            })?;
+        Ok(supervisor.status())
+    }
     pub fn run() {
-        let supervisor = ManagementSupervisor::start(SupervisorConfig::from_environment());
+        let config = SupervisorConfig::from_environment();
+        let supervisor = ManagementSupervisor::start(config.clone());
+        let research = ResearchEngineSupervisor::new(config, supervisor.clone());
         let on_exit = supervisor.clone();
+        let research_on_exit = research.clone();
         let app = tauri::Builder::default()
             .manage(supervisor)
+            .manage(research)
             .setup(|app| {
                 let expected = if cfg!(debug_assertions) {
                     "http://127.0.0.1:5173"
@@ -549,12 +612,19 @@ mod desktop {
                 list_projects,
                 get_project,
                 validate_project,
-                create_project
+                create_project,
+                research_engine_status,
+                initialize_research_engine,
+                research_profiles,
+                select_research_profile,
+                start_research,
+                stop_research_engine
             ])
             .build(tauri::generate_context!())
             .expect("Morgoth desktop runtime failed");
         app.run(move |_, event| {
             if let tauri::RunEvent::Exit = event {
+                research_on_exit.stop();
                 on_exit.stop();
             }
         });

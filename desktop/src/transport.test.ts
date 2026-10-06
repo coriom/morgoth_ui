@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { nativeManagement } from "./transport";
+import { nativeManagement, nativeResearch } from "./transport";
 
 const { invoke } = vi.hoisted(() => ({ invoke: vi.fn(async (_command: string, _args?: unknown) => ({})) }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke }));
@@ -19,5 +19,19 @@ describe("fixed native transport", () => {
     ]);
     expect(invoke.mock.calls[4]?.[1]).toEqual({ projectId: "research_a" });
     expect(invoke.mock.calls[6]?.[1]).toEqual({ input: { id: "research_a", name: "A", domain: "crypto" } });
+  });
+  it("uses only six explicit research commands and two identifiers", async () => {
+    await nativeResearch.status();
+    await nativeResearch.initialize("research_a");
+    await nativeResearch.profiles();
+    await nativeResearch.selectProfile("claude");
+    await nativeResearch.start();
+    await nativeResearch.stop();
+    expect(invoke.mock.calls.map((call) => call[0])).toEqual([
+      "research_engine_status", "initialize_research_engine", "research_profiles",
+      "select_research_profile", "start_research", "stop_research_engine",
+    ]);
+    expect(invoke.mock.calls[1]?.[1]).toEqual({ projectId: "research_a" });
+    expect(invoke.mock.calls[3]?.[1]).toEqual({ profileId: "claude" });
   });
 });

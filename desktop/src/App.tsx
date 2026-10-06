@@ -1,8 +1,10 @@
 import { useState, type FormEvent } from "react";
 import { QueryClient, QueryClientProvider, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { managementError, nativeManagement, type CreateInput, type ManagementTransport, type Project } from "./transport";
+import { managementError, nativeManagement, nativeResearch, type CreateInput, type ManagementTransport,
+  type Project, type ResearchEngineStatus, type ResearchTransport } from "./transport";
 
 const connection = "native-management-v1";
+const researchConnection = "native-research-v1";
 
 function ProjectDetails({ project }: { project: Project }) {
   return <dl className="details">
@@ -17,7 +19,74 @@ function ProjectDetails({ project }: { project: Project }) {
 }
 
 /** Selecting a Project changes only this view; no engine is started or rebound. */
-export function ProjectsScreen({ transport }: { transport: ManagementTransport }) {
+function ResearchPane({ project, transport }: { project: Project; transport: ResearchTransport }) {
+  const cache = useQueryClient();
+  const status = useQuery({ queryKey: [researchConnection, "status"], queryFn: transport.status,
+    refetchInterval: (query) => query.state.data?.state === "STARTING" ? 500 : 2000 });
+  const engine = status.data;
+  const ownsEngine = engine?.project_id === project.id;
+  const activeElsewhere = !!engine?.project_id && !ownsEngine && engine.state !== "STOPPED";
+  const initialized = ownsEngine && ["PAUSED", "NOT_READY", "RUNNING"].includes(engine?.state ?? "");
+  const profiles = useQuery({ queryKey: [researchConnection, "profiles", engine?.project_id],
+    queryFn: transport.profiles, enabled: initialized });
+  const refresh = async () => {
+    await cache.invalidateQueries({ queryKey: [researchConnection, "status"] });
+    await cache.invalidateQueries({ queryKey: [researchConnection, "profiles"] });
+  };
+  const initialize = useMutation({ mutationFn: () => transport.initialize(project.id), onSuccess: refresh });
+  const select = useMutation({ mutationFn: (id: string) => transport.selectProfile(id), onSuccess: refresh });
+  const start = useMutation({ mutationFn: transport.start, onSuccess: refresh });
+  const stop = useMutation({ mutationFn: transport.stop, onSuccess: refresh });
+  const busy = initialize.isPending || select.isPending || start.isPending || stop.isPending;
+  const labels: Record<ResearchEngineStatus["state"], string> = {
+    STOPPED: "Moteur non initialisé", STARTING: "Initialisation…",
+    PAUSED: "Moteur prêt · recherche en pause", NOT_READY: "Dépendances incomplètes",
+    RUNNING: "Recherche autonome active", FAILED: "Moteur en erreur", STOPPING: "Arrêt en cours…",
+  };
+  const current = profiles.data?.profiles.find((item) => item.id === profiles.data.current);
+  const canStart = ownsEngine && engine?.state === "PAUSED" && engine.runtime?.awakening_ready === true
+    && engine.runtime?.profile_status === "READY" && current?.status === "READY";
+
+  return <section aria-label="Moteur de recherche">
+    <h3>Moteur de recherche</h3>
+    {project.legacy ? <p>La supervision Desktop n’est pas disponible pour le projet historique.</p> : <>
+      {status.isPending && <p className="skeleton">Chargement de l’état du moteur…</p>}
+      {status.isError && <p role="alert">État du moteur indisponible. La gestion des projets reste accessible.</p>}
+      {engine && <>
+        <p className="state">{ownsEngine || engine.state === "STOPPED" ? labels[engine.state]
+          : `Le moteur du projet ${engine.project_id} reste actif · ${labels[engine.state]}`}</p>
+        {activeElsewhere && <p>Choisissez {engine.project_id} pour l’arrêter avant d’initialiser ce projet.</p>}
+        {ownsEngine && engine.state === "NOT_READY" && <p>Le processus est accessible, mais ses dépendances ne permettent pas de démarrer la recherche.</p>}
+        {ownsEngine && engine.state === "FAILED" && <p role="alert">Échec du moteur. La gestion des projets reste disponible.</p>}
+        {engine.state === "STOPPED" && <button type="button" disabled={busy || !project.configuration_valid}
+          onClick={() => initialize.mutate()}>Initialiser le moteur</button>}
+        {ownsEngine && engine.state !== "STOPPED" && engine.state !== "STOPPING" &&
+          <button type="button" disabled={busy} onClick={() => stop.mutate()}>Arrêter le moteur</button>}
+        {initialized && <>
+          <h3>Profil LLM</h3>
+          {profiles.isPending && <p className="skeleton">Chargement des profils…</p>}
+          {profiles.isError && <p role="alert">Profils indisponibles.</p>}
+          {profiles.data && <>
+            <p>Profil actuel : {profiles.data.current} · recommandation : {profiles.data.recommended ?? "aucune"}</p>
+            <ul>{profiles.data.profiles.map((item) => <li key={item.id}>
+              <strong>{item.id}</strong> · {item.status}
+              {item.id === profiles.data.current ? " · actif" : null}
+              {item.id !== profiles.data.current && engine.state === "PAUSED" && <button type="button"
+                disabled={busy || item.status !== "READY"} onClick={() => select.mutate(item.id)}>Sélectionner {item.id}</button>}
+            </li>)}</ul>
+          </>}
+          {engine.state === "PAUSED" && !canStart && <p>La recherche attend un profil prêt et des dépendances disponibles.</p>}
+          {canStart && <button type="button" className="primary" disabled={busy}
+            onClick={() => start.mutate()}>Démarrer la recherche</button>}
+        </>}
+      </>}
+      {(initialize.isError || select.isError || start.isError || stop.isError) &&
+        <p role="alert">Opération refusée ou issue incertaine. Actualisez l’état du moteur avant de réessayer.</p>}
+    </>}
+  </section>;
+}
+
+export function ProjectsScreen({ transport, research }: { transport: ManagementTransport; research: ResearchTransport }) {
   const cache = useQueryClient();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [name, setName] = useState("");
@@ -60,7 +129,7 @@ export function ProjectsScreen({ transport }: { transport: ManagementTransport }
 
   return <main className="shell">
     <header className="masthead"><span className="eyebrow">MORGOTH / LOCAL</span><h1>Projets</h1>
-      <p>Configurez des espaces de recherche isolés. Aucune recherche n’est lancée ici.</p></header>
+      <p>Configurez des espaces isolés et contrôlez explicitement un moteur de recherche.</p></header>
     <section className="connection panel" aria-label="Connexion de gestion">
       <div><h2>Service de gestion</h2><p>{starting ? "Démarrage de la gestion…" : connected ? "Gestion connectée" : "Gestion locale indisponible"}</p></div>
       <span className={connected ? "pill good" : "pill"}>{starting ? "Démarrage" : connected ? "Connectée" : "Non connectée"}</span>
@@ -83,12 +152,13 @@ export function ProjectsScreen({ transport }: { transport: ManagementTransport }
         {!selectedId && <p>Sélectionnez un projet pour consulter sa configuration.</p>}
         {selectedId && selected.isPending && <p className="skeleton">Chargement de la configuration…</p>}
         {selected.isError && <p role="alert">Configuration indisponible. Réessayez.</p>}
-        {selected.data && <><h3>{selected.data.name}</h3><ProjectDetails project={selected.data} />
+        {selected.data?.id === selectedId && <><h3>{selected.data.name}</h3><ProjectDetails project={selected.data} />
           <p className="state">Configuration : {selected.data.configuration_valid ? "valide" : "invalide"} · Recherche : non vérifiée</p>
           <button type="button" disabled={validation.isFetching} onClick={() => validation.refetch()}>Valider la configuration</button>
           {validation.isFetching && <p>Validation en cours…</p>}
           {validation.isError && <p role="alert">Validation impossible.</p>}
           {validation.data && !validation.isFetching && <p role="status">{validation.data.configuration_valid ? "Configuration valide" : "Configuration invalide"} ; exécution non vérifiée.</p>}
+          <ResearchPane project={selected.data} transport={research} />
         </>}
       </section>
       <section className="panel create-panel" aria-label="Nouveau projet">
@@ -120,11 +190,12 @@ export function ProjectsScreen({ transport }: { transport: ManagementTransport }
         {notice && <p className="notice" role="status">{notice}</p>}
       </section>
     </div>}
-    <footer>Gestion des configurations uniquement · État du moteur de recherche non vérifié</footer>
+    <footer>Un seul moteur de recherche supervisé · Démarrage autonome explicite</footer>
   </main>;
 }
 
-export function App({ transport = nativeManagement }: { transport?: ManagementTransport }) {
+export function App({ transport = nativeManagement, research = nativeResearch }:
+  { transport?: ManagementTransport; research?: ResearchTransport }) {
   const [queryClient] = useState(() => new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 10_000 } } }));
-  return <QueryClientProvider client={queryClient}><ProjectsScreen transport={transport} /></QueryClientProvider>;
+  return <QueryClientProvider client={queryClient}><ProjectsScreen transport={transport} research={research} /></QueryClientProvider>;
 }
