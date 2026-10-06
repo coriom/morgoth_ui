@@ -49,7 +49,7 @@ def run(command: list[str], *, timeout: int = 90, **kwargs: object) -> None:
 
 def native_window(
     root: Path, backend: Path, python: Path, binary: Path, env: dict[str, str],
-    *, seconds: int,
+    *, seconds: int, domain: str = "crypto",
 ) -> None:
     """Pre-populate through the real API, then launch the actual Tauri window."""
     home = root / "window-home"
@@ -87,7 +87,7 @@ def native_window(
         else:
             raise AssertionError("bootstrap Management readiness timeout")
         created = httpx.post(f"{url}/projects", headers=headers,
-                             json={"id": "desktop_probe", "name": "Desktop probe", "domain": "crypto"},
+                             json={"id": "desktop_probe", "name": "Desktop probe", "domain": domain},
                              timeout=5, trust_env=False)
         assert created.status_code == 201 and created.json()["created"]
         assert (home / "projects" / "desktop_probe" / "project.yaml").is_file()
@@ -171,6 +171,7 @@ def main() -> int:
     parser.add_argument("--native-binary", type=Path)
     parser.add_argument("--window-seconds", type=int, default=20)
     parser.add_argument("--native-only", action="store_true")
+    parser.add_argument("--window-domain", choices=("crypto", "weather"), default="crypto")
     args = parser.parse_args()
     if args.native_only and not args.native_binary:
         parser.error("--native-only requires --native-binary")
@@ -230,7 +231,7 @@ def main() -> int:
             if args.native_binary:
                 assert 5 <= args.window_seconds <= 120
                 native_window(root, backend, python, args.native_binary.resolve(strict=True),
-                              env, seconds=args.window_seconds)
+                              env, seconds=args.window_seconds, domain=args.window_domain)
         finally:
             if server is not None:
                 server.shutdown()

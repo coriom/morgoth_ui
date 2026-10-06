@@ -61,6 +61,10 @@ python3 scripts/real_research_paused_smoke.py \
 
 `real_research_paused_smoke.py` creates its **own** Unix-socket PostgreSQL cluster and database named `morgoth_test`, plus a loopback fake Ollama that accepts only `GET /api/tags` and returns `test-primary`/`test-agent`. Rust owns the actual Management API and sequentially starts the actual `scripts.research_engine` for disposable Crypto and Weather Projects. It verifies authenticated strict DTOs, PAUSED without an autonomous task, the lease conflict from a second actual launcher, independent second-Project lease, stop/reap, and reinitialization of the released Project. A second invocation with `test-agent` absent proves real NOT_READY while Management remains available. The smoke drops only its generated schemas and stops only its own PostgreSQL/fake-server processes. It never calls `/start`, Claude/Codex, market, weather, or web tools. The observed fake-server traffic was exclusively `/api/tags`; the test does not claim a general-purpose network sandbox.
 
+For the **separately authorized real START qualification only**, build `real-research-start-smoke` and run `scripts/real_research_start_smoke.py --backend <absolute-clean-1afa971-worktree> --python <absolute-python-venv-executable> --binary src-tauri/target/debug/real-research-start-smoke`. It requires an already-running local Ollama with an already-installed tool-capable model (default `llama3.1:8b`); it never pulls a model. The wrapper creates a private Unix-socket PostgreSQL cluster named `morgoth_test`, and Rust starts its own Management and Weather research children. The selected Project's `objectives` table is provisioned using the backend's existing `scripts.init_db` path, followed by the existing column migrations, **inside that disposable Project only**: Desktop PAUSED initialization alone does not create `objectives`. The test refuses START unless the actual profile catalog reports Claude READY and Codex BLOCKED; Claude is selected explicitly and receives no prompt. A failed legacy-profile START is checked first. One human objective is seeded through `ObjectivesManager`, then the real Rust `/start` runs one work iteration. The observer reads only objective metadata and tool names/statuses. Rust stops/reaps the exact child when the first cycle payload is durable, checks the lease and cycle count, and leaves Management alive. No production state or provider credentials are copied. Do not treat this as a general network sandbox or an unattended recurring test.
+
+Native-only optional overrides map `MORGOTH_DESKTOP_RESEARCH_CONNECTIVITY_CHECK_ENABLED`, `MORGOTH_DESKTOP_RESEARCH_METRIC_RECORDER_ENABLED`, `MORGOTH_DESKTOP_RESEARCH_SOURCE_CACHE_ENABLED`, `MORGOTH_DESKTOP_RESEARCH_PROVIDER_HEARTBEAT_MINUTES`, and `MORGOTH_DESKTOP_RESEARCH_AUTONOMOUS_CYCLE_MINUTES` to their corresponding backend names. They are absent by default and never exposed to React. The one-cycle smoke sets `false`, `false`, `false`, `999999`, and `60` respectively. The first provider heartbeat may still run if host monotonic uptime exceeds the configured interval; this setup does not independently prove the absence of every network call. The work-cycle tool loop itself permits up to five rounds and may make more than one tool call; count actual persisted calls, not just objectives.
+
 | Proof | Synthetic | Real backend |
 |---|---|---|
 | Management lifecycle | yes | yes |
@@ -69,11 +73,21 @@ python3 scripts/real_research_paused_smoke.py \
 | Crypto PAUSED | yes | yes |
 | Weather PAUSED | n/a | yes |
 | Codex BLOCKED | yes | yes |
-| Claude selection | yes | optional; not exercised here |
-| Autonomous RUNNING | yes | **no** |
-| Real provider inference | no | **no** |
+| Claude selection | yes | yes, non-inference readiness gate |
+| Autonomous RUNNING | yes | yes, one disposable objective cycle |
+| Local Ollama inference | no | yes, one persisted autonomous result |
+| Weather tool execution | no | yes, `get_weather_forecast_met` |
+| Persisted cycle evidence | no | yes, one `cycle_payload` |
+| Second autonomous cycle | no | no, stopped with `cycle_count=1` |
+| Claude synthesis/thesis inference | no | no |
 
-**A real Morgoth research engine is now supervised end-to-end through PAUSED. Autonomous START remains unqualified against real providers.**
+**A real Morgoth research engine was supervised through one autonomous Weather work cycle.** This evaluates the local Ollama work path and one Weather tool call, not Claude synthesis, thesis extraction, three-source completion, sustained autonomy, research quality, or production readiness. The acquired provider result is not a controlled scientific accuracy result.
+
+On 2026-10-06 the disposable real START produced objective `8cd20fc5-f7b7-48c8-9600-badaf701e0de`: `cycle_count=1`, one `cycle_payload`, one autonomous Ollama result log, and `get_weather_forecast_met:success`. The backend reported `claude=READY`, `codex=BLOCKED`; the initially blocked legacy START was refused. Rust stopped its owned child immediately after durable evidence, Management remained READY, and a bounded post-stop read still showed `cycle_count=1`. The backend and UI production checkouts were not used for data.
+
+The revised one-cycle harness also checks the owned child PID, the lease conflict/release, and that a synthetic parent API key is absent from the child's explicit environment. Those additional assertions were compiled and checked by Rust tests after the single live objective run; the live START was intentionally **not repeated** just to exercise them. The existing real PAUSED smoke independently proved lease conflict/release and exact-child reaping. Local `/proc/uptime` was about 12,319 seconds, below the smoke heartbeat interval of 59,999,940 seconds, so the first-iteration heartbeat branch was suppressed. The only persisted work-cycle tool result was the MET forecast call; this is not an assertion about uninstrumented system-level traffic.
+
+The WSLg Linux window was launched with a disposable Weather Project and fake `/api/tags` Ollama, with no research START. AT-SPI showed `Desktop probe desktop_probe · weather`; selecting that ordinary Project button revealed `Moteur de recherche` and `Initialiser le moteur`. No native initialize/START click was made. The Rust-owned Management child was observed and reaped by the bounded window harness.
 
 On 2026-10-06, the contract check, 15 frontend tests, TypeScript/Vite build, 16 Rust unit tests, 8 Rust transport tests, strict Clippy, and native Linux build passed. The existing Management smoke and missing-research-config smoke passed separately. The real-backend smoke passed for Crypto PAUSED, Weather PAUSED, lease conflict/reacquisition, and missing-model NOT_READY; it recorded 11 `GET /api/tags` requests and no other fake-Ollama path. In this disposable environment, the backend reported `legacy=BLOCKED`, `claude=UNAVAILABLE`, and `codex=BLOCKED`. The native WSLg window and normal Project selection were observed through AT-SPI; no native initialize/START click was performed.
 

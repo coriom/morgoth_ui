@@ -210,6 +210,7 @@ Python remains the engine and desktop does not require a Next.js server.
 | Agent creation did not surface the created agent reliably in the UI | Resolved | `CreateAgentModal` now supports an optional model override, `CreateAgentPayload` mirrors the backend, and `useAgents` inserts the returned agent into Zustand immediately before refetch |
 
 ## Session Log
+| 2026-10-06 | Codex | Desktop one-objective qualification in isolated branch: five optional native-only runtime overrides, disposable morgoth_test Weather objective harness, actual Rust START through backend 1afa971, local Ollama cycle and successful MET tool call, durable cycle_payload, exact-child stop and cycle_count=1. Claude readiness was checked without a prompt; Codex remained blocked. Backend/UI production checkouts unchanged. `objectives` required explicit existing init_db provisioning in the disposable schema; automated Desktop research storage provisioning remains unresolved. |
 | Date | Who | What was done |
 |---|---|---|
 | Project init | Human | Next.js initialized, SPEC_UI.md added |

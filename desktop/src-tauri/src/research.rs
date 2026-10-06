@@ -23,6 +23,28 @@ const STARTUP_LIMIT: Duration = Duration::from_secs(45);
 const STOP_GRACE: Duration = Duration::from_secs(5);
 const MAX_BODY: usize = 65_536;
 const PREFIX: &str = "/api/runtime/v1";
+const RUNTIME_OVERRIDES: [(&str, &str); 5] = [
+    (
+        "MORGOTH_DESKTOP_RESEARCH_CONNECTIVITY_CHECK_ENABLED",
+        "CONNECTIVITY_CHECK_ENABLED",
+    ),
+    (
+        "MORGOTH_DESKTOP_RESEARCH_METRIC_RECORDER_ENABLED",
+        "METRIC_RECORDER_ENABLED",
+    ),
+    (
+        "MORGOTH_DESKTOP_RESEARCH_SOURCE_CACHE_ENABLED",
+        "SOURCE_CACHE_ENABLED",
+    ),
+    (
+        "MORGOTH_DESKTOP_RESEARCH_PROVIDER_HEARTBEAT_MINUTES",
+        "PROVIDER_HEARTBEAT_MINUTES",
+    ),
+    (
+        "MORGOTH_DESKTOP_RESEARCH_AUTONOMOUS_CYCLE_MINUTES",
+        "AUTONOMOUS_CYCLE_MINUTES",
+    ),
+];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -280,6 +302,32 @@ struct ResearchConfig {
     log_level_thought: String,
     provider_home: PathBuf,
     claude_dir: Option<PathBuf>,
+    runtime_overrides: Vec<(&'static str, String)>,
+}
+
+fn native_runtime_overrides() -> Result<Vec<(&'static str, String)>, &'static str> {
+    let mut overrides = Vec::new();
+    for (native, child) in RUNTIME_OVERRIDES {
+        let Some(value) = std::env::var_os(native) else {
+            continue;
+        };
+        let value = value
+            .into_string()
+            .map_err(|_| "RESEARCH_OVERRIDE_INVALID")?;
+        if !valid_runtime_override(child, &value) {
+            return Err("RESEARCH_OVERRIDE_INVALID");
+        }
+        overrides.push((child, value));
+    }
+    Ok(overrides)
+}
+
+fn valid_runtime_override(child: &str, value: &str) -> bool {
+    if child.ends_with("_ENABLED") {
+        matches!(value, "true" | "false")
+    } else {
+        value.parse::<u32>().is_ok_and(|minutes| minutes > 0)
+    }
 }
 
 impl ResearchConfig {
@@ -312,6 +360,7 @@ impl ResearchConfig {
             log_level_thought: read("MORGOTH_DESKTOP_RESEARCH_LOG_LEVEL_THOUGHT")?,
             provider_home,
             claude_dir: find_claude_dir(),
+            runtime_overrides: native_runtime_overrides()?,
         })
     }
 }
@@ -368,6 +417,9 @@ fn research_command(config: &ResearchConfig, project_id: &str, port: u16, secret
         .env("SECRET_KEY", secret)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    for (name, value) in &config.runtime_overrides {
+        command.env(name, value);
+    }
     #[cfg(target_os = "linux")]
     {
         use std::os::unix::process::CommandExt;
@@ -952,6 +1004,7 @@ mod tests {
             log_level_thought: "0".into(),
             provider_home: home.path().into(),
             claude_dir: Some("/opt/synthetic-claude/bin".into()),
+            runtime_overrides: Vec::new(),
         };
         let command = research_command(&config, "research_a", 38001, "synthetic-secret");
         let args: Vec<_> = command
@@ -996,6 +1049,59 @@ mod tests {
         assert!(path
             .to_string_lossy()
             .starts_with("/opt/synthetic-claude/bin:"));
+    }
+
+    #[test]
+    fn native_runtime_overrides_are_exact_and_optional() {
+        assert!(valid_runtime_override("SOURCE_CACHE_ENABLED", "false"));
+        assert!(!valid_runtime_override("SOURCE_CACHE_ENABLED", "yes"));
+        assert!(valid_runtime_override("AUTONOMOUS_CYCLE_MINUTES", "60"));
+        assert!(!valid_runtime_override("AUTONOMOUS_CYCLE_MINUTES", "0"));
+        assert!(!valid_runtime_override("AUTONOMOUS_CYCLE_MINUTES", "-1"));
+        let home = tempfile::tempdir().unwrap();
+        let mut config = ResearchConfig {
+            shared: SupervisorConfig {
+                backend_root: home.path().into(),
+                python: "/usr/bin/python3".into(),
+                home: home.path().into(),
+            },
+            postgres_url: "synthetic-db".into(),
+            ollama_base_url: "synthetic-local".into(),
+            ollama_primary_model: "local-a".into(),
+            ollama_agent_model: "local-b".into(),
+            max_concurrent_agents: "1".into(),
+            log_retention_days: "1".into(),
+            log_level_thought: "false".into(),
+            provider_home: home.path().into(),
+            claude_dir: None,
+            runtime_overrides: Vec::new(),
+        };
+        let original = research_command(&config, "research_a", 38001, "synthetic-secret");
+        assert!(!original
+            .get_envs()
+            .any(|(key, _)| key == "AUTONOMOUS_CYCLE_MINUTES"));
+        config.runtime_overrides = vec![
+            ("CONNECTIVITY_CHECK_ENABLED", "false".into()),
+            ("METRIC_RECORDER_ENABLED", "false".into()),
+            ("SOURCE_CACHE_ENABLED", "false".into()),
+            ("PROVIDER_HEARTBEAT_MINUTES", "999999".into()),
+            ("AUTONOMOUS_CYCLE_MINUTES", "60".into()),
+        ];
+        let command = research_command(&config, "research_a", 38001, "synthetic-secret");
+        for (key, value) in &config.runtime_overrides {
+            assert_eq!(
+                command
+                    .get_envs()
+                    .find(|(name, _)| name == key)
+                    .unwrap()
+                    .1
+                    .unwrap(),
+                std::ffi::OsStr::new(value),
+            );
+        }
+        assert!(!command
+            .get_envs()
+            .any(|(key, _)| key == "ANTHROPIC_API_KEY"));
     }
 
     #[test]
@@ -1341,6 +1447,7 @@ HTTPServer(('127.0.0.1', port), Handler).serve_forever()
             log_level_thought: "0".into(),
             provider_home: home.path().into(),
             claude_dir: None,
+            runtime_overrides: Vec::new(),
         };
         let management = ManagementSupervisor::start(Err("TEST_MANAGEMENT_UNAVAILABLE"));
         let supervisor = ResearchEngineSupervisor::new(Err("TEST_CONFIG_UNAVAILABLE"), management);
