@@ -160,6 +160,24 @@ The **one** subsequent basic START control passed with objective `049ed1e7-8a3c-
 | Claude synthesis/thesis, fidelity, abstention | Not attempted |
 | Production readiness | NO |
 
+### 2026-10-08: finalization watchdog aligned; one new attempt blocked before source evidence
+
+At pinned backend `6a0dc9d`, `ClaudeCliProvider.complete` calls `_claude_cli_call`, whose subprocess timeout is `CLAUDE_CLI_TIMEOUT_SECS = REFLECT_LLM_TIMEOUT_SECONDS` (default 600 seconds). `log_call` awaits the provider before inserting an `llm_calls` success or error row. Thus `status=done`, zero synthesis evidence, zero `llm_calls`, a live autonomous task and RUNNING liveness may legitimately coexist during a Claude call. An empty row set means **no completed provider call yet**, not proof that no call is running.
+
+The smoke now uses a version-pinned 600+30-second budget for SYNTHESIS_WAIT and a fresh 600+30 seconds for THESIS_WAIT after a successful completed synthesis row **and** stored synthesis evidence. A provider error or fallback fails immediately. The overall Rust cap is 1800 seconds; the Python wrapper has a 1950-second emergency cap. Pure tests advance synthetic `Instant`s without sleeping or prompting Claude, including acceptance at 50/629 seconds, expiry after 630 seconds, independent thesis time, late completion, provider error and fallback. The earlier basic START control was not repeated.
+
+The **one** newly authorized finalization attempt used objective `24be279e-f046-47fa-9bae-97d5e660ee4c` in a disposable Weather Project and `morgoth_test`. Claude was READY and explicitly selected; Codex was BLOCKED; fallback was disabled. The engine was RUNNING with healthy liveness, but cycle 1 and cycle 2 produced no durable `cycle_payload` or counted source. Cycle 3 forced `done` with **zero** payloads and **zero** MET/NWS measurement sources. The harness failed immediately on its required source-evidence gate before any completed Claude `llm_calls` row appeared. Before stopping, it captured diagnostic=None, child alive, RUNNING liveness, Management READY, lease held, fallback=0 and the zero-source snapshot. Its outer cleanup stopped owned children; no matching child or temporary database remained. This is **BLOCKED_BASE_RUNTIME / missing source evidence**, not a Claude timeout or qualification. No retry was made. After the attempt, only the pure watchdog's late-completion boundary was tightened and retested without inference; the live result did not exercise that boundary. Claude synthesis/thesis, thesis-or-abstention, and live numeric fidelity remain **NOT PROVEN**. Earlier `d512`, `6a0`, `393c` and `e11e` blocked evidence above remains unchanged.
+
+| Capability in the new one-shot | Result |
+|---|---|
+| Management, PAUSED, Claude READY, Codex BLOCKED, explicit START | Real PASS |
+| Autonomous work payload; MET/NWS successful sources | **0 payloads; 0 sources** |
+| Claude synthesis/thesis completed rows | **0 observed**; no inference claim |
+| Thesis/abstention; numeric candidate gate | **NOT EXERCISED** |
+| Fallback | 0 |
+| Exact owned-process cleanup; disposable state | PASS |
+| Overall qualification | **BLOCKED_BASE_RUNTIME**; no retry |
+
 The WSLg Linux window was launched again on 2026-10-08 with a disposable Weather Project and fake `/api/tags` Ollama, with no research START. AT-SPI showed `Desktop probe desktop_probe · weather`; selecting that ordinary Project button revealed `Moteur de recherche` and `Initialiser le moteur`. The loaded Project catalog and Rust-owned Management child establish management connectivity. No native initialize/START click was made. The bounded harness reaped its window and child.
 
 On 2026-10-06, the contract check, 15 frontend tests, TypeScript/Vite build, 16 Rust unit tests, 8 Rust transport tests, strict Clippy, and native Linux build passed. The existing Management smoke and missing-research-config smoke passed separately. The real-backend smoke passed for Crypto PAUSED, Weather PAUSED, lease conflict/reacquisition, and missing-model NOT_READY; it recorded 11 `GET /api/tags` requests and no other fake-Ollama path. In this disposable environment, the backend reported `legacy=BLOCKED`, `claude=UNAVAILABLE`, and `codex=BLOCKED`. The native WSLg window and normal Project selection were observed through AT-SPI; no native initialize/START click was performed.

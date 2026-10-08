@@ -1,5 +1,22 @@
 # PROGRESS.md — Morgoth UI Development Tracker
 
+## 2026-10-08 — Stage-aligned Claude window; one-shot blocked before sources
+
+Pinned backend `6a0dc9d` was not changed. Its Claude subprocess timeout is
+600 seconds per call and `llm_calls` records completion/error only. The Rust
+finalization smoke now gives synthesis and thesis separate 630-second windows,
+an 1800-second global cap, and a 1950-second Python emergency cap. Pure
+no-inference tests cover intermediate `done`, stage reset, timeouts, provider
+errors and fallback. Frontend, Rust, Clippy, native build and synthetic
+supervisor checks passed; the previously proven basic START was not repeated.
+The single new real attempt, objective `24be279e-f046-47fa-9bae-97d5e660ee4c`,
+reached forced `done` at cycle 3 with zero durable payloads and zero counted
+measurement sources. The harness captured healthy RUNNING liveness, no
+completed Claude call, no fallback, and Management READY before stopping its
+owned child. No matching child or temporary database remained. Classification:
+**BLOCKED_BASE_RUNTIME / missing source evidence**. Claude synthesis, thesis,
+abstention and live numeric fidelity remain unqualified; no retry was made.
+
 ## 2026-10-08 — Native Claude context; finalization remains unqualified
 
 The disposable PAUSED smoke previously removed the Claude directory from its

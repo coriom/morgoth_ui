@@ -77,7 +77,9 @@ def main() -> None:
                 "MORGOTH_DESKTOP_RESEARCH_LLM_FALLBACK_ENABLED": "false",
                 "ANTHROPIC_API_KEY": "FAKE_PARENT_ONLY_DO_NOT_INHERIT",
             }
-            subprocess.run([str(binary)], env=env, check=True, timeout=900)
+            # The Rust watchdog permits two sequential 600-second Claude calls
+            # plus distinct stage grace and a bounded acquisition window.
+            subprocess.run([str(binary)], env=env, check=True, timeout=1950)
             print("disposable Unix-socket morgoth_test only; no production database PASS")
         finally:
             if started:

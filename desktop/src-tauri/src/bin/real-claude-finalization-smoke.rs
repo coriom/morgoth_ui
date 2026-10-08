@@ -15,6 +15,77 @@ use std::{
 };
 
 const MEASUREMENT_TOOLS: [&str; 2] = ["get_weather_forecast_met", "get_nws_weather_observation"];
+// Pinned backend 6a0dc9d: REFLECT_LLM_TIMEOUT_SECONDS defaults to 600.
+// llm_calls is written only after the provider returns or errors.
+const CLAUDE_CALL_LIMIT_SECS: u64 = 600;
+const CLAUDE_STAGE_GRACE_SECS: u64 = 30;
+const CLAUDE_STAGE_LIMIT: Duration =
+    Duration::from_secs(CLAUDE_CALL_LIMIT_SECS + CLAUDE_STAGE_GRACE_SECS);
+const OVERALL_LIMIT: Duration = Duration::from_secs(1800);
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum FinalizationStage {
+    PreFinalization,
+    SynthesisWait(Instant),
+    ThesisWait(Instant),
+    Complete,
+}
+
+#[derive(Clone, Copy)]
+struct WatchFacts {
+    done: bool,
+    synthesis_complete: bool,
+    thesis_complete: bool,
+    synthesis_error: bool,
+    thesis_error: bool,
+    fallback_count: u32,
+}
+
+impl FinalizationStage {
+    fn observe(&mut self, now: Instant, facts: WatchFacts) -> Result<(), &'static str> {
+        if facts.fallback_count > 0 {
+            return Err("BLOCKED_PROVIDER_FALLBACK");
+        }
+        if facts.synthesis_error {
+            return Err("BLOCKED_SYNTHESIS_PROVIDER");
+        }
+        if facts.thesis_error {
+            return Err("BLOCKED_THESIS_PROVIDER");
+        }
+        if !facts.done {
+            return Ok(());
+        }
+        match self {
+            Self::SynthesisWait(since) if now.duration_since(*since) > CLAUDE_STAGE_LIMIT => {
+                return Err("BLOCKED_SYNTHESIS_TIMEOUT");
+            }
+            Self::ThesisWait(since) if now.duration_since(*since) > CLAUDE_STAGE_LIMIT => {
+                return Err("BLOCKED_THESIS_TIMEOUT");
+            }
+            _ => {}
+        }
+        if facts.thesis_complete {
+            *self = Self::Complete;
+            return Ok(());
+        }
+        if facts.synthesis_complete {
+            if !matches!(self, Self::ThesisWait(_)) {
+                *self = Self::ThesisWait(now);
+            }
+        } else if matches!(self, Self::PreFinalization) {
+            *self = Self::SynthesisWait(now);
+        }
+        match self {
+            Self::SynthesisWait(since) if now.duration_since(*since) > CLAUDE_STAGE_LIMIT => {
+                Err("BLOCKED_SYNTHESIS_TIMEOUT")
+            }
+            Self::ThesisWait(since) if now.duration_since(*since) > CLAUDE_STAGE_LIMIT => {
+                Err("BLOCKED_THESIS_TIMEOUT")
+            }
+            _ => Ok(()),
+        }
+    }
+}
 const REQUIRED_OBJECTIVE_COLUMNS: [&str; 16] = [
     "objective_id",
     "title",
@@ -224,6 +295,8 @@ fn main() {
         .enable_all()
         .build()
         .unwrap();
+    let mut failure_context: Option<String> = None;
+    let mut child_stopped = false;
     let run = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let client = management.client().unwrap();
         let created = runtime
@@ -331,8 +404,8 @@ fn main() {
         let live = started.runtime.unwrap();
         assert_eq!(live.research_state, "RUNNING");
         assert!(live.autonomous_task_alive);
-        let deadline = Instant::now() + Duration::from_secs(750);
-        let mut done_progress: Option<(Instant, usize, u32)> = None;
+        let deadline = Instant::now() + OVERALL_LIMIT;
+        let mut watchdog = FinalizationStage::PreFinalization;
         let mut last_marker: Option<String> = None;
         let evidence = loop {
             let snapshot: Evidence = serde_json::from_str(&objective_helper(
@@ -343,6 +416,7 @@ fn main() {
             ))
             .unwrap();
             let supervisor_status = research.status();
+            let liveness = research.last_liveness();
             let tools: Vec<String> = snapshot
                 .tools
                 .iter()
@@ -359,36 +433,49 @@ fn main() {
                 .filter(|call| call.task == "thesis")
                 .count();
             let marker = format!(
-                "id={} phase={:?} diagnostic={:?} child_alive={} cycles={} payloads={} sources={} tools={:?} status={} synthesis_calls={} thesis_calls={} fallbacks={}",
+                "id={} phase={:?} diagnostic={:?} child_alive={} liveness={} cycles={} payloads={} sources={} tools={:?} status={} synthesis_calls={} thesis_calls={} fallbacks={}",
                 objective_id, supervisor_status.state, supervisor_status.diagnostic,
-                Path::new(&format!("/proc/{pid}")).exists(), snapshot.cycle_count,
+                Path::new(&format!("/proc/{pid}")).exists(),
+                liveness.as_ref().map_or("UNKNOWN", |state| state.research_state.as_str()),
+                snapshot.cycle_count,
                 snapshot.payload_count, snapshot.sources_used.len(), tools, snapshot.status,
                 synthesis_calls, thesis_calls, snapshot.fallback_count,
             );
+            failure_context = Some(format!(
+                "{marker} completed_calls={:?}",
+                snapshot
+                    .llm_calls
+                    .iter()
+                    .map(|call| (
+                        call.task.as_str(),
+                        call.provider.as_str(),
+                        call.outcome.as_str(),
+                        call.response_bytes,
+                    ))
+                    .collect::<Vec<_>>()
+            ));
             if last_marker.as_ref() != Some(&marker) {
                 println!("progress: {marker}");
                 last_marker = Some(marker);
             }
             if supervisor_status.state == ResearchPhase::Failed {
-                println!(
-                    "failure_capture: diagnostic={:?} child_alive={} last_liveness={:?} objective={} cycles={} payloads={} tools={:?} management={:?} lease_held={}",
-                    supervisor_status.diagnostic, Path::new(&format!("/proc/{pid}")).exists(),
-                    research.last_liveness(), objective_id, snapshot.cycle_count,
-                    snapshot.payload_count, tools, management.status().state,
-                    !lease_available(&config, &created.project.id),
-                );
-                panic!("research supervisor failed before finalization");
+                panic!("BLOCKED_BASE_RUNTIME");
             }
-            assert!(
-                Instant::now() < deadline,
-                "real finalization timed out at bounded metadata {last_marker:?}"
-            );
+            assert!(Instant::now() < deadline, "BLOCKED_OVERALL_TIMEOUT");
             assert!(
                 snapshot.cycle_count <= 3,
                 "objective exceeded three-cycle budget"
             );
             assert_eq!(snapshot.objective_count, 1, "objective queue grew");
-            assert_eq!(snapshot.fallback_count, 0, "provider fallback occurred");
+            assert_eq!(
+                supervisor_status.state,
+                ResearchPhase::Running,
+                "BLOCKED_BASE_RUNTIME"
+            );
+            assert!(
+                Path::new(&format!("/proc/{pid}")).exists(),
+                "BLOCKED_CHILD_EXITED"
+            );
             assert!(
                 research
                     .status()
@@ -398,8 +485,11 @@ fn main() {
                 "autonomous task stopped before finalization"
             );
             assert!(
-                snapshot.llm_calls.iter().all(|call| call.outcome == "ok"),
-                "Claude provider call failed"
+                snapshot.llm_calls.iter().all(|call| {
+                    matches!(call.task.as_str(), "synthesis" | "thesis")
+                        && call.provider == "claude-cli"
+                }),
+                "BLOCKED_UNEXPECTED_PROVIDER_CALL"
             );
             let synthesis_ok = snapshot
                 .llm_calls
@@ -419,6 +509,24 @@ fn main() {
                 })
                 .count()
                 == 1;
+            let now = Instant::now();
+            let facts = WatchFacts {
+                done: snapshot.status == "done",
+                synthesis_complete: synthesis_ok && snapshot.synthesis_count == 1,
+                thesis_complete: synthesis_ok && snapshot.synthesis_count == 1 && thesis_ok,
+                synthesis_error: snapshot
+                    .llm_calls
+                    .iter()
+                    .any(|call| call.task == "synthesis" && call.outcome != "ok"),
+                thesis_error: snapshot
+                    .llm_calls
+                    .iter()
+                    .any(|call| call.task == "thesis" && call.outcome != "ok"),
+                fallback_count: snapshot.fallback_count,
+            };
+            if let Err(code) = watchdog.observe(now, facts) {
+                panic!("{code}");
+            }
             if snapshot.status == "done"
                 && snapshot.synthesis_count == 1
                 && synthesis_ok
@@ -434,16 +542,12 @@ fn main() {
                         .all(|tool| snapshot.sources_used.iter().any(|used| used == tool)),
                     "objective completed without both measurement sources"
                 );
-                let marker = (snapshot.llm_calls.len(), snapshot.synthesis_count);
-                if done_progress
-                    .as_ref()
-                    .is_none_or(|(_, calls, syntheses)| (*calls, *syntheses) != marker)
-                {
-                    done_progress = Some((Instant::now(), marker.0, marker.1));
-                }
                 assert!(
-                    done_progress.as_ref().unwrap().0.elapsed() < Duration::from_secs(50),
-                    "finalization stalled after objective completion"
+                    liveness
+                        .as_ref()
+                        .is_some_and(|state| state.research_state == "RUNNING"
+                            && state.autonomous_task_alive),
+                    "BLOCKED_LIVENESS_UNHEALTHY"
                 );
             }
             // Forced completion persists `done` before the Claude calls. Wait
@@ -452,6 +556,7 @@ fn main() {
             thread::sleep(Duration::from_millis(750));
         };
         research.stop();
+        child_stopped = true;
         assert_eq!(research.status().state, ResearchPhase::Stopped);
         assert!(!Path::new(&format!("/proc/{pid}")).exists());
         lease_probe(&config, &created.project.id, true);
@@ -563,9 +668,107 @@ fn main() {
         );
         println!("Claude calls: synthesis=1 thesis=1; fallback=0; fidelity={:?}; reasons={:?}; confusion={}; thesis_ids={}; exact-child stop; Management alive PASS", evidence.fidelity_actions, evidence.fidelity_reasons, evidence.field_confusion_count, evidence.theses.iter().map(|t| t.id.as_str()).collect::<Vec<_>>().join(","));
     }));
-    research.stop();
-    management.stop();
     if let Err(error) = run {
+        let status = research.status();
+        println!(
+            "failure_capture: diagnostic={:?} child_alive={} last_liveness={:?} objective_snapshot={} management={:?} lease_held={}",
+            status.diagnostic,
+            research.child_pid().is_some_and(|pid| Path::new(&format!("/proc/{pid}")).exists()),
+            research.last_liveness(),
+            failure_context.as_deref().unwrap_or("NOT_STARTED"),
+            management.status().state,
+            failure_context.is_some() && !lease_available(&config, "research_claude_weather"),
+        );
+        if !child_stopped {
+            research.stop();
+        }
+        management.stop();
         std::panic::resume_unwind(error);
+    }
+    management.stop();
+}
+
+#[cfg(test)]
+mod watchdog_tests {
+    use super::*;
+
+    fn facts(done: bool) -> WatchFacts {
+        WatchFacts {
+            done,
+            synthesis_complete: false,
+            thesis_complete: false,
+            synthesis_error: false,
+            thesis_error: false,
+            fallback_count: 0,
+        }
+    }
+
+    #[test]
+    fn done_without_completed_call_is_valid_until_synthesis_stage_expires() {
+        let t0 = Instant::now();
+        let mut stage = FinalizationStage::PreFinalization;
+        assert!(stage.observe(t0, facts(false)).is_ok());
+        assert_eq!(stage, FinalizationStage::PreFinalization);
+        assert!(stage.observe(t0, facts(true)).is_ok());
+        assert!(stage
+            .observe(t0 + Duration::from_secs(50), facts(true))
+            .is_ok());
+        assert!(stage
+            .observe(t0 + Duration::from_secs(629), facts(true))
+            .is_ok());
+        assert_eq!(
+            stage.observe(t0 + Duration::from_secs(631), facts(true)),
+            Err("BLOCKED_SYNTHESIS_TIMEOUT")
+        );
+        let mut late = facts(true);
+        late.synthesis_complete = true;
+        assert_eq!(
+            stage.observe(t0 + Duration::from_secs(632), late),
+            Err("BLOCKED_SYNTHESIS_TIMEOUT")
+        );
+    }
+
+    #[test]
+    fn successful_synthesis_starts_an_independent_full_thesis_budget() {
+        let t0 = Instant::now();
+        let mut stage = FinalizationStage::PreFinalization;
+        stage.observe(t0, facts(true)).unwrap();
+        let synthesis_done = t0 + Duration::from_secs(620);
+        let mut completed = facts(true);
+        completed.synthesis_complete = true;
+        stage.observe(synthesis_done, completed).unwrap();
+        assert_eq!(stage, FinalizationStage::ThesisWait(synthesis_done));
+        stage
+            .observe(synthesis_done + Duration::from_secs(629), completed)
+            .unwrap();
+        assert_eq!(
+            stage.observe(synthesis_done + Duration::from_secs(631), completed),
+            Err("BLOCKED_THESIS_TIMEOUT")
+        );
+        completed.thesis_complete = true;
+        assert_eq!(
+            stage.observe(synthesis_done + Duration::from_secs(632), completed),
+            Err("BLOCKED_THESIS_TIMEOUT")
+        );
+        let mut successful = FinalizationStage::ThesisWait(synthesis_done);
+        successful
+            .observe(synthesis_done + Duration::from_secs(629), completed)
+            .unwrap();
+        assert_eq!(successful, FinalizationStage::Complete);
+    }
+
+    #[test]
+    fn provider_error_and_fallback_fail_without_waiting() {
+        let now = Instant::now();
+        let mut stage = FinalizationStage::PreFinalization;
+        let mut state = facts(true);
+        state.synthesis_error = true;
+        assert_eq!(stage.observe(now, state), Err("BLOCKED_SYNTHESIS_PROVIDER"));
+        state.synthesis_error = false;
+        state.thesis_error = true;
+        assert_eq!(stage.observe(now, state), Err("BLOCKED_THESIS_PROVIDER"));
+        state.thesis_error = false;
+        state.fallback_count = 1;
+        assert_eq!(stage.observe(now, state), Err("BLOCKED_PROVIDER_FALLBACK"));
     }
 }
