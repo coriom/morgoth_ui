@@ -20,6 +20,18 @@ export interface ActiveToolItem {
   is_data_source: boolean;
   is_chat_tool: boolean;
 }
+
+/** Desktop research liveness DTO; transport authority remains Rust-only. */
+export interface DesktopRuntimeLivenessV1 {
+  schema_version: 1;
+  project: string;
+  domain: string;
+  code_sha: string | null;
+  initialized: boolean;
+  research_state: string;
+  autonomous_task_alive: boolean;
+  autonomous_failure: "TASK_CANCELLED" | "TASK_FAILED" | "TASK_EXITED" | null;
+}
 export type ThoughtColorDomain = "code" | "research" | "finance" | "system" | "other";
 export type ObjectiveCategory = "research" | "capability" | "monitoring" | "optimization";
 export type ObjectiveStatus = "pending" | "in_progress" | "completed" | "failed" | "blocked";

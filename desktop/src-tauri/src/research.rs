@@ -90,6 +90,27 @@ pub struct RuntimeStatus {
     pub profile_status: String,
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum AutonomousFailure {
+    TaskCancelled,
+    TaskFailed,
+    TaskExited,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct RuntimeLiveness {
+    pub schema_version: u8,
+    pub project: String,
+    pub domain: String,
+    pub code_sha: Option<String>,
+    pub initialized: bool,
+    pub research_state: String,
+    pub autonomous_task_alive: bool,
+    pub autonomous_failure: Option<AutonomousFailure>,
+}
+
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProfileView {
@@ -246,6 +267,21 @@ impl ResearchClient {
             || !matches!(
                 value.profile_status.as_str(),
                 "READY" | "BLOCKED" | "UNAVAILABLE"
+            )
+        {
+            return Err(NativeError::new(
+                "INCOMPATIBLE_RESPONSE",
+                "État moteur incompatible.",
+            ));
+        }
+        Ok(value)
+    }
+    pub async fn liveness(&self) -> Result<RuntimeLiveness, NativeError> {
+        let value: RuntimeLiveness = self.call(Method::GET, "/liveness", None).await?;
+        if value.schema_version != 1
+            || !matches!(
+                value.research_state.as_str(),
+                "PAUSED" | "NOT_READY" | "RUNNING" | "FAILED" | "STOPPED" | "INITIALIZING"
             )
         {
             return Err(NativeError::new(
@@ -457,6 +493,7 @@ struct Inner {
     child: Option<Child>,
     project: Option<ProjectView>,
     runtime: Option<RuntimeStatus>,
+    last_liveness: Option<RuntimeLiveness>,
     client: Option<ResearchClient>,
 }
 
@@ -480,6 +517,7 @@ impl ResearchEngineSupervisor {
                 child: None,
                 project: None,
                 runtime: None,
+                last_liveness: None,
                 client: None,
             })),
             management,
@@ -616,6 +654,7 @@ impl ResearchEngineSupervisor {
         inner.diagnostic = None;
         inner.project = Some(project.clone());
         inner.runtime = None;
+        inner.last_liveness = None;
         drop(inner);
         let worker = self.clone();
         thread::spawn(move || match worker.start_once(config, project) {
@@ -721,7 +760,11 @@ impl ResearchEngineSupervisor {
                 }
                 inner.client = Some(client);
                 inner.runtime = Some(status);
+                inner.last_liveness = None;
                 inner.phase = phase;
+                if inner.phase == ResearchPhase::Failed {
+                    inner.diagnostic = Some("BACKEND_TASK_EXITED");
+                }
                 return Ok(());
             }
             thread::sleep(Duration::from_millis(100));
@@ -748,7 +791,7 @@ impl ResearchEngineSupervisor {
                 return;
             }
         };
-        let mut status_failures = 0_u8;
+        let mut liveness_failures = 0_u8;
         loop {
             thread::sleep(Duration::from_secs(2));
             let (client, project, pid) = {
@@ -778,6 +821,9 @@ impl ResearchEngineSupervisor {
                 )
             };
             let (Some(client), Some(project), Some(pid)) = (client, project, pid) else {
+                let mut inner = self.inner.lock().expect("research supervisor lock");
+                inner.phase = ResearchPhase::Failed;
+                inner.diagnostic = Some("RUNTIME_MONITOR_UNAVAILABLE");
                 return;
             };
             if child_owns_listener(client.port, pid) != Ok(true) {
@@ -787,9 +833,9 @@ impl ResearchEngineSupervisor {
                 inner.client = None;
                 return;
             }
-            if let Ok(status) = runtime.block_on(client.status()) {
-                status_failures = 0;
-                if !runtime_identity_matches(&status, &project) {
+            if let Ok(liveness) = runtime.block_on(client.liveness()) {
+                liveness_failures = 0;
+                if !liveness_identity_matches(&liveness, &project) {
                     let mut inner = self.inner.lock().expect("research supervisor lock");
                     inner.phase = ResearchPhase::Failed;
                     inner.diagnostic = Some("RUNTIME_IDENTITY_MISMATCH");
@@ -803,11 +849,21 @@ impl ResearchEngineSupervisor {
                 ) {
                     return;
                 }
-                inner.phase = phase_from_runtime(&status);
-                inner.runtime = Some(status);
+                inner.phase = phase_from_liveness(&liveness);
+                inner.diagnostic = if inner.phase == ResearchPhase::Failed {
+                    Some(failure_diagnostic(liveness.autonomous_failure.as_ref()))
+                } else {
+                    None
+                };
+                if let Some(status) = inner.runtime.as_mut() {
+                    status.initialized = liveness.initialized;
+                    status.research_state.clone_from(&liveness.research_state);
+                    status.autonomous_task_alive = liveness.autonomous_task_alive;
+                }
+                inner.last_liveness = Some(liveness);
             } else {
-                status_failures += 1;
-                if status_failures >= 3 {
+                liveness_failures += 1;
+                if liveness_failures >= 3 {
                     let mut inner = self.inner.lock().expect("research supervisor lock");
                     if matches!(
                         inner.phase,
@@ -816,9 +872,8 @@ impl ResearchEngineSupervisor {
                         return;
                     }
                     inner.phase = ResearchPhase::Failed;
-                    inner.diagnostic = Some("RUNTIME_STATUS_UNAVAILABLE");
+                    inner.diagnostic = Some("LIVENESS_UNAVAILABLE");
                     inner.client = None;
-                    inner.runtime = None;
                     return;
                 }
             }
@@ -851,6 +906,11 @@ impl ResearchEngineSupervisor {
             return;
         }
         inner.phase = phase_from_runtime(&status);
+        inner.diagnostic = if inner.phase == ResearchPhase::Failed {
+            Some("BACKEND_TASK_EXITED")
+        } else {
+            None
+        };
         inner.runtime = Some(status);
     }
 
@@ -866,6 +926,7 @@ impl ResearchEngineSupervisor {
             inner.phase = ResearchPhase::Stopping;
             inner.client = None;
             inner.runtime = None;
+            inner.last_liveness = None;
             inner.child.take()
         };
         if let Some(ref mut child) = child {
@@ -897,6 +958,8 @@ impl ResearchEngineSupervisor {
         if inner.phase == ResearchPhase::Stopped {
             inner.project = None;
             inner.diagnostic = None;
+        } else if inner.phase == ResearchPhase::Failed && inner.diagnostic.is_none() {
+            inner.diagnostic = Some("RUNTIME_MONITOR_UNAVAILABLE");
         }
     }
     pub fn stop(&self) {
@@ -914,6 +977,38 @@ impl ResearchEngineSupervisor {
             .as_ref()
             .map(Child::id)
     }
+
+    pub fn last_liveness(&self) -> Option<RuntimeLiveness> {
+        self.inner
+            .lock()
+            .expect("research supervisor lock")
+            .last_liveness
+            .clone()
+    }
+}
+
+fn phase_from_liveness(value: &RuntimeLiveness) -> ResearchPhase {
+    match value.research_state.as_str() {
+        "PAUSED" => ResearchPhase::Paused,
+        "NOT_READY" => ResearchPhase::NotReady,
+        "RUNNING" => ResearchPhase::Running,
+        _ => ResearchPhase::Failed,
+    }
+}
+
+fn failure_diagnostic(failure: Option<&AutonomousFailure>) -> &'static str {
+    match failure {
+        Some(AutonomousFailure::TaskCancelled) => "BACKEND_TASK_CANCELLED",
+        Some(AutonomousFailure::TaskFailed) => "BACKEND_TASK_FAILED",
+        Some(AutonomousFailure::TaskExited) | None => "BACKEND_TASK_EXITED",
+    }
+}
+
+fn liveness_identity_matches(value: &RuntimeLiveness, project: &ProjectView) -> bool {
+    value.code_sha.as_deref() == Some(BACKEND_SHA)
+        && value.project == project.id
+        && value.domain == project.domain
+        && value.initialized
 }
 
 fn phase_from_runtime(status: &RuntimeStatus) -> ResearchPhase {
@@ -1164,6 +1259,33 @@ mod tests {
             ResearchPhase::Running
         );
         assert_eq!(phase_from_runtime(&status("FAILED")), ResearchPhase::Failed);
+        let live = RuntimeLiveness {
+            schema_version: 1,
+            project: "research_a".into(),
+            domain: "crypto".into(),
+            code_sha: Some(BACKEND_SHA.into()),
+            initialized: true,
+            research_state: "FAILED".into(),
+            autonomous_task_alive: false,
+            autonomous_failure: Some(AutonomousFailure::TaskFailed),
+        };
+        assert_eq!(phase_from_liveness(&live), ResearchPhase::Failed);
+        assert_eq!(
+            failure_diagnostic(live.autonomous_failure.as_ref()),
+            "BACKEND_TASK_FAILED"
+        );
+        assert_eq!(
+            failure_diagnostic(Some(&AutonomousFailure::TaskCancelled)),
+            "BACKEND_TASK_CANCELLED"
+        );
+        assert_eq!(
+            failure_diagnostic(Some(&AutonomousFailure::TaskExited)),
+            "BACKEND_TASK_EXITED"
+        );
+        assert!(serde_json::from_str::<RuntimeLiveness>(
+            r#"{"schema_version":1,"autonomous_failure":"RAW_EXCEPTION"}"#
+        )
+        .is_err());
     }
 
     #[test]
@@ -1251,6 +1373,32 @@ mod tests {
         assert!(request.starts_with("GET /api/runtime/v1/status HTTP/1.1"));
         assert!(request.contains(&format!("x-morgoth-token: {token}")));
         assert!(!request.contains("Origin:"));
+
+        let liveness = RuntimeLiveness {
+            schema_version: 1,
+            project: "research_a".into(),
+            domain: "crypto".into(),
+            code_sha: Some(BACKEND_SHA.into()),
+            initialized: true,
+            research_state: "RUNNING".into(),
+            autonomous_task_alive: true,
+            autonomous_failure: None,
+        };
+        let body = serde_json::to_string(&liveness).unwrap();
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
+            body.len()
+        )
+        .into_bytes();
+        let (port, server) = one_response(response);
+        let client = ResearchClient::new(port, &path).unwrap();
+        assert_eq!(
+            rt.block_on(client.liveness()).unwrap().research_state,
+            "RUNNING"
+        );
+        let request = server.join().unwrap();
+        assert!(request.starts_with("GET /api/runtime/v1/liveness HTTP/1.1"));
+        assert!(request.contains(&format!("x-morgoth-token: {token}")));
 
         let redirect = b"HTTP/1.1 302 Found\r\nLocation: http://invalid.example/\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\r\n{}".to_vec();
         let (port, server) = one_response(redirect);
@@ -1396,7 +1544,7 @@ mod tests {
         let project = project_at(&runtime_dir);
         let script = home.path().join("fixture-python");
         let source = r###"#!/usr/bin/python3
-import base64, json, os, pathlib, sys
+import base64, json, os, pathlib, sys, time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 args = sys.argv
 home = pathlib.Path(args[args.index('--home') + 1])
@@ -1410,6 +1558,7 @@ with open(auth / 'ui_token', 'x') as file:
 os.chmod(auth / 'ui_token', 0o600)
 profile = 'legacy'
 state = 'PAUSED'
+liveness_calls = 0
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *_): pass
     def reply(self, value):
@@ -1428,13 +1577,24 @@ class Handler(BaseHTTPRequestHandler):
                     initialized=True, awakening_ready=True, research_state=state,
                     autonomous_task_alive=(state == 'RUNNING'), profile=profile,
                     profile_status=('READY' if profile == 'claude' else 'BLOCKED'))
+    def liveness(self):
+        return dict(schema_version=1, project=project, domain='crypto', code_sha='__SHA__',
+                    initialized=True, research_state=state,
+                    autonomous_task_alive=(state == 'RUNNING'), autonomous_failure=None)
     def profiles(self):
         return dict(schema_version=1, current=profile, recommended='claude', profiles=[
             dict(id=name, status=readiness, reason='fixture', providers={})
             for name, readiness in [('legacy', 'BLOCKED'), ('claude', 'READY'), ('codex', 'BLOCKED')]])
     def do_GET(self):
+        global liveness_calls
         if not self.authorized(): return
-        if self.path == '/api/runtime/v1/status': self.reply(self.status())
+        if self.path == '/api/runtime/v1/status':
+            if state == 'RUNNING': time.sleep(10)
+            self.reply(self.status())
+        elif self.path == '/api/runtime/v1/liveness':
+            liveness_calls += 1
+            if liveness_calls > 3: self.send_error(503); return
+            self.reply(self.liveness())
         elif self.path == '/api/runtime/v1/profiles': self.reply(self.profiles())
         else: self.send_error(404)
     def do_POST(self):
@@ -1479,6 +1639,8 @@ HTTPServer(('127.0.0.1', port), Handler).serve_forever()
         }
         supervisor.start_with_config(config, project).unwrap();
         assert_eq!(supervisor.status().state, ResearchPhase::Paused);
+        let monitor_owner = supervisor.clone();
+        let monitor = thread::spawn(move || monitor_owner.monitor());
         let pid = supervisor.child_pid().unwrap();
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
@@ -1505,7 +1667,22 @@ HTTPServer(('127.0.0.1', port), Handler).serve_forever()
                 ResearchPhase::Running
             );
         });
+        // A slow full readiness endpoint would have exceeded the old 8-second
+        // monitor timeout. Three fast liveness polls must retain RUNNING.
+        thread::sleep(Duration::from_secs(7));
+        assert_eq!(supervisor.status().state, ResearchPhase::Running);
+        assert_eq!(
+            supervisor.last_liveness().unwrap().research_state,
+            "RUNNING"
+        );
+        let deadline = Instant::now() + Duration::from_secs(12);
+        while supervisor.status().state == ResearchPhase::Running && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(100));
+        }
+        assert_eq!(supervisor.status().state, ResearchPhase::Failed);
+        assert_eq!(supervisor.status().diagnostic, Some("LIVENESS_UNAVAILABLE"));
         supervisor.stop();
+        monitor.join().unwrap();
         assert_eq!(supervisor.status().state, ResearchPhase::Stopped);
         assert!(!PathBuf::from(format!("/proc/{pid}")).exists());
     }

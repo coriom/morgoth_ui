@@ -160,7 +160,7 @@ fn wait_phase(research: &ResearchEngineSupervisor, expected: ResearchPhase) {
     assert_eq!(research.status().state, expected);
 }
 
-fn lease_probe(config: &SupervisorConfig, project: &str, expected_success: bool) {
+fn lease_available(config: &SupervisorConfig, project: &str) -> bool {
     let code = "from core.project import current_project; from core.project_engine_lease import ProjectEngineLease; p=current_project(); assert p.id==__import__('sys').argv[1];\nwith ProjectEngineLease(p): pass";
     let status = Command::new(&config.python)
         .args(["-B", "-c", code, project])
@@ -174,8 +174,12 @@ fn lease_probe(config: &SupervisorConfig, project: &str, expected_success: bool)
         .stderr(Stdio::null())
         .status()
         .unwrap();
+    status.success()
+}
+
+fn lease_probe(config: &SupervisorConfig, project: &str, expected_success: bool) {
     assert_eq!(
-        status.success(),
+        lease_available(config, project),
         expected_success,
         "actual Project lease state"
     );
@@ -329,12 +333,8 @@ fn main() {
         assert!(live.autonomous_task_alive);
         let deadline = Instant::now() + Duration::from_secs(750);
         let mut done_progress: Option<(Instant, usize, u32)> = None;
-        let mut last_marker: Option<(u32, u32, u32, usize, String)> = None;
+        let mut last_marker: Option<String> = None;
         let evidence = loop {
-            assert!(
-                Instant::now() < deadline,
-                "real finalization timed out at bounded metadata {last_marker:?}"
-            );
             let snapshot: Evidence = serde_json::from_str(&objective_helper(
                 &config,
                 &created.project.id,
@@ -342,39 +342,53 @@ fn main() {
                 Some(&objective_id),
             ))
             .unwrap();
-            let marker = (
-                snapshot.cycle_count,
-                snapshot.payload_count,
-                snapshot.synthesis_count,
-                snapshot.llm_calls.len(),
-                snapshot.status.clone(),
+            let supervisor_status = research.status();
+            let tools: Vec<String> = snapshot
+                .tools
+                .iter()
+                .map(|tool| format!("{}:{}", tool.name, tool.success))
+                .collect();
+            let synthesis_calls = snapshot
+                .llm_calls
+                .iter()
+                .filter(|call| call.task == "synthesis")
+                .count();
+            let thesis_calls = snapshot
+                .llm_calls
+                .iter()
+                .filter(|call| call.task == "thesis")
+                .count();
+            let marker = format!(
+                "id={} phase={:?} diagnostic={:?} child_alive={} cycles={} payloads={} sources={} tools={:?} status={} synthesis_calls={} thesis_calls={} fallbacks={}",
+                objective_id, supervisor_status.state, supervisor_status.diagnostic,
+                Path::new(&format!("/proc/{pid}")).exists(), snapshot.cycle_count,
+                snapshot.payload_count, snapshot.sources_used.len(), tools, snapshot.status,
+                synthesis_calls, thesis_calls, snapshot.fallback_count,
             );
             if last_marker.as_ref() != Some(&marker) {
-                println!(
-                    "progress: cycles={} payloads={} synthesis={} claude_calls={} status={} sources={}",
-                    marker.0,
-                    marker.1,
-                    marker.2,
-                    marker.3,
-                    marker.4,
-                    snapshot.sources_used.len()
-                );
+                println!("progress: {marker}");
                 last_marker = Some(marker);
             }
+            if supervisor_status.state == ResearchPhase::Failed {
+                println!(
+                    "failure_capture: diagnostic={:?} child_alive={} last_liveness={:?} objective={} cycles={} payloads={} tools={:?} management={:?} lease_held={}",
+                    supervisor_status.diagnostic, Path::new(&format!("/proc/{pid}")).exists(),
+                    research.last_liveness(), objective_id, snapshot.cycle_count,
+                    snapshot.payload_count, tools, management.status().state,
+                    !lease_available(&config, &created.project.id),
+                );
+                panic!("research supervisor failed before finalization");
+            }
+            assert!(
+                Instant::now() < deadline,
+                "real finalization timed out at bounded metadata {last_marker:?}"
+            );
             assert!(
                 snapshot.cycle_count <= 3,
                 "objective exceeded three-cycle budget"
             );
             assert_eq!(snapshot.objective_count, 1, "objective queue grew");
             assert_eq!(snapshot.fallback_count, 0, "provider fallback occurred");
-            let supervisor_status = research.status();
-            assert_ne!(
-                supervisor_status.state,
-                ResearchPhase::Failed,
-                "research supervisor failed: diagnostic={:?} child_alive={} at bounded metadata {last_marker:?}",
-                supervisor_status.diagnostic,
-                Path::new(&format!("/proc/{pid}")).exists(),
-            );
             assert!(
                 research
                     .status()

@@ -1,5 +1,18 @@
 # PROGRESS.md — Morgoth UI Development Tracker
 
+## 2026-10-08 — Cheap runtime monitor; live qualification gated
+
+Pinned both Rust supervisors to backend `6a0dc9d` after byte-identical
+Management OpenAPI comparison. The Rust monitor uses strict `/liveness`
+responses, preserves cached profile readiness, and emits stable task/transport
+failure codes. A synthetic slow-status regression passed. Frontend, Rust,
+Clippy and native Linux build passed. Disposable Crypto/Weather PAUSED and
+NOT_READY passed after the build completed. The single authorized basic START
+control stopped before START because the real profile catalog reported
+Claude UNAVAILABLE (Codex BLOCKED). No objective was seeded and no new Claude
+finalization attempt ran; prior d512 causality remains unproven. No dependency,
+WebView command or backend-main change.
+
 ## 2026-10-08 — Claude finalization qualification attempted; BLOCKED
 
 Pinned the two Rust supervisors to clean backend `7d811633`; regenerated

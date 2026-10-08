@@ -290,7 +290,6 @@ fn main() {
         assert!(live.autonomous_task_alive);
         let deadline = Instant::now() + Duration::from_secs(300);
         let evidence = loop {
-            assert!(Instant::now() < deadline, "first objective cycle timed out");
             let snapshot: Evidence = serde_json::from_str(&objective_helper(
                 &config,
                 &created.project.id,
@@ -298,9 +297,35 @@ fn main() {
                 Some(&objective_id),
             ))
             .unwrap();
+            let supervisor_status = research.status();
+            if supervisor_status.state == ResearchPhase::Failed {
+                let tools: Vec<String> = snapshot
+                    .tools
+                    .iter()
+                    .map(|tool| format!("{}:{}", tool.name, tool.success))
+                    .collect();
+                println!(
+                    "basic_start_failure: objective={} diagnostic={:?} child_alive={} last_liveness={:?} cycles={} payloads={} tools={:?} management={:?}",
+                    objective_id, supervisor_status.diagnostic,
+                    Path::new(&format!("/proc/{pid}")).exists(), research.last_liveness(),
+                    snapshot.cycle_count, snapshot.payload_count, tools, management.status().state,
+                );
+                panic!("BLOCKED_BASE_RUNTIME");
+            }
+            assert!(Instant::now() < deadline, "first objective cycle timed out; diagnostic={:?} objective={} cycles={} payloads={}", supervisor_status.diagnostic, objective_id, snapshot.cycle_count, snapshot.payload_count);
             assert!(snapshot.cycle_count <= 1, "second objective cycle began");
             assert_eq!(snapshot.objective_count, 1, "objective queue grew");
             if snapshot.payload_count > 0 {
+                assert_eq!(
+                    supervisor_status.state,
+                    ResearchPhase::Running,
+                    "BLOCKED_BASE_RUNTIME"
+                );
+                assert_eq!(
+                    management.status().state,
+                    ManagementPhase::Ready,
+                    "BLOCKED_BASE_RUNTIME"
+                );
                 break snapshot;
             }
             thread::sleep(Duration::from_millis(500));

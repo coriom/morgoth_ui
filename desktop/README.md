@@ -8,7 +8,9 @@ React Projects screen → thirteen fixed Tauri commands
   → Rust ResearchEngineSupervisor → one selected-Project research child
 ```
 
-Both supervisors pin backend `7d8116330effafa4d9857914d6c5dd0d209b3a5d` and refuse another HEAD or a dirty checkout. The Management OpenAPI artifact regenerated from that commit is byte-identical to the pinned frontend artifact (SHA-256 `681e6e6311ded43bdd28e387178641caec45535c201a3dce4ed8ecc765e79b76`). `npm run contract:check` validates the generated TypeScript types. The strict Rust runtime/profile DTOs match the unchanged backend response models; four authenticated research routes remain fixed in Rust.
+Both supervisors pin backend `6a0dc9db67345e9dc2b61e75e62640b54a245b9d` and refuse another HEAD or a dirty checkout. The Management OpenAPI artifact regenerated from that commit is byte-identical to the pinned frontend artifact (SHA-256 `681e6e6311ded43bdd28e387178641caec45535c201a3dce4ed8ecc765e79b76`). `npm run contract:check` validates the generated TypeScript types. The strict Rust runtime/profile DTOs match the backend response models; five authenticated research routes remain fixed in Rust, including cheap `/liveness` for steady-state monitoring.
+
+The former two-second Rust monitor polled `/status`, which recomputes profile readiness through Ollama tags, hardware and Claude version probes. Backend `6a0dc9d` adds token-protected `/liveness` containing only identity and owned-task state; Rust now polls it and retains the last explicit full profile-readiness result for display. A backend task failure maps to a bounded `BACKEND_TASK_*` diagnostic. Full status and profile controls still perform qualified readiness checks. This removes the control-plane liveness hazard; causality of the prior `d5122ba` failure remains unproven.
 
 ## Versions and tested target
 
@@ -44,12 +46,12 @@ CARGO_BUILD_JOBS=2 cargo build --locked --bin real-research-paused-smoke
 cd ..
 python3 scripts/smoke.py --backend <absolute-pinned-backend-worktree> --python <absolute-python-venv-executable>
 python3 scripts/real_research_paused_smoke.py \
-  --backend <absolute-clean-7d811633-worktree> \
+  --backend <absolute-clean-6a0dc9d-worktree> \
   --python <absolute-python-venv-executable> \
   --binary src-tauri/target/debug/real-research-paused-smoke
 # Optional WSLg native window, with a local Vite server started and stopped by the harness:
 python3 scripts/real_research_paused_smoke.py \
-  --backend <absolute-clean-7d811633-worktree> \
+  --backend <absolute-clean-6a0dc9d-worktree> \
   --python <absolute-python-venv-executable> \
   --binary src-tauri/target/debug/real-research-paused-smoke \
   --native-binary src-tauri/target/debug/morgoth-desktop
@@ -61,15 +63,15 @@ python3 scripts/real_research_paused_smoke.py \
 
 `real_research_paused_smoke.py` creates its **own** Unix-socket PostgreSQL cluster and database named `morgoth_test`, plus a loopback fake Ollama that accepts only `GET /api/tags` and returns `test-primary`/`test-agent`. Rust owns the actual Management API and sequentially starts the actual `scripts.research_engine` for disposable Crypto and Weather Projects. It verifies authenticated strict DTOs, PAUSED without an autonomous task, the lease conflict from a second actual launcher, independent second-Project lease, stop/reap, and reinitialization of the released Project. A second invocation with `test-agent` absent proves real NOT_READY while Management remains available. The smoke drops only its generated schemas and stops only its own PostgreSQL/fake-server processes. It never calls `/start`, Claude/Codex, market, weather, or web tools. The observed fake-server traffic was exclusively `/api/tags`; the test does not claim a general-purpose network sandbox.
 
-For the **separately authorized real START qualification only**, build `real-research-start-smoke` and run `scripts/real_research_start_smoke.py --backend <absolute-clean-7d811633-worktree> --python <absolute-python-venv-executable> --binary src-tauri/target/debug/real-research-start-smoke`. It requires an already-running local Ollama with an already-installed tool-capable model (default `llama3.1:8b`); it never pulls a model. The wrapper creates a private Unix-socket PostgreSQL cluster named `morgoth_test`, and Rust starts its own Management and Weather research children. The smoke proves the Project schema is absent after ProjectManager creation, then present with all required objective columns after the real engine reaches PAUSED. Its bounded helper inspects existing storage and creates one human objective through `ObjectivesManager`; it never invokes `scripts.init_db` or creates a table. The test refuses START unless the actual profile catalog reports Claude READY and Codex BLOCKED; Claude is selected explicitly and receives no prompt. A failed legacy-profile START is checked first. Rust starts one work iteration, observes bounded objective/tool metadata, then stops/reaps its exact child after durable cycle evidence. No production state or provider credentials are copied. Do not treat this as a general network sandbox or an unattended recurring test.
+For the **separately authorized real START qualification only**, build `real-research-start-smoke` and run `scripts/real_research_start_smoke.py --backend <absolute-clean-6a0dc9d-worktree> --python <absolute-python-venv-executable> --binary src-tauri/target/debug/real-research-start-smoke`. It requires an already-running local Ollama with an already-installed tool-capable model (default `llama3.1:8b`); it never pulls a model. The wrapper creates a private Unix-socket PostgreSQL cluster named `morgoth_test`, and Rust starts its own Management and Weather research children. The smoke proves the Project schema is absent after ProjectManager creation, then present with all required objective columns after the real engine reaches PAUSED. Its bounded helper inspects existing storage and creates one human objective through `ObjectivesManager`; it never invokes `scripts.init_db` or creates a table. The test refuses START unless the actual profile catalog reports Claude READY and Codex BLOCKED; Claude is selected explicitly and receives no prompt. A failed legacy-profile START is checked first. Rust starts one work iteration, observes bounded objective/tool metadata, then stops/reaps its exact child after durable cycle evidence. No production state or provider credentials are copied. Do not treat this as a general network sandbox or an unattended recurring test.
 
 Native-only optional overrides map `MORGOTH_DESKTOP_RESEARCH_CONNECTIVITY_CHECK_ENABLED`, `MORGOTH_DESKTOP_RESEARCH_METRIC_RECORDER_ENABLED`, `MORGOTH_DESKTOP_RESEARCH_SOURCE_CACHE_ENABLED`, `MORGOTH_DESKTOP_RESEARCH_PROVIDER_HEARTBEAT_MINUTES`, and `MORGOTH_DESKTOP_RESEARCH_AUTONOMOUS_CYCLE_MINUTES`, plus `MORGOTH_DESKTOP_RESEARCH_MAX_CYCLES_PER_OBJECTIVE` and `MORGOTH_DESKTOP_RESEARCH_LLM_FALLBACK_ENABLED`, to their corresponding backend names. They are absent by default, strictly validated, and never exposed to React. The one-cycle smoke sets `false`, `false`, `false`, `999999`, and `60` respectively. The first provider heartbeat may still run if host monotonic uptime exceeds the configured interval; this setup does not independently prove the absence of every network call. The work-cycle tool loop itself permits up to five rounds and may make more than one tool call; count actual persisted calls, not just objectives.
 
-The separately authorized **one-shot Claude finalization qualification** uses backend `7d811633`, a new private `morgoth_test` Unix-socket cluster, one Weather Project and one human objective. Run it only once per qualification attempt, after building `real-claude-finalization-smoke`:
+The separately authorized **one-shot Claude finalization qualification** uses backend `6a0dc9d`, a new private `morgoth_test` Unix-socket cluster, one Weather Project and one human objective. Run it only once per qualification attempt, after building `real-claude-finalization-smoke`:
 
 ```sh
 python3 scripts/real_claude_finalization_smoke.py \
-  --backend <absolute-clean-7d811633-worktree> \
+  --backend <absolute-clean-6a0dc9d-worktree> \
   --python <absolute-python-venv-executable> \
   --binary src-tauri/target/debug/real-claude-finalization-smoke
 ```
@@ -122,6 +124,24 @@ The Management OpenAPI remained byte-identical (SHA-256 `681e6e6311ded43bdd28e38
 
 The separate real PAUSED/NOT_READY smoke passed with only fake `/api/tags` requests. The prior one-cycle START regression was attempted twice on this pin: the first request returned backend HTTP 409 before START; the second confirmed profile READY and accepted START but timed out waiting five minutes for a durable payload. Both used disposable state and stopped; neither result is a green regression. The failure cause remains undiagnosed, and the backend repository was not changed.
 
+### 2026-10-08: liveness hardening and gated diagnostic requalification
+
+Backend `6a0dc9db67345e9dc2b61e75e62640b54a245b9d` separates cheap authenticated `/liveness` from full profile readiness, overlaps synchronous local probes, and reuses one fresh readiness snapshot for START. The Desktop monitor now polls only `/liveness`; a synthetic child keeps `/status` slower than the old eight-second request timeout while three liveness intervals remain RUNNING. Three subsequent genuine liveness failures yield `LIVENESS_UNAVAILABLE`. Rust failure diagnostics are bounded (`CHILD_EXITED`, `PORT_NOT_OWNED`, `RUNTIME_IDENTITY_MISMATCH`, `LIVENESS_UNAVAILABLE`, `BACKEND_TASK_*`, `RUNTIME_MONITOR_UNAVAILABLE`), with no raw child output. The Management OpenAPI remained byte-identical. This removes the control-plane hazard; **causality of the prior `d5122ba` failure is unproven**.
+
+The first disposable Crypto/Weather PAUSED regression failed during Management Project lookup while the fresh native GTK/WebKit build was consuming resources; its transport error does not prove a research-runtime failure. After the build completed, the same disposable PAUSED/NOT_READY regression passed: both Domains PAUSED, NOT_READY inspectable, only 11 fake `GET /api/tags` requests, exact-child stop/lease release, and cleanup of generated `morgoth_test` schemas.
+
+The **one authorized basic START control** on this new pin stopped at the real profile gate: `claude=UNAVAILABLE`, `codex=BLOCKED`; no successful START, objective seed, work cycle, or Claude prompt occurred. The standalone non-inference `claude --version` check passed, but that does not override the backend's profile verdict. Per the qualification gate, the new real Claude-finalization attempt was **not run**. No retry of the basic control was made. Classification: `BLOCKED_CLAUDE_READINESS`; the later work-cycle gate remains untested, and Claude synthesis/thesis remain unqualified.
+
+| Capability on `6a0dc9d` | Evidence |
+|---|---|
+| Management, Crypto/Weather PAUSED, NOT_READY, leases | Real disposable PASS |
+| Cheap liveness independent of slow status | Synthetic Rust PASS |
+| Codex BLOCKED | Real profile catalog PASS |
+| Claude READY | NO: real catalog UNAVAILABLE |
+| Autonomous START, Ollama work payload, MET/NWS | Not attempted on this pin |
+| Claude synthesis/thesis, fidelity, abstention | Not attempted |
+| Production readiness | NO |
+
 The WSLg Linux window was launched again on 2026-10-08 with a disposable Weather Project and fake `/api/tags` Ollama, with no research START. AT-SPI showed `Desktop probe desktop_probe · weather`; selecting that ordinary Project button revealed `Moteur de recherche` and `Initialiser le moteur`. The loaded Project catalog and Rust-owned Management child establish management connectivity. No native initialize/START click was made. The bounded harness reaped its window and child.
 
 On 2026-10-06, the contract check, 15 frontend tests, TypeScript/Vite build, 16 Rust unit tests, 8 Rust transport tests, strict Clippy, and native Linux build passed. The existing Management smoke and missing-research-config smoke passed separately. The real-backend smoke passed for Crypto PAUSED, Weather PAUSED, lease conflict/reacquisition, and missing-model NOT_READY; it recorded 11 `GET /api/tags` requests and no other fake-Ollama path. In this disposable environment, the backend reported `legacy=BLOCKED`, `claude=UNAVAILABLE`, and `codex=BLOCKED`. The native WSLg window and normal Project selection were observed through AT-SPI; no native initialize/START click was performed.
@@ -142,7 +162,7 @@ The French screen loads Domains/Projects from the API and separates configuratio
 
 The Rust process accepts `MORGOTH_DESKTOP_BACKEND_ROOT`, `MORGOTH_DESKTOP_PYTHON`, and `MORGOTH_DESKTOP_HOME` at startup. Research initialization additionally requires native-only `MORGOTH_DESKTOP_RESEARCH_POSTGRES_URL`, `MORGOTH_DESKTOP_RESEARCH_OLLAMA_BASE_URL`, `MORGOTH_DESKTOP_RESEARCH_OLLAMA_PRIMARY_MODEL`, `MORGOTH_DESKTOP_RESEARCH_OLLAMA_AGENT_MODEL`, `MORGOTH_DESKTOP_RESEARCH_MAX_CONCURRENT_AGENTS`, `MORGOTH_DESKTOP_RESEARCH_LOG_RETENTION_DAYS`, and `MORGOTH_DESKTOP_RESEARCH_LOG_LEVEL_THOUGHT`. No value is accepted from React. Rust generates a fresh process-local `SECRET_KEY`; the child receives an explicit environment, not inherited production `.env`, task overrides or unrelated API keys. Rust locates the existing Claude executable and supplies the native user-home context without reading or copying its credentials. Claude READY is a non-inference precondition check, not proof of login/quota. Codex cannot run while the backend qualification lock is set.
 
-The research child starts PAUSED or NOT_READY. Backend `7d811633` uses structural rail checks and a bounded local Ollama `/api/tags` preflight for Desktop PAUSED, and initializes its own objective storage; it does not run research tools, warmup chat or recurring research merely on initialization. The Rust client reads `<Project.runtime_dir>/auth/ui_token` only after confirming listener ownership, and never returns the token/path to JS. The future Desktop installer must replace the Python-checkout locator. Management auto-start remains independent. Chat/events, multiple simultaneous engines, installers and Windows/macOS qualification are deferred.
+The research child starts PAUSED or NOT_READY. Backend `6a0dc9d` uses structural rail checks and a bounded local Ollama `/api/tags` preflight for Desktop PAUSED, and initializes its own objective storage; it does not run research tools, warmup chat or recurring research merely on initialization. The Rust client reads `<Project.runtime_dir>/auth/ui_token` only after confirming listener ownership, and never returns the token/path to JS. The future Desktop installer must replace the Python-checkout locator. Management auto-start remains independent. Chat/events, multiple simultaneous engines, installers and Windows/macOS qualification are deferred.
 
 The unchanged Next.js checkout passes `tsc --noEmit --incremental false` with `desktop/` excluded from its broad TypeScript glob. Its `next build` could not complete on this host because the pre-existing `app/layout.tsx` uses `next/font/google` for Inter and JetBrains Mono and both font downloads timed out, including outside the network sandbox. No web page or font configuration was changed.
 
