@@ -1,5 +1,25 @@
 # PROGRESS.md — Morgoth UI Development Tracker
 
+## 2026-10-08 — Native Claude context; finalization remains unqualified
+
+The disposable PAUSED smoke previously removed the Claude directory from its
+native parent PATH, so Rust could not discover Claude in that smoke. The
+separate prior basic-START `UNAVAILABLE` verdict used a different native PATH;
+its exact cause remains unproven. The installed Claude
+is a native executable; its `--version` succeeds under the old sanitized
+research-child PATH. Rust now derives a minimal provider runtime from native
+executable metadata, probes it without inference, and leaves general engine
+startup possible when Claude is absent. Real disposable Crypto PAUSED reported
+Claude READY and Codex BLOCKED. One basic Weather START yielded one durable
+MET payload and clean stop. The only new Claude-finalization attempt produced
+successful MET and NWS payloads, then the harness asserted at the intermediate
+forced `done` state before Claude calls were observed. This is **not** evidence
+of successful or failed Claude inference; the attempt was not retried. The
+harness now waits for a bounded finalization outcome. A separate stale Rust
+monitor generation race found by the PAUSED regression was fixed; Crypto,
+Weather and NOT_READY then passed. Backend pin and product API unchanged; no
+dependency or WebView command added.
+
 ## 2026-10-08 — Cheap runtime monitor; live qualification gated
 
 Pinned both Rust supervisors to backend `6a0dc9d` after byte-identical

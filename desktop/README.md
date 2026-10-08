@@ -132,6 +132,24 @@ The first disposable Crypto/Weather PAUSED regression failed during Management P
 
 The **one authorized basic START control** on this new pin stopped at the real profile gate: `claude=UNAVAILABLE`, `codex=BLOCKED`; no successful START, objective seed, work cycle, or Claude prompt occurred. The standalone non-inference `claude --version` check passed, but that does not override the backend's profile verdict. Per the qualification gate, the new real Claude-finalization attempt was **not run**. No retry of the basic control was made. Classification: `BLOCKED_CLAUDE_READINESS`; the later work-cycle gate remains untested, and Claude synthesis/thesis remain unqualified.
 
+### 2026-10-08: native Claude context and one gated finalization attempt
+
+The installed `claude` resolves from `/home/corio/.npm-global/bin` to a native ELF executable. Native operator `claude --version` and the exact old sanitized research-child environment (`HOME` plus `PATH=<claude_dir>:/usr/bin:/bin`, `LANG=C.UTF-8`) both exited 0; Node was already discoverable from `/usr/bin` and its NVM directory was **not** needed. The prior disposable PAUSED harness instead launched Rust with `PATH=/usr/bin:/bin` and a temporary HOME. Rust therefore discovered no Claude directory, explaining **that harness's** `UNAVAILABLE` verdict. The separate prior basic-START gate used a native parent PATH containing Claude, so the precise cause of **that** `UNAVAILABLE` verdict is still unproven; neither verdict establishes an authentication or quota failure. Native startup now derives a validated, deduplicated provider PATH from the trusted parent executable chain, adding a separately discovered Node directory only for an `env node` wrapper. Rust runs a bounded, non-inference `claude --version` with that exact child PATH/HOME/LANG before exposing Claude to its research child. Probe failure leaves Ollama-only engine startup available. No parent PATH, API key, SSH agent setting or WebView-supplied path is inherited wholesale.
+
+For a bounded real readiness check, `real_research_paused_smoke.py --claude-ready` supplies only the operator Claude executable directory and HOME to its **native** Rust parent. A disposable actual Crypto engine reached PAUSED; authenticated `/profiles` reported `claude=READY`, `codex=BLOCKED`, with fake Ollama traffic limited to `/api/tags`. This readiness checks executable/version and local model presence, **not** Claude authentication, quota or inference. The existing Crypto/Weather PAUSED and NOT_READY regression initially exposed a separate Rust race: a sleeping monitor from a stopped run could mark a new generation FAILED. A per-run generation guard now prevents that stale monitor from mutating its successor; the unchanged Crypto/Weather/NOT_READY assertions passed afterward.
+
+The **one** subsequent basic START control passed with objective `049ed1e7-8a3c-40b8-b5de-f7a34f971632`: one durable payload, one successful MET result, one Ollama work iteration and exact-child stop. The **one** new finalization attempt used objective `e11e8e7e-fa8e-4103-84cb-d90b6b064c29`, real Ollama, `fallback=false`, MAX_CYCLES=3, and a disposable `morgoth_test` Project. Cycle 1 persisted successful MET; cycle 2 persisted successful NWS observation. At cycle 3 the objective became `done` with two counted sources, while the first bounded snapshot still showed zero Claude `llm_calls`. The harness then panicked on its premature `done && cycle_count >= 3 && no llm_calls` assertion. Backend forced finalization writes `done` **before** awaiting synthesis, so that snapshot is an intermediate state and does not prove a Claude failure. The harness now waits for the bounded finalization outcome, but this attempt was **not retried**. No successful Claude synthesis/thesis, thesis persistence, numeric candidate gate, or explicit abstention was observed. Rust's outer cleanup stopped owned children, the private database was removed, and no matching child remained. Qualification remains **BLOCKED: finalization evidence window**; the cause of the earlier `d5122ba` failure remains unproven.
+
+| Capability on this branch | Evidence |
+|---|---|
+| Management child and Crypto/Weather PAUSED | Real disposable PASS |
+| Native Claude version context; backend Claude READY | Real disposable PASS |
+| Codex BLOCKED | Real profile catalog PASS |
+| Basic autonomous START, Ollama, MET, durable payload | One real bounded PASS |
+| MET + NWS successful payloads | One real finalization attempt PASS |
+| Claude synthesis/thesis inference or valid abstention | **NOT PROVEN**; harness stopped early |
+| Numeric fidelity live candidate, sustained autonomy, production readiness | **NOT PROVEN** |
+
 | Capability on `6a0dc9d` | Evidence |
 |---|---|
 | Management, Crypto/Weather PAUSED, NOT_READY, leases | Real disposable PASS |

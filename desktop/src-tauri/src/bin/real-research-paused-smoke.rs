@@ -171,6 +171,7 @@ fn drop_test_schemas(config: &SupervisorConfig, projects: &[ProjectView]) {
 
 fn main() {
     let not_ready_only = std::env::args().nth(1).as_deref() == Some("--not-ready");
+    let claude_ready = std::env::args().nth(1).as_deref() == Some("--claude-ready");
     let dsn = std::env::var("MORGOTH_TEST_POSTGRES_URL").expect("test DB URL");
     assert!(
         dsn.starts_with("postgresql://")
@@ -219,6 +220,8 @@ fn main() {
     let research = ResearchEngineSupervisor::new(Ok(config.clone()), management.clone());
     let run_projects: &[ProjectView] = if not_ready_only {
         &projects[3..4]
+    } else if claude_ready {
+        &projects[..1]
     } else {
         &projects[..2]
     };
@@ -261,6 +264,10 @@ fn main() {
         );
         let claude = profiles.profiles.iter().find(|p| p.id == "claude").unwrap();
         assert!(matches!(claude.status.as_str(), "READY" | "UNAVAILABLE"));
+        if claude_ready {
+            assert_eq!(claude.status, "READY", "BLOCKED_CLAUDE_READINESS");
+            println!("exact native Claude version probe + real backend profile READY PASS");
+        }
         println!(
             "{} profile catalog: legacy={}, claude={}, codex=BLOCKED",
             project.domain, status.profile_status, claude.status
@@ -306,6 +313,8 @@ fn main() {
     assert!(!PathBuf::from(format!("/proc/{management_pid}")).exists());
     if not_ready_only {
         println!("real NOT_READY; Management survived; exact-child reaping PASS");
+    } else if claude_ready {
+        println!("real Crypto PAUSED; Claude READY; lease conflict/release; Codex BLOCKED; exact-child reaping PASS");
     } else {
         println!("real Crypto PAUSED; Weather PAUSED; lease conflict/release; Codex BLOCKED; exact-child reaping PASS");
     }

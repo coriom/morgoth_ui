@@ -345,7 +345,7 @@ struct ResearchConfig {
     log_retention_days: String,
     log_level_thought: String,
     provider_home: PathBuf,
-    claude_dir: Option<PathBuf>,
+    provider_runtime: Option<ProviderRuntime>,
     runtime_overrides: Vec<(&'static str, String)>,
 }
 
@@ -397,6 +397,7 @@ impl ResearchConfig {
         {
             return Err("PROVIDER_HOME_INVALID");
         }
+        let provider_runtime = ProviderRuntime::discover(&provider_home);
         Ok(Self {
             shared,
             postgres_url: read("MORGOTH_DESKTOP_RESEARCH_POSTGRES_URL")?,
@@ -407,19 +408,99 @@ impl ResearchConfig {
             log_retention_days: read("MORGOTH_DESKTOP_RESEARCH_LOG_RETENTION_DAYS")?,
             log_level_thought: read("MORGOTH_DESKTOP_RESEARCH_LOG_LEVEL_THOUGHT")?,
             provider_home,
-            claude_dir: find_claude_dir(),
+            provider_runtime,
             runtime_overrides: native_runtime_overrides()?,
         })
     }
 }
 
-fn find_claude_dir() -> Option<PathBuf> {
-    let path = std::env::var_os("PATH")?;
-    for directory in std::env::split_paths(&path) {
-        if !directory.is_absolute() || directory.components().any(|c| c == Component::ParentDir) {
+#[derive(Clone)]
+struct ProviderRuntime {
+    claude_executable_dir: PathBuf,
+    required_runtime_dirs: Vec<PathBuf>,
+}
+
+impl ProviderRuntime {
+    fn discover(home: &Path) -> Option<Self> {
+        let native_path = std::env::var_os("PATH")?;
+        Self::from_native_path(&native_path, home)
+    }
+
+    fn from_native_path(native_path: &std::ffi::OsStr, home: &Path) -> Option<Self> {
+        let claude_executable_dir = find_executable_dir("claude", native_path)?;
+        let claude = claude_executable_dir.join("claude");
+        let mut required_runtime_dirs = Vec::new();
+        // Only an env-based Node wrapper needs Node on PATH. The installed
+        // native Claude binary has no such dependency.
+        let mut file = File::open(&claude).ok()?;
+        let mut prefix = [0_u8; 96];
+        let count = file.read(&mut prefix[..2]).ok()?;
+        if count == 2 && &prefix[..2] == b"#!" {
+            let remainder = file.read(&mut prefix[2..]).ok()?;
+            let declaration = &prefix[..2 + remainder];
+            if declaration.starts_with(b"#!/usr/bin/env node") {
+                required_runtime_dirs.push(find_executable_dir("node", native_path)?);
+            }
+        }
+        let runtime = Self {
+            claude_executable_dir,
+            required_runtime_dirs,
+        };
+        runtime.probe(home).then_some(runtime)
+    }
+
+    fn path_value(&self) -> std::ffi::OsString {
+        let mut dirs = Vec::new();
+        for dir in std::iter::once(self.claude_executable_dir.as_path())
+            .chain(self.required_runtime_dirs.iter().map(PathBuf::as_path))
+            .chain([Path::new("/usr/bin"), Path::new("/bin")])
+        {
+            if !dirs.iter().any(|existing| existing == dir) {
+                dirs.push(dir.to_path_buf());
+            }
+        }
+        std::env::join_paths(dirs).expect("validated native executable directories")
+    }
+
+    fn probe(&self, home: &Path) -> bool {
+        let mut child = match Command::new(self.claude_executable_dir.join("claude"))
+            .arg("--version")
+            .env_clear()
+            .env("PATH", self.path_value())
+            .env("HOME", home)
+            .env("LANG", "C.UTF-8")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+        {
+            Ok(child) => child,
+            Err(_) => return false,
+        };
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            match child.try_wait() {
+                Ok(Some(status)) => return status.success(),
+                Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(20)),
+                _ => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return false;
+                }
+            }
+        }
+    }
+}
+
+fn find_executable_dir(name: &str, native_path: &std::ffi::OsStr) -> Option<PathBuf> {
+    for directory in std::env::split_paths(native_path) {
+        if !directory.is_absolute()
+            || directory.components().any(|c| c == Component::ParentDir)
+            || !directory.is_dir()
+            || std::env::join_paths([&directory]).is_err()
+        {
             continue;
         }
-        let candidate = directory.join("claude");
+        let candidate = directory.join(name);
         let Ok(meta) = candidate.metadata() else {
             continue;
         };
@@ -440,9 +521,9 @@ fn fresh_secret() -> Result<String, &'static str> {
 
 fn research_command(config: &ResearchConfig, project_id: &str, port: u16, secret: &str) -> Command {
     let mut command = Command::new(&config.shared.python);
-    let path = config.claude_dir.as_ref().map_or_else(
-        || "/usr/bin:/bin".to_owned(),
-        |dir| format!("{}:/usr/bin:/bin", dir.display()),
+    let path = config.provider_runtime.as_ref().map_or_else(
+        || std::ffi::OsString::from("/usr/bin:/bin"),
+        ProviderRuntime::path_value,
     );
     command
         .args(["-m", "scripts.research_engine", "--home"])
@@ -487,6 +568,7 @@ fn research_command(config: &ResearchConfig, project_id: &str, port: u16, secret
 }
 
 struct Inner {
+    generation: u64,
     phase: ResearchPhase,
     stop_requested: bool,
     diagnostic: Option<&'static str>,
@@ -511,6 +593,7 @@ impl ResearchEngineSupervisor {
     ) -> Self {
         Self {
             inner: Arc::new(Mutex::new(Inner {
+                generation: 0,
                 phase: ResearchPhase::Stopped,
                 stop_requested: false,
                 diagnostic: None,
@@ -650,6 +733,8 @@ impl ResearchEngineSupervisor {
             ));
         }
         inner.phase = ResearchPhase::Starting;
+        inner.generation = inner.generation.wrapping_add(1);
+        let generation = inner.generation;
         inner.stop_requested = false;
         inner.diagnostic = None;
         inner.project = Some(project.clone());
@@ -658,7 +743,7 @@ impl ResearchEngineSupervisor {
         drop(inner);
         let worker = self.clone();
         thread::spawn(move || match worker.start_once(config, project) {
-            Ok(()) => worker.monitor(),
+            Ok(()) => worker.monitor(generation),
             Err(code) => {
                 if worker.status().state != ResearchPhase::Stopped {
                     worker.stop_child(ResearchPhase::Failed);
@@ -771,7 +856,16 @@ impl ResearchEngineSupervisor {
         }
     }
 
-    fn monitor(&self) {
+    fn monitor(&self, generation: u64) {
+        if self
+            .inner
+            .lock()
+            .expect("research supervisor lock")
+            .generation
+            != generation
+        {
+            return;
+        }
         let runtime = match tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
@@ -779,6 +873,9 @@ impl ResearchEngineSupervisor {
             Ok(runtime) => runtime,
             Err(_) => {
                 let mut inner = self.inner.lock().expect("research supervisor lock");
+                if inner.generation != generation {
+                    return;
+                }
                 if matches!(
                     inner.phase,
                     ResearchPhase::Stopped | ResearchPhase::Stopping
@@ -796,6 +893,9 @@ impl ResearchEngineSupervisor {
             thread::sleep(Duration::from_secs(2));
             let (client, project, pid) = {
                 let mut inner = self.inner.lock().expect("research supervisor lock");
+                if inner.generation != generation {
+                    return;
+                }
                 if matches!(
                     inner.phase,
                     ResearchPhase::Stopped | ResearchPhase::Stopping
@@ -822,12 +922,18 @@ impl ResearchEngineSupervisor {
             };
             let (Some(client), Some(project), Some(pid)) = (client, project, pid) else {
                 let mut inner = self.inner.lock().expect("research supervisor lock");
+                if inner.generation != generation {
+                    return;
+                }
                 inner.phase = ResearchPhase::Failed;
                 inner.diagnostic = Some("RUNTIME_MONITOR_UNAVAILABLE");
                 return;
             };
             if child_owns_listener(client.port, pid) != Ok(true) {
                 let mut inner = self.inner.lock().expect("research supervisor lock");
+                if inner.generation != generation {
+                    return;
+                }
                 inner.phase = ResearchPhase::Failed;
                 inner.diagnostic = Some("PORT_NOT_OWNED");
                 inner.client = None;
@@ -837,12 +943,18 @@ impl ResearchEngineSupervisor {
                 liveness_failures = 0;
                 if !liveness_identity_matches(&liveness, &project) {
                     let mut inner = self.inner.lock().expect("research supervisor lock");
+                    if inner.generation != generation {
+                        return;
+                    }
                     inner.phase = ResearchPhase::Failed;
                     inner.diagnostic = Some("RUNTIME_IDENTITY_MISMATCH");
                     inner.client = None;
                     return;
                 }
                 let mut inner = self.inner.lock().expect("research supervisor lock");
+                if inner.generation != generation {
+                    return;
+                }
                 if matches!(
                     inner.phase,
                     ResearchPhase::Stopped | ResearchPhase::Stopping
@@ -865,6 +977,9 @@ impl ResearchEngineSupervisor {
                 liveness_failures += 1;
                 if liveness_failures >= 3 {
                     let mut inner = self.inner.lock().expect("research supervisor lock");
+                    if inner.generation != generation {
+                        return;
+                    }
                     if matches!(
                         inner.phase,
                         ResearchPhase::Stopped | ResearchPhase::Stopping
@@ -963,10 +1078,10 @@ impl ResearchEngineSupervisor {
         }
     }
     pub fn stop(&self) {
-        self.inner
-            .lock()
-            .expect("research supervisor lock")
-            .stop_requested = true;
+        let mut inner = self.inner.lock().expect("research supervisor lock");
+        inner.stop_requested = true;
+        inner.generation = inner.generation.wrapping_add(1);
+        drop(inner);
         self.stop_child(ResearchPhase::Stopped);
     }
     pub fn child_pid(&self) -> Option<u32> {
@@ -1031,6 +1146,68 @@ fn runtime_identity_matches(status: &RuntimeStatus, project: &ProjectView) -> bo
 mod tests {
     use super::*;
     use std::{fs, io::Write as _, process::Stdio};
+
+    #[test]
+    fn native_provider_context_is_minimal_and_wrapper_runtime_is_explicit() {
+        let root = tempfile::tempdir().unwrap();
+        let claude_dir = root.path().join("claude-bin");
+        let node_dir = root.path().join("node-bin");
+        let unrelated = root.path().join("unrelated");
+        for dir in [&claude_dir, &node_dir, &unrelated] {
+            fs::create_dir(dir).unwrap();
+        }
+        let claude = claude_dir.join("claude");
+        fs::write(&claude, b"#!/bin/sh\nexit 0\n").unwrap();
+        fs::set_permissions(&claude, fs::Permissions::from_mode(0o700)).unwrap();
+        let native_path = std::env::join_paths([&claude_dir, &unrelated, &node_dir]).unwrap();
+        assert_eq!(
+            find_executable_dir("claude", &native_path),
+            Some(claude_dir.clone())
+        );
+        assert!(ProviderRuntime {
+            claude_executable_dir: claude_dir.clone(),
+            required_runtime_dirs: Vec::new(),
+        }
+        .probe(root.path()));
+        let runtime = ProviderRuntime::from_native_path(&native_path, root.path()).unwrap();
+        assert!(runtime.required_runtime_dirs.is_empty());
+        assert!(runtime.probe(root.path()));
+        assert!(!runtime.path_value().to_string_lossy().contains("unrelated"));
+
+        fs::write(
+            &claude,
+            b"#!/usr/bin/env node\nthis is not valid JavaScript\n",
+        )
+        .unwrap();
+        fs::set_permissions(&claude, fs::Permissions::from_mode(0o700)).unwrap();
+        let node = node_dir.join("node");
+        fs::write(&node, b"#!/bin/sh\nexit 0\n").unwrap();
+        fs::set_permissions(&node, fs::Permissions::from_mode(0o700)).unwrap();
+        let old = ProviderRuntime {
+            claude_executable_dir: claude_dir.clone(),
+            required_runtime_dirs: Vec::new(),
+        };
+        assert!(!old.probe(root.path()));
+        let runtime = ProviderRuntime::from_native_path(&native_path, root.path()).unwrap();
+        assert_eq!(runtime.required_runtime_dirs, vec![node_dir]);
+        assert!(runtime.probe(root.path()));
+        assert!(!runtime.path_value().to_string_lossy().contains("unrelated"));
+    }
+
+    #[test]
+    fn stale_monitor_cannot_poison_a_new_engine_generation() {
+        let management = ManagementSupervisor::start(Err("TEST_MANAGEMENT_UNAVAILABLE"));
+        let supervisor = ResearchEngineSupervisor::new(Err("TEST_CONFIG_UNAVAILABLE"), management);
+        {
+            let mut inner = supervisor.inner.lock().unwrap();
+            inner.generation = 2;
+            inner.phase = ResearchPhase::Starting;
+        }
+        supervisor.monitor(1);
+        let inner = supervisor.inner.lock().unwrap();
+        assert_eq!(inner.phase, ResearchPhase::Starting);
+        assert!(inner.diagnostic.is_none());
+    }
 
     fn private_token() -> (tempfile::TempDir, PathBuf, String) {
         let home = tempfile::tempdir().unwrap();
@@ -1110,7 +1287,10 @@ mod tests {
             log_retention_days: "1".into(),
             log_level_thought: "0".into(),
             provider_home: home.path().into(),
-            claude_dir: Some("/opt/synthetic-claude/bin".into()),
+            provider_runtime: Some(ProviderRuntime {
+                claude_executable_dir: "/opt/synthetic-claude/bin".into(),
+                required_runtime_dirs: Vec::new(),
+            }),
             runtime_overrides: Vec::new(),
         };
         let command = research_command(&config, "research_a", 38001, "synthetic-secret");
@@ -1186,7 +1366,7 @@ mod tests {
             log_retention_days: "1".into(),
             log_level_thought: "false".into(),
             provider_home: home.path().into(),
-            claude_dir: None,
+            provider_runtime: None,
             runtime_overrides: Vec::new(),
         };
         let original = research_command(&config, "research_a", 38001, "synthetic-secret");
@@ -1626,7 +1806,7 @@ HTTPServer(('127.0.0.1', port), Handler).serve_forever()
             log_retention_days: "1".into(),
             log_level_thought: "0".into(),
             provider_home: home.path().into(),
-            claude_dir: None,
+            provider_runtime: None,
             runtime_overrides: Vec::new(),
         };
         let management = ManagementSupervisor::start(Err("TEST_MANAGEMENT_UNAVAILABLE"));
@@ -1640,7 +1820,8 @@ HTTPServer(('127.0.0.1', port), Handler).serve_forever()
         supervisor.start_with_config(config, project).unwrap();
         assert_eq!(supervisor.status().state, ResearchPhase::Paused);
         let monitor_owner = supervisor.clone();
-        let monitor = thread::spawn(move || monitor_owner.monitor());
+        let generation = supervisor.inner.lock().unwrap().generation;
+        let monitor = thread::spawn(move || monitor_owner.monitor(generation));
         let pid = supervisor.child_pid().unwrap();
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()

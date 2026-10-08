@@ -446,12 +446,9 @@ fn main() {
                     "finalization stalled after objective completion"
                 );
             }
-            if snapshot.status == "done"
-                && snapshot.cycle_count >= 3
-                && snapshot.llm_calls.is_empty()
-            {
-                panic!("objective completed without Claude finalization");
-            }
+            // Forced completion persists `done` before the Claude calls. Wait
+            // for the bounded finalization outcome instead of treating that
+            // intermediate state as a provider failure.
             thread::sleep(Duration::from_millis(750));
         };
         research.stop();

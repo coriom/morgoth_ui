@@ -171,6 +171,8 @@ def main() -> int:
     parser.add_argument("--native-binary", type=Path)
     parser.add_argument("--window-seconds", type=int, default=20)
     parser.add_argument("--native-only", action="store_true")
+    parser.add_argument("--claude-ready", action="store_true",
+                        help="Require the real backend Claude profile in a disposable PAUSED engine")
     parser.add_argument("--window-domain", choices=("crypto", "weather"), default="crypto")
     args = parser.parse_args()
     if args.native_only and not args.native_binary:
@@ -218,8 +220,16 @@ def main() -> int:
                 "MORGOTH_DESKTOP_RESEARCH_LOG_RETENTION_DAYS": "1",
                 "MORGOTH_DESKTOP_RESEARCH_LOG_LEVEL_THOUGHT": "false",
             }
+            if args.claude_ready:
+                claude = shutil.which("claude")
+                assert claude, "BLOCKED_CLAUDE_BINARY_UNAVAILABLE"
+                # Supply only the native provider executable directory. Rust
+                # derives any interpreter directory from the executable chain.
+                env["PATH"] = f"{Path(claude).parent}:/usr/bin:/bin"
+                env["HOME"] = os.environ["HOME"]
             if not args.native_only:
-                run([str(binary)], env=env, timeout=180)
+                run([str(binary), *(["--claude-ready"] if args.claude_ready else [])],
+                    env=env, timeout=180)
                 assert FakeOllama.requests and set(FakeOllama.requests) == {"GET /api/tags"}, FakeOllama.requests
                 normal_count = len(FakeOllama.requests)
                 FakeOllama.include_agent = False
