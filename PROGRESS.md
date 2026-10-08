@@ -1,5 +1,18 @@
 # PROGRESS.md — Morgoth UI Development Tracker
 
+## 2026-10-08 — Self-bootstrapping real Desktop START requalification
+
+The UI Desktop supervisors now pin clean backend `39632779`. Regenerated
+Management OpenAPI is byte-identical to the pinned artifact. The one-objective
+helper no longer imports or invokes `scripts.init_db`: the actual research
+engine provisions its managed Project schema before PAUSED. A disposable
+Weather Rust→Python→PostgreSQL→Ollama→MET run produced one cycle payload for
+objective `56774674-d328-434c-b2ad-cc477a1198ca`, then stopped and reaped
+the exact child with `cycle_count=1`; no Claude prompt was sent. Crypto/Weather
+PAUSED and missing-model NOT_READY, Management/synthetic supervisor, native
+WSLg window, frontend, Rust and Linux native build regressions passed. No
+backend, production checkout or main-branch change.
+
 ## 2026-10-06 — Real supervised Desktop PAUSED integration (feature branch)
 
 Pinned both Rust supervisors to clean backend `1afa971`; the actual Management

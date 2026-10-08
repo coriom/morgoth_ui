@@ -37,15 +37,14 @@ async def seed() -> None:
     from core.config import load_config
     from core.objectives import Objective, ObjectiveCategory, ObjectivesManager
     from memory.persistent import PersistentMemory
-    from scripts.init_db import main as initialize_extra_tables
-
     config = await load_config()
     if config.postgres_url != test_db():
         raise RuntimeError("TEST_DATABASE_REQUIRED")
-    # objectives is deliberately provisioned by the existing explicit init_db
-    # entrypoint, not by Brain's PAUSED PersistentMemory.initialize(). Run it
-    # only inside this disposable test Project, then reapply column migrations.
-    await initialize_extra_tables()
+    existing = await schema()
+    if not existing["schema_exists"] or not existing["objectives_exists"]:
+        raise RuntimeError("RUNTIME_OBJECTIVES_NOT_PROVISIONED")
+    if not REQUIRED_COLUMNS.issubset(existing["columns"]):
+        raise RuntimeError("RUNTIME_OBJECTIVE_COLUMNS_MISSING")
     memory = PersistentMemory(config)
     await memory.initialize()
     try:
@@ -63,6 +62,40 @@ async def seed() -> None:
         print(objective.objective_id)
     finally:
         await memory.close()
+
+
+REQUIRED_COLUMNS = frozenset({
+    "objective_id", "title", "description", "category", "priority",
+    "generated_by", "status", "evidence", "created_at", "completed_at",
+    "user_id", "cycle_count", "sources_used",
+    "consecutive_network_outage_cycles", "campaign_id", "updated_at",
+})
+
+
+async def schema() -> dict[str, object]:
+    """Inspect only the selected Project's existing schema without provisioning."""
+    project = current_namespace()
+    if project.is_legacy or not project.postgres_schema.startswith("p_"):
+        raise RuntimeError("MANAGED_PROJECT_REQUIRED")
+    conn = await asyncpg.connect(test_db())
+    try:
+        if await conn.fetchval("SELECT current_database()") != "morgoth_test":
+            raise RuntimeError("TEST_DATABASE_REQUIRED")
+        schema_exists = await conn.fetchval(
+            "SELECT EXISTS(SELECT 1 FROM pg_namespace WHERE nspname=$1)",
+            project.postgres_schema,
+        )
+        rows = await conn.fetch(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_schema=$1 AND table_name='objectives'",
+            project.postgres_schema,
+        )
+        columns = {row["column_name"] for row in rows}
+        return {"schema_exists": schema_exists,
+                "objectives_exists": bool(columns),
+                "columns": sorted(columns)}
+    finally:
+        await conn.close()
 
 
 async def inspect(objective_id: str) -> None:
@@ -112,10 +145,12 @@ async def inspect(objective_id: str) -> None:
 def main() -> None:
     """Run exactly one safe test-database operation."""
     parser = argparse.ArgumentParser()
-    parser.add_argument("operation", choices=("seed", "inspect"))
+    parser.add_argument("operation", choices=("schema", "seed", "inspect"))
     parser.add_argument("--objective-id")
     args = parser.parse_args()
-    if args.operation == "seed":
+    if args.operation == "schema":
+        print(json.dumps(asyncio.run(schema()), sort_keys=True))
+    elif args.operation == "seed":
         asyncio.run(seed())
     else:
         if args.objective_id is None:

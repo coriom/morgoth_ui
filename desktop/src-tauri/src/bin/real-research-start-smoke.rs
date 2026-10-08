@@ -18,6 +18,31 @@ const WEATHER_TOOLS: [&str; 3] = [
     "find_nws_observation_stations",
     "get_nws_weather_observation",
 ];
+const REQUIRED_OBJECTIVE_COLUMNS: [&str; 16] = [
+    "objective_id",
+    "title",
+    "description",
+    "category",
+    "priority",
+    "generated_by",
+    "status",
+    "evidence",
+    "created_at",
+    "completed_at",
+    "user_id",
+    "cycle_count",
+    "sources_used",
+    "consecutive_network_outage_cycles",
+    "campaign_id",
+    "updated_at",
+];
+
+#[derive(Deserialize)]
+struct SchemaEvidence {
+    schema_exists: bool,
+    objectives_exists: bool,
+    columns: Vec<String>,
+}
 
 #[derive(Deserialize)]
 struct ToolEvidence {
@@ -30,6 +55,7 @@ struct Evidence {
     objective_id: String,
     objective_count: u32,
     generated_by: String,
+    status: String,
     cycle_count: u32,
     payload_count: u32,
     tools: Vec<ToolEvidence>,
@@ -164,6 +190,14 @@ fn main() {
             }))
             .unwrap();
         assert!(created.created && created.project.configuration_valid);
+        let before_schema: SchemaEvidence = serde_json::from_str(&objective_helper(
+            &config,
+            &created.project.id,
+            "schema",
+            None,
+        ))
+        .unwrap();
+        assert!(!before_schema.schema_exists && !before_schema.objectives_exists);
         runtime
             .block_on(research.initialize(created.project.id.clone()))
             .unwrap();
@@ -174,6 +208,17 @@ fn main() {
         assert_eq!(status.domain, "weather");
         assert!(status.initialized && status.awakening_ready);
         assert!(!status.autonomous_task_alive);
+        let after_schema: SchemaEvidence = serde_json::from_str(&objective_helper(
+            &config,
+            &created.project.id,
+            "schema",
+            None,
+        ))
+        .unwrap();
+        assert!(after_schema.schema_exists && after_schema.objectives_exists);
+        assert!(REQUIRED_OBJECTIVE_COLUMNS
+            .iter()
+            .all(|column| after_schema.columns.iter().any(|actual| actual == column)));
         let pid = research.child_pid().unwrap();
         let child_env = std::fs::read(format!("/proc/{pid}/environ")).unwrap();
         assert!(!child_env
@@ -193,15 +238,15 @@ fn main() {
                 .status,
             "BLOCKED"
         );
-        let claude = profiles.profiles.iter().find(|p| p.id == "claude").unwrap();
-        println!("real profiles: claude={} codex=BLOCKED", claude.status);
-        if claude.status != "READY" {
-            println!("BLOCKED_CLAUDE_READINESS; no START attempted");
-            return;
-        }
         let refused = runtime.block_on(research.start());
         assert!(refused.is_err(), "blocked legacy profile must refuse START");
         assert!(!research.status().runtime.unwrap().autonomous_task_alive);
+        assert_eq!(management.status().state, ManagementPhase::Ready);
+        let claude = profiles.profiles.iter().find(|p| p.id == "claude").unwrap();
+        println!("real profiles: claude={} codex=BLOCKED", claude.status);
+        if claude.status != "READY" {
+            panic!("BLOCKED_CLAUDE_READINESS; no successful START attempted");
+        }
         let selected = runtime.block_on(research.select_profile("claude")).unwrap();
         assert_eq!(selected.current, "claude");
         assert_eq!(research.status().state, ResearchPhase::Paused);
@@ -222,6 +267,8 @@ fn main() {
             (1, 0, 0)
         );
         assert_eq!(before.generated_by, "human");
+        assert_eq!(before.status, "pending");
+        assert!(before.tools.is_empty() && before.llm_result_logs == 0);
         let started = runtime.block_on(research.start()).unwrap();
         let live = started.runtime.unwrap();
         assert_eq!(live.research_state, "RUNNING");
@@ -271,6 +318,8 @@ fn main() {
         ))
         .unwrap();
         assert_eq!(after.cycle_count, 1);
+        assert_eq!(after.objective_count, 1);
+        assert_eq!(after.payload_count, 1);
         println!(
             "objective={} cycles=1 payloads=1 ollama_result_logs={} tools={}",
             objective_id,

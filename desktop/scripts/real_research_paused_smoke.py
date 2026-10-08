@@ -179,7 +179,7 @@ def main() -> int:
     python = args.python.absolute()
     binary = args.binary.resolve(strict=True)
     assert python.is_file() and binary.is_file()
-    assert subprocess.check_output(["git", "-C", str(backend), "rev-parse", "HEAD"], text=True).strip() == "1afa971ea55fe58623e47d4493e6f09dba63ee5e"
+    assert subprocess.check_output(["git", "-C", str(backend), "rev-parse", "HEAD"], text=True).strip() == "39632779e1f3d63bed8f9b4593de1f6d05067b93"
     assert not subprocess.check_output(["git", "-C", str(backend), "status", "--porcelain", "--untracked-files=all"])
     pg_bin = Path("/usr/lib/postgresql/16/bin")
     with tempfile.TemporaryDirectory(prefix="morgoth-real-paused-") as directory:
