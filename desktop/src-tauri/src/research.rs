@@ -23,7 +23,7 @@ const STARTUP_LIMIT: Duration = Duration::from_secs(45);
 const STOP_GRACE: Duration = Duration::from_secs(5);
 const MAX_BODY: usize = 65_536;
 const PREFIX: &str = "/api/runtime/v1";
-const RUNTIME_OVERRIDES: [(&str, &str); 5] = [
+const RUNTIME_OVERRIDES: [(&str, &str); 7] = [
     (
         "MORGOTH_DESKTOP_RESEARCH_CONNECTIVITY_CHECK_ENABLED",
         "CONNECTIVITY_CHECK_ENABLED",
@@ -43,6 +43,14 @@ const RUNTIME_OVERRIDES: [(&str, &str); 5] = [
     (
         "MORGOTH_DESKTOP_RESEARCH_AUTONOMOUS_CYCLE_MINUTES",
         "AUTONOMOUS_CYCLE_MINUTES",
+    ),
+    (
+        "MORGOTH_DESKTOP_RESEARCH_MAX_CYCLES_PER_OBJECTIVE",
+        "MAX_CYCLES_PER_OBJECTIVE",
+    ),
+    (
+        "MORGOTH_DESKTOP_RESEARCH_LLM_FALLBACK_ENABLED",
+        "LLM_FALLBACK_ENABLED",
     ),
 ];
 
@@ -325,6 +333,10 @@ fn native_runtime_overrides() -> Result<Vec<(&'static str, String)>, &'static st
 fn valid_runtime_override(child: &str, value: &str) -> bool {
     if child.ends_with("_ENABLED") {
         matches!(value, "true" | "false")
+    } else if child == "MAX_CYCLES_PER_OBJECTIVE" {
+        value
+            .parse::<u32>()
+            .is_ok_and(|cycles| (1..=20).contains(&cycles))
     } else {
         value.parse::<u32>().is_ok_and(|minutes| minutes > 0)
     }
@@ -1058,6 +1070,12 @@ mod tests {
         assert!(valid_runtime_override("AUTONOMOUS_CYCLE_MINUTES", "60"));
         assert!(!valid_runtime_override("AUTONOMOUS_CYCLE_MINUTES", "0"));
         assert!(!valid_runtime_override("AUTONOMOUS_CYCLE_MINUTES", "-1"));
+        assert!(valid_runtime_override("MAX_CYCLES_PER_OBJECTIVE", "3"));
+        assert!(!valid_runtime_override("MAX_CYCLES_PER_OBJECTIVE", "0"));
+        assert!(!valid_runtime_override("MAX_CYCLES_PER_OBJECTIVE", "21"));
+        assert!(!valid_runtime_override("MAX_CYCLES_PER_OBJECTIVE", "3.0"));
+        assert!(valid_runtime_override("LLM_FALLBACK_ENABLED", "false"));
+        assert!(!valid_runtime_override("LLM_FALLBACK_ENABLED", "yes"));
         let home = tempfile::tempdir().unwrap();
         let mut config = ResearchConfig {
             shared: SupervisorConfig {
@@ -1086,6 +1104,8 @@ mod tests {
             ("SOURCE_CACHE_ENABLED", "false".into()),
             ("PROVIDER_HEARTBEAT_MINUTES", "999999".into()),
             ("AUTONOMOUS_CYCLE_MINUTES", "60".into()),
+            ("MAX_CYCLES_PER_OBJECTIVE", "3".into()),
+            ("LLM_FALLBACK_ENABLED", "false".into()),
         ];
         let command = research_command(&config, "research_a", 38001, "synthetic-secret");
         for (key, value) in &config.runtime_overrides {

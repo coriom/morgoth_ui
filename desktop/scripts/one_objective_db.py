@@ -22,6 +22,14 @@ DESCRIPTION = (
     "114.0579. Gather the current forecast information with emphasis on "
     "temperature and precipitation. Use one appropriate source action."
 )
+FINALIZATION_TITLE = "Washington DC forecast versus observation"
+FINALIZATION_DESCRIPTION = (
+    "Use get_weather_forecast_met for latitude 38.8512 and longitude -77.0402, "
+    "and use get_nws_weather_observation for station KDCA. Gather both real "
+    "measurement sources. Compare current forecast and observed temperature/wind, "
+    "respecting their timestamps and units. Do not invent a third source. "
+    "After both source tools have succeeded, mark this objective done."
+)
 
 
 def test_db() -> str:
@@ -32,7 +40,7 @@ def test_db() -> str:
     return dsn
 
 
-async def seed() -> None:
+async def seed(scenario: str = "one_cycle") -> None:
     """Use the production objective service against only this test Project."""
     from core.config import load_config
     from core.objectives import Objective, ObjectiveCategory, ObjectivesManager
@@ -52,8 +60,8 @@ async def seed() -> None:
         if count["n"] != 0:
             raise RuntimeError("OBJECTIVE_QUEUE_NOT_EMPTY")
         objective = Objective(
-            title=TITLE,
-            description=DESCRIPTION,
+            title=FINALIZATION_TITLE if scenario == "finalization" else TITLE,
+            description=FINALIZATION_DESCRIPTION if scenario == "finalization" else DESCRIPTION,
             category=ObjectiveCategory.RESEARCH,
             generated_by="human",
             status="pending",
@@ -147,11 +155,12 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("operation", choices=("schema", "seed", "inspect"))
     parser.add_argument("--objective-id")
+    parser.add_argument("--scenario", choices=("one_cycle", "finalization"), default="one_cycle")
     args = parser.parse_args()
     if args.operation == "schema":
         print(json.dumps(asyncio.run(schema()), sort_keys=True))
     elif args.operation == "seed":
-        asyncio.run(seed())
+        asyncio.run(seed(args.scenario))
     else:
         if args.objective_id is None:
             parser.error("--objective-id required")

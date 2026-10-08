@@ -1,4 +1,4 @@
-"""Bounded real Ollama / Rust / backend / disposable PostgreSQL qualification."""
+"""One bounded real Claude finalization with disposable PostgreSQL and Project."""
 from __future__ import annotations
 
 import argparse
@@ -19,7 +19,7 @@ def run(argv: list[str], *, timeout: int = 90) -> None:
 
 
 def main() -> None:
-    """Run only with an already-installed local Ollama model and a clean pinned backend."""
+    """Run one experiment with installed local Ollama and the clean pinned backend."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--backend", type=Path, required=True)
     parser.add_argument("--python", type=Path, required=True)
@@ -39,7 +39,7 @@ def main() -> None:
     ).json()["models"]}, "BLOCKED_OLLAMA_MODEL_NOT_INSTALLED"
     assert shutil.which("claude"), "BLOCKED_CLAUDE_BINARY_UNAVAILABLE"
     pg_bin = Path("/usr/lib/postgresql/16/bin")
-    with tempfile.TemporaryDirectory(prefix="morgoth-real-start-") as directory:
+    with tempfile.TemporaryDirectory(prefix="morgoth-claude-finalization-") as directory:
         root = Path(directory)
         data, sockets = root / "pgdata", root / "sockets"
         sockets.mkdir(mode=0o700)
@@ -72,10 +72,12 @@ def main() -> None:
                 "MORGOTH_DESKTOP_RESEARCH_METRIC_RECORDER_ENABLED": "false",
                 "MORGOTH_DESKTOP_RESEARCH_SOURCE_CACHE_ENABLED": "false",
                 "MORGOTH_DESKTOP_RESEARCH_PROVIDER_HEARTBEAT_MINUTES": "999999",
-                "MORGOTH_DESKTOP_RESEARCH_AUTONOMOUS_CYCLE_MINUTES": "60",
+                "MORGOTH_DESKTOP_RESEARCH_AUTONOMOUS_CYCLE_MINUTES": "1",
+                "MORGOTH_DESKTOP_RESEARCH_MAX_CYCLES_PER_OBJECTIVE": "3",
+                "MORGOTH_DESKTOP_RESEARCH_LLM_FALLBACK_ENABLED": "false",
                 "ANTHROPIC_API_KEY": "FAKE_PARENT_ONLY_DO_NOT_INHERIT",
             }
-            subprocess.run([str(binary)], env=env, check=True, timeout=420)
+            subprocess.run([str(binary)], env=env, check=True, timeout=900)
             print("disposable Unix-socket morgoth_test only; no production database PASS")
         finally:
             if started:

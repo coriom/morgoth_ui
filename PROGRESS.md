@@ -1,5 +1,23 @@
 # PROGRESS.md — Morgoth UI Development Tracker
 
+## 2026-10-08 — Claude finalization qualification attempted; BLOCKED
+
+Pinned the two Rust supervisors to clean backend `7d811633`; regenerated
+Management OpenAPI stayed byte-identical. Added strict native-only objective
+cycle/fallback overrides and a bounded read-only evidence helper plus a
+single-attempt real Claude finalization smoke. Frontend, Rust tests, Clippy,
+native Linux build, Management and Crypto/Weather PAUSED/NOT_READY proofs passed.
+The one-shot real Weather run selected a READY Claude profile, started the
+autonomous task and persisted one work `cycle_payload` with one counted source.
+The research supervisor then entered FAILED before the second payload or any
+Claude synthesis/thesis call. The disposable child and `morgoth_test` state
+were cleaned; no retry was made. The prior one-cycle START regression also did
+not pass on this pin (one pre-START HTTP 409; one five-minute payload timeout).
+Finalization and production readiness remain unqualified. The backend, mains,
+production checkouts and UI authority boundary were not changed; no dependency
+was added. Next: capture the supervisor's bounded diagnostic in a separately
+authorized diagnostic run before another real qualification attempt.
+
 ## 2026-10-08 — Self-bootstrapping real Desktop START requalification
 
 The UI Desktop supervisors now pin clean backend `39632779`. Regenerated
