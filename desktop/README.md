@@ -202,6 +202,30 @@ The non-inference sanitized environment passed `claude --version` and `claude --
 
 To reproduce the guarded probe in a later *separately authorized* attempt, use `python scripts/claude_provider_probe.py --backend <absolute-clean-pinned-backend-worktree> --python <absolute-python-venv-executable>` from `desktop/`. The command checks the pinned checkout and CLI flags, then makes one inference; do not run it as a readiness check. Earlier `d512`, `6a0`, `393c`, `e11e`, `b6` and `3d60` attempts remain recorded above.
 
+### 2026-10-09: one operator-environment differential
+
+The operator process reported **ABSENT** for each requested variable name; values were never printed:
+
+| Variable | Presence |
+|---|---|
+| `HTTP_PROXY` | ABSENT |
+| `HTTPS_PROXY` | ABSENT |
+| `SSL_CERT_FILE` | ABSENT |
+| `NODE_EXTRA_CA_CERTS` | ABSENT |
+| `CLAUDE_CODE_CERT_STORE` | ABSENT |
+| `CLAUDE_CODE_OAUTH_TOKEN` | ABSENT |
+| `CLAUDE_CODE_OAUTH_REFRESH_TOKEN` | ABSENT |
+| `CLAUDE_CODE_OAUTH_SCOPES` | ABSENT |
+| `ANTHROPIC_BASE_URL` | ABSENT |
+| `ANTHROPIC_API_KEY` | ABSENT |
+| `ANTHROPIC_AUTH_TOKEN` | ABSENT |
+| `CLAUDE_CODE_USE_BEDROCK` | ABSENT |
+| `CLAUDE_CODE_USE_VERTEX` | ABSENT |
+
+The disposable [differential script](scripts/claude_env_differential.py) called the exact pinned `_claude_cli_call` once with `Reply with exactly OK.`, the backend's argv/stdin/neutral-cwd path, and the operator environment after removing the four paid-provider selectors (`ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, Bedrock, Vertex). The private diagnostic runner used the backend's 600-second limit and inspected captured output only to match conservative fixed signatures. Its entire public result was: `OPERATOR_ENV_PROBE=BLOCKED`, `backend_safe_code=CLAUDE_CLI_EXIT_NONZERO`, `diagnostic_class=CLAUDE_DIAG_UNKNOWN_NONZERO`, `returncode=1`, `elapsed_ms=7601`. No raw output was printed, stored or committed. **ENV_CLEAR_CAUSE_NOT_PROVEN**: restoring the operator environment did not make the call succeed, and the unknown class does not establish an authentication, account, quota, network or argv cause. The prior 19,265-ms minimal-environment failure remains separate evidence.
+
+The A-failure gate ended live inference. No Rust provider pass-through was added, no new-minimal-environment probe ran, and no Weather/basic START/synthesis/thesis run occurred. A future change needs a separately justified, fixed allowlist and a new authorization; this result does not warrant copying the full parent environment into the research child. No WebView command, capability, backend code or dependency changed. Frontend contract/15 tests/build, Rust fmt/32 tests/Clippy/native build, Management and research failure-containment smokes, and two no-inference classifier tests passed separately.
+
 The WSLg Linux window was launched again on 2026-10-08 with a disposable Weather Project and fake `/api/tags` Ollama, with no research START. AT-SPI showed `Desktop probe desktop_probe · weather`; selecting that ordinary Project button revealed `Moteur de recherche` and `Initialiser le moteur`. The loaded Project catalog and Rust-owned Management child establish management connectivity. No native initialize/START click was made. The bounded harness reaped its window and child.
 
 On 2026-10-06, the contract check, 15 frontend tests, TypeScript/Vite build, 16 Rust unit tests, 8 Rust transport tests, strict Clippy, and native Linux build passed. The existing Management smoke and missing-research-config smoke passed separately. The real-backend smoke passed for Crypto PAUSED, Weather PAUSED, lease conflict/reacquisition, and missing-model NOT_READY; it recorded 11 `GET /api/tags` requests and no other fake-Ollama path. In this disposable environment, the backend reported `legacy=BLOCKED`, `claude=UNAVAILABLE`, and `codex=BLOCKED`. The native WSLg window and normal Project selection were observed through AT-SPI; no native initialize/START click was performed.

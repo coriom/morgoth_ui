@@ -1,5 +1,17 @@
 # PROGRESS.md — Morgoth UI Development Tracker
 
+## 2026-10-09 — Claude operator-environment differential blocked
+
+The one authorized operator-environment `_claude_cli_call` returned
+`CLAUDE_CLI_EXIT_NONZERO`, return code 1, fixed private diagnostic
+`CLAUDE_DIAG_UNKNOWN_NONZERO` after 7601 ms. All 13 requested environment
+names were absent. **ENV_CLEAR_CAUSE_NOT_PROVEN**; no minimal-env second probe,
+Rust pass-through, Weather run or backend change. The new bounded diagnostic
+script and no-inference canary tests reveal no provider output. Frontend
+contract/15 tests/build, Rust fmt/32 tests/Clippy/native build, Management and
+research failure-containment smokes passed. See `desktop/README.md` for the
+separate historical attempts and exact gate.
+
 ## 2026-10-09 — Safe Claude provider code; isolated gate blocked
 
 Both supervisors pin clean backend `9b982540e4bb53a2b5045d22dc67eee525a557eb`;
