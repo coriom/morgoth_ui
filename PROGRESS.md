@@ -1,5 +1,16 @@
 # PROGRESS.md — Morgoth UI Development Tracker
 
+## 2026-10-09 — Claude update command succeeded; active CLI incompatible
+
+The sole authorized `claude update` exited 0, but the active executable's
+version, resolved path and SHA-256 remained unchanged at Claude Code 2.1.138.
+Authentication stayed `claude.ai`; `--safe-mode` is absent from installed help.
+The version/flag gate classified **BLOCKED_CLAUDE_UPDATE_INCOMPATIBLE** before
+any model call. No Weather, research START, backend edit, reinstall, login or
+WebView change occurred. The UI branch contains only a bounded requalification
+harness, no-inference tests and append-only evidence; historical attempts
+remain in `desktop/README.md`.
+
 ## 2026-10-09 — Claude auth valid; installed safe-mode flag mismatch
 
 One gated diagnostic confirmed Claude Code 2.1.138 is logged in via `claude.ai`.

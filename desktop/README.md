@@ -259,3 +259,21 @@ The research child starts PAUSED or NOT_READY. Backend `6a0dc9d` uses structural
 The unchanged Next.js checkout passes `tsc --noEmit --incremental false` with `desktop/` excluded from its broad TypeScript glob. Its `next build` could not complete on this host because the pre-existing `app/layout.tsx` uses `next/font/google` for Inter and JetBrains Mono and both font downloads timed out, including outside the network sandbox. No web page or font configuration was changed.
 
 Chat/events, other Next.js pages, installers, updates, Windows/macOS security qualification and production packaging are deferred. The existing Next.js app excludes `desktop/` from its TypeScript glob; its pages and server token proxy are unchanged.
+
+## 2026-10-09: controlled Claude Code update gate
+
+The prior v2.1.138 `--safe-mode` attempt was rejected as an unsupported-flag diagnostic. It did **not** test whether customizations caused the earlier plain print-mode failure. All earlier blocked attempts above remain separate evidence.
+
+Pre-update metadata for the operator's existing native executable: command path `/home/corio/.npm-global/bin/claude`, resolved path `/home/corio/.npm-global/lib/node_modules/@anthropic-ai/claude-code/bin/claude.exe`, ELF type, SHA-256 `c3c56ffbc12cf16e40c33687c9fe6361ed250c35a9e1718d0c38d49049f5f8c3`. `DISABLE_UPDATES` and `DISABLE_AUTOUPDATER` were absent. Authentication was sanitized to `loggedIn=true`, `authMethod=claude.ai` before the update. The only update command was `claude update`; private output was discarded, exit 0, fixed class `UPDATE_OK`. The **active** executable path and hash did not change. Its post-update version remains **2.1.138**, below the required 2.1.169.
+
+| Field | Bounded result |
+|---|---|
+| PRE_UPDATE_VERSION | `2.1.138 (Claude Code)` |
+| POST_UPDATE_VERSION | `2.1.138 (Claude Code)` |
+| AUTH_AFTER_UPDATE | `loggedIn=true`, `authMethod=claude.ai` |
+| Help flags | `-p`, `--output-format`, `--tools`, `--no-session-persistence`, `--debug-file`: present; `--safe-mode`: absent |
+| PLAIN_PROVIDER_PROBE | **NOT_RUN** |
+| SAFE_MODE_PROBE | **NOT_RUN** |
+| CONCLUSION | **BLOCKED_CLAUDE_UPDATE_INCOMPATIBLE** |
+
+The command's zero exit is **not** evidence that this active binary upgraded. The version/flag gate in [the no-output qualification harness](scripts/claude_upgrade_requalification.py) stopped before either provider call. No Claude prompt, Weather, Morgoth START, Anthropic API key, backend change, or WebView authority was involved. The updater's unchanged active binary requires a separate operator review; this chantier did not reinstall, change PATH, login, or try another update. Run `python scripts/claude_upgrade_requalification.py --backend <absolute-clean-pinned-backend-worktree> --python <absolute-venv-python>` only in a separately authorized qualification: on a compatible, authenticated CLI it can execute up to two model calls.
