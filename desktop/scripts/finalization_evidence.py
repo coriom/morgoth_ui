@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 from collections import Counter
+from collections.abc import Mapping, Sequence
 import json
 import os
 import re
@@ -14,6 +15,7 @@ import asyncpg
 from loguru import logger
 
 from core.project import current_namespace
+from memory.persistent import CYCLE_FAILURE_STAGES
 
 logger.remove()
 
@@ -29,6 +31,22 @@ def test_db() -> str:
 def decode_json(value: object) -> object:
     """Decode asyncpg JSONB values without changing their content."""
     return json.loads(value) if isinstance(value, str) else value
+
+
+def sanitize_cycle_failures(rows: Sequence[Mapping[str, object]]) -> list[dict[str, object]]:
+    """Emit only fixed-stage, bounded class metadata, ignoring every other DB field."""
+    if len(rows) > 20:
+        raise RuntimeError("CYCLE_FAILURE_BOUND_EXCEEDED")
+    safe = []
+    for row in rows:
+        cycle, stage, error_class = row["cycle"], row["stage"], row["error_class"]
+        if (not isinstance(cycle, int) or isinstance(cycle, bool) or cycle < 1
+                or not isinstance(stage, str) or stage not in CYCLE_FAILURE_STAGES
+                or not isinstance(error_class, str)
+                or re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,63}", error_class) is None):
+            raise RuntimeError("INVALID_CYCLE_FAILURE_RECORD")
+        safe.append({"cycle": cycle, "stage": stage, "error_class": error_class})
+    return safe
 
 
 async def inspect(objective_id: str) -> dict[str, object]:
@@ -54,6 +72,12 @@ async def inspect(objective_id: str) -> dict[str, object]:
                 raise RuntimeError("OBJECTIVE_MISSING")
             if row["evidence_count"] > 40:
                 raise RuntimeError("EVIDENCE_BOUND_EXCEEDED")
+            failure_rows = await conn.fetch(
+                "SELECT cycle, stage, error_class FROM objective_cycle_failures "
+                "WHERE objective_id=$1 ORDER BY occurred_at, failure_id LIMIT 21",
+                selected_id,
+            )
+            cycle_failures = sanitize_cycle_failures(failure_rows)
             objective_count = await conn.fetchval("SELECT count(*) FROM objectives")
             entries = await conn.fetch(
                 "SELECT entry.value->>'type' AS type FROM objectives o, "
@@ -123,6 +147,7 @@ async def inspect(objective_id: str) -> dict[str, object]:
                 "cycle_count": row["cycle_count"],
                 "sources_used": sources,
                 "payload_count": payload_count,
+                "cycle_failures": cycle_failures,
                 "tools": tools,
                 "synthesis_count": synthesis_count,
                 "synthesis_bytes": synthesis["bytes"] if synthesis and synthesis["bytes"] else 0,

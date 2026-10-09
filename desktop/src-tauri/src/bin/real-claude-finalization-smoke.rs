@@ -118,6 +118,30 @@ struct ToolEvidence {
     success: bool,
 }
 
+#[derive(Deserialize, Debug)]
+struct CycleFailureEvidence {
+    cycle: u32,
+    stage: String,
+    error_class: String,
+}
+
+fn work_failure_gate(
+    failures: &[CycleFailureEvidence],
+    status: &str,
+    payload_count: u32,
+) -> Result<(), &'static str> {
+    if !failures.is_empty() {
+        return Err("BLOCKED_WORK_CYCLE");
+    }
+    if status == "failed" {
+        return Err("BLOCKED_WORK_FAILURE_UNDIAGNOSED");
+    }
+    if status == "done" && payload_count == 0 {
+        return Err("ZERO_PAYLOAD_DONE_INVARIANT");
+    }
+    Ok(())
+}
+
 #[derive(Deserialize)]
 struct Evidence {
     objective_id: String,
@@ -127,6 +151,7 @@ struct Evidence {
     cycle_count: u32,
     sources_used: Vec<String>,
     payload_count: u32,
+    cycle_failures: Vec<CycleFailureEvidence>,
     tools: Vec<ToolEvidence>,
     synthesis_count: u32,
     synthesis_bytes: u32,
@@ -400,6 +425,7 @@ fn main() {
         assert!(before.llm_calls.is_empty() && before.theses.is_empty());
         assert_eq!(before.abstention_count, 0);
         assert_eq!(before.fallback_count, 0);
+        assert!(before.cycle_failures.is_empty());
         let started = runtime.block_on(research.start()).unwrap();
         let live = started.runtime.unwrap();
         assert_eq!(live.research_state, "RUNNING");
@@ -433,12 +459,14 @@ fn main() {
                 .filter(|call| call.task == "thesis")
                 .count();
             let marker = format!(
-                "id={} phase={:?} diagnostic={:?} child_alive={} liveness={} cycles={} payloads={} sources={} tools={:?} status={} synthesis_calls={} thesis_calls={} fallbacks={}",
+                "id={} phase={:?} diagnostic={:?} child_alive={} liveness={} cycles={} payloads={} sources={} tools={:?} failures={:?} status={} synthesis_calls={} thesis_calls={} fallbacks={}",
                 objective_id, supervisor_status.state, supervisor_status.diagnostic,
                 Path::new(&format!("/proc/{pid}")).exists(),
                 liveness.as_ref().map_or("UNKNOWN", |state| state.research_state.as_str()),
                 snapshot.cycle_count,
-                snapshot.payload_count, snapshot.sources_used.len(), tools, snapshot.status,
+                snapshot.payload_count, snapshot.sources_used.len(), tools,
+                snapshot.cycle_failures.iter().map(|f| (&f.cycle, &f.stage, &f.error_class)).collect::<Vec<_>>(),
+                snapshot.status,
                 synthesis_calls, thesis_calls, snapshot.fallback_count,
             );
             failure_context = Some(format!(
@@ -457,6 +485,13 @@ fn main() {
             if last_marker.as_ref() != Some(&marker) {
                 println!("progress: {marker}");
                 last_marker = Some(marker);
+            }
+            if let Err(code) = work_failure_gate(
+                &snapshot.cycle_failures,
+                &snapshot.status,
+                snapshot.payload_count,
+            ) {
+                panic!("{code}");
             }
             if supervisor_status.state == ResearchPhase::Failed {
                 panic!("BLOCKED_BASE_RUNTIME");
@@ -652,6 +687,7 @@ fn main() {
         assert_eq!(after.cycle_count, evidence.cycle_count);
         assert_eq!(after.objective_count, 1);
         assert_eq!(after.payload_count, evidence.payload_count);
+        assert!(after.cycle_failures.is_empty());
         println!(
             "objective={} cycles={} payloads={} synthesis_bytes={} synthesis_md5={} tools={}",
             objective_id,
@@ -691,6 +727,28 @@ fn main() {
 #[cfg(test)]
 mod watchdog_tests {
     use super::*;
+
+    #[test]
+    fn first_durable_failure_stops_before_finalization_wait() {
+        let failure = CycleFailureEvidence {
+            cycle: 1,
+            stage: "WORK_INFERENCE".into(),
+            error_class: "ReadTimeout".into(),
+        };
+        assert_eq!(
+            work_failure_gate(&[failure], "in_progress", 0),
+            Err("BLOCKED_WORK_CYCLE")
+        );
+        assert_eq!(
+            work_failure_gate(&[], "failed", 0),
+            Err("BLOCKED_WORK_FAILURE_UNDIAGNOSED")
+        );
+        assert_eq!(
+            work_failure_gate(&[], "done", 0),
+            Err("ZERO_PAYLOAD_DONE_INVARIANT")
+        );
+        assert!(work_failure_gate(&[], "done", 1).is_ok());
+    }
 
     fn facts(done: bool) -> WatchFacts {
         WatchFacts {

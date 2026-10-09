@@ -8,7 +8,7 @@ React Projects screen → thirteen fixed Tauri commands
   → Rust ResearchEngineSupervisor → one selected-Project research child
 ```
 
-Both supervisors pin backend `6a0dc9db67345e9dc2b61e75e62640b54a245b9d` and refuse another HEAD or a dirty checkout. The Management OpenAPI artifact regenerated from that commit is byte-identical to the pinned frontend artifact (SHA-256 `681e6e6311ded43bdd28e387178641caec45535c201a3dce4ed8ecc765e79b76`). `npm run contract:check` validates the generated TypeScript types. The strict Rust runtime/profile DTOs match the backend response models; five authenticated research routes remain fixed in Rust, including cheap `/liveness` for steady-state monitoring.
+Both supervisors pin backend `3d60e1432a4bd6ae0891a3eb66a89fb9c70f572a` and refuse another HEAD or a dirty checkout. The Management OpenAPI artifact regenerated from that commit is byte-identical to the pinned frontend artifact (SHA-256 `681e6e6311ded43bdd28e387178641caec45535c201a3dce4ed8ecc765e79b76`). `npm run contract:check` validates the generated TypeScript types. The strict Rust runtime/profile DTOs match the backend response models; five authenticated research routes remain fixed in Rust, including cheap `/liveness` for steady-state monitoring.
 
 The former two-second Rust monitor polled `/status`, which recomputes profile readiness through Ollama tags, hardware and Claude version probes. Backend `6a0dc9d` adds token-protected `/liveness` containing only identity and owned-task state; Rust now polls it and retains the last explicit full profile-readiness result for display. A backend task failure maps to a bounded `BACKEND_TASK_*` diagnostic. Full status and profile controls still perform qualified readiness checks. This removes the control-plane liveness hazard; causality of the prior `d5122ba` failure remains unproven.
 
@@ -177,6 +177,22 @@ The **one** newly authorized finalization attempt used objective `24be279e-f046-
 | Fallback | 0 |
 | Exact owned-process cleanup; disposable state | PASS |
 | Overall qualification | **BLOCKED_BASE_RUNTIME**; no retry |
+
+### 2026-10-09: durable work-cycle diagnosis and one gated finalization attempt
+
+Backend `3d60e1432a4bd6ae0891a3eb66a89fb9c70f572a` adds a Project-local, bounded `objective_cycle_failures` ledger and marks zero-payload MAX_CYCLES exhaustion `failed`. The actual Management OpenAPI remains byte-identical (SHA-256 `681e6e6311ded43bdd28e387178641caec45535c201a3dce4ed8ecc765e79b76`). Both Rust supervisors and disposable smoke wrappers require that exact clean checkout. The finalization helper reads at most 20 failure rows and emits only cycle, fixed stage and validated exception class. The Rust smoke stops on the first row and keeps its independent 630-second Claude stage windows. No WebView command or authority was added.
+
+One fresh disposable `morgoth_test` run used objective `ddd7f871-cc47-47d4-a8db-65dc79c106b3`. Real PAUSED and non-inference readiness reported Claude READY and Codex BLOCKED; Claude was selected explicitly, fallback disabled, then START accepted. Cycle 1 committed successful `get_nws_weather_observation` and `get_weather_forecast_met`; cycle 2 committed another successful MET result and `update_objective(done)`. At the failure capture, `cycle_count=2`, `payload_count=2`, counted sources=2, failure ledger empty, liveness RUNNING, child alive, Management READY and lease held. One completed `llm_calls` row had `task=synthesis`, `provider=claude-cli`, `outcome=error:ReflectLLMError`, `response_bytes=0`; thesis calls=0 and fallback count=0. The static watchdog stopped immediately as **BLOCKED_SYNTHESIS_PROVIDER**. The provider's underlying cause is unproven; no raw provider output was collected or printed. Owned children and private database were removed; no matching process or temporary run directory remained. There was **one** attempt and no retry. Claude synthesis/thesis, thesis-or-abstention, and live numeric fidelity remain unqualified. The zero-payload `failed` guard is proven synthetically and by SQL, not exercised by this live run. The earlier `d512`, `6a0`, `393c`, `e11e` and `b6` attempts above remain separate evidence.
+
+| Capability in this one-shot | Result |
+|---|---|
+| Real Project/PAUSED/Claude READY/Codex BLOCKED/explicit START | PASS |
+| Durable Weather work | 2 payloads; MET and NWS successful |
+| Durable work-cycle failure ledger | 0 rows; no work exception captured |
+| Claude synthesis | Completed provider call **errored** (`ReflectLLMError`, 0 bytes) |
+| Claude thesis; thesis/abstention; live numeric gate | NOT EXERCISED |
+| Fallback; second objective | 0; 0 |
+| Outcome | **BLOCKED_SYNTHESIS_PROVIDER**; no retry |
 
 The WSLg Linux window was launched again on 2026-10-08 with a disposable Weather Project and fake `/api/tags` Ollama, with no research START. AT-SPI showed `Desktop probe desktop_probe · weather`; selecting that ordinary Project button revealed `Moteur de recherche` and `Initialiser le moteur`. The loaded Project catalog and Rust-owned Management child establish management connectivity. No native initialize/START click was made. The bounded harness reaped its window and child.
 

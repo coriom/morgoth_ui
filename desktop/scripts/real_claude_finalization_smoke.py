@@ -31,7 +31,7 @@ def main() -> None:
     python = args.python.absolute()
     assert python.is_file()
     binary = args.binary.resolve(strict=True)
-    pinned = "6a0dc9db67345e9dc2b61e75e62640b54a245b9d"
+    pinned = "3d60e1432a4bd6ae0891a3eb66a89fb9c70f572a"
     assert subprocess.check_output(["git", "-C", str(backend), "rev-parse", "HEAD"], text=True).strip() == pinned
     assert not subprocess.check_output(["git", "-C", str(backend), "status", "--porcelain", "--untracked-files=all"])
     assert args.model in {m["name"] for m in httpx.get(

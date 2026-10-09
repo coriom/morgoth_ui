@@ -1,5 +1,21 @@
 # PROGRESS.md — Morgoth UI Development Tracker
 
+## 2026-10-09 — Durable cycle diagnostics; one synthesis-provider block
+
+Both native supervisors now pin clean backend `3d60e14`; regenerated
+Management OpenAPI is byte-identical. The disposable finalization helper
+exposes only bounded cycle/stage/exception-class ledger metadata; the Rust
+one-shot smoke stops on its first row. No WebView command was added. Frontend,
+Rust, native build, Management/synthetic research and real PAUSED readiness
+checks passed. In the **one** real Weather attempt, objective
+`ddd7f871-cc47-47d4-a8db-65dc79c106b3` committed two payloads with both
+MET and NWS successful, then a completed Claude synthesis `llm_calls` row
+reported `error:ReflectLLMError` and 0 response bytes. There were no cycle
+failure rows, thesis calls, or fallback events. The harness stopped and
+cleaned its owned disposable processes/database. Classification:
+**BLOCKED_SYNTHESIS_PROVIDER**; provider cause unproven and no retry made.
+Previous blocked attempts remain documented in `desktop/README.md`.
+
 ## 2026-10-08 — Stage-aligned Claude window; one-shot blocked before sources
 
 Pinned backend `6a0dc9d` was not changed. Its Claude subprocess timeout is
