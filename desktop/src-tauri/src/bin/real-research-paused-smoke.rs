@@ -171,7 +171,7 @@ fn drop_test_schemas(config: &SupervisorConfig, projects: &[ProjectView]) {
 
 fn main() {
     let not_ready_only = std::env::args().nth(1).as_deref() == Some("--not-ready");
-    let claude_ready = std::env::args().nth(1).as_deref() == Some("--claude-ready");
+    let codex_readiness = std::env::args().nth(1).as_deref() == Some("--codex-readiness");
     let dsn = std::env::var("MORGOTH_TEST_POSTGRES_URL").expect("test DB URL");
     assert!(
         dsn.starts_with("postgresql://")
@@ -220,7 +220,7 @@ fn main() {
     let research = ResearchEngineSupervisor::new(Ok(config.clone()), management.clone());
     let run_projects: &[ProjectView] = if not_ready_only {
         &projects[3..4]
-    } else if claude_ready {
+    } else if codex_readiness {
         &projects[..1]
     } else {
         &projects[..2]
@@ -244,6 +244,14 @@ fn main() {
         let profiles = rt.block_on(research.profiles()).unwrap();
         assert_eq!(profiles.schema_version, 1);
         assert_eq!(profiles.current, "legacy");
+        if codex_readiness {
+            assert!(profiles.codex.installed);
+            assert!(profiles.codex.authenticated);
+            assert!(profiles.codex.sandbox_available);
+            println!("exact sanitized native Codex discovery and confined login PASS");
+        }
+        assert!(!profiles.codex.sandbox_qualified);
+        assert!(!profiles.codex.workloads_ready);
         assert_eq!(
             profiles
                 .profiles
@@ -262,15 +270,9 @@ fn main() {
                 .status,
             status.profile_status
         );
-        let claude = profiles.profiles.iter().find(|p| p.id == "claude").unwrap();
-        assert!(matches!(claude.status.as_str(), "READY" | "UNAVAILABLE"));
-        if claude_ready {
-            assert_eq!(claude.status, "READY", "BLOCKED_CLAUDE_READINESS");
-            println!("exact native Claude version probe + real backend profile READY PASS");
-        }
         println!(
-            "{} profile catalog: legacy={}, claude={}, codex=BLOCKED",
-            project.domain, status.profile_status, claude.status
+            "{} profile catalog: legacy={}, codex=BLOCKED; sandbox qualified=false",
+            project.domain, status.profile_status
         );
         if project.id == "research_real_crypto" {
             duplicate_launcher(&config, project);
@@ -313,8 +315,8 @@ fn main() {
     assert!(!PathBuf::from(format!("/proc/{management_pid}")).exists());
     if not_ready_only {
         println!("real NOT_READY; Management survived; exact-child reaping PASS");
-    } else if claude_ready {
-        println!("real Crypto PAUSED; Claude READY; lease conflict/release; Codex BLOCKED; exact-child reaping PASS");
+    } else if codex_readiness {
+        println!("real Crypto PAUSED; installed/authenticated/sandbox available; Codex BLOCKED; exact-child reaping PASS");
     } else {
         println!("real Crypto PAUSED; Weather PAUSED; lease conflict/release; Codex BLOCKED; exact-child reaping PASS");
     }

@@ -127,6 +127,17 @@ pub struct ProfilesResponse {
     pub current: String,
     pub recommended: Option<String>,
     pub profiles: Vec<ProfileView>,
+    pub codex: CodexReadiness,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct CodexReadiness {
+    pub installed: bool,
+    pub authenticated: bool,
+    pub sandbox_available: bool,
+    pub sandbox_qualified: bool,
+    pub workloads_ready: bool,
 }
 
 #[derive(Serialize)]
@@ -1132,6 +1143,24 @@ mod tests {
     use std::{fs, io::Write as _, process::Stdio};
 
     #[test]
+    fn codex_readiness_contract_requires_all_five_facts() {
+        let full = serde_json::json!({
+            "schema_version": 1, "current": "legacy", "recommended": null,
+            "profiles": [], "codex": {
+                "installed": true, "authenticated": true, "sandbox_available": true,
+                "sandbox_qualified": false, "workloads_ready": false
+            }
+        });
+        assert!(serde_json::from_value::<ProfilesResponse>(full.clone()).is_ok());
+        let mut incomplete = full;
+        incomplete["codex"]
+            .as_object_mut()
+            .unwrap()
+            .remove("sandbox_qualified");
+        assert!(serde_json::from_value::<ProfilesResponse>(incomplete).is_err());
+    }
+
+    #[test]
     fn native_codex_path_is_minimal_and_wrapper_runtime_is_explicit() {
         let root = tempfile::tempdir().unwrap();
         let codex_dir = root.path().join("codex-bin");
@@ -1583,6 +1612,13 @@ mod tests {
             schema_version: 1,
             current: "legacy".into(),
             recommended: Some("codex".into()),
+            codex: CodexReadiness {
+                installed: true,
+                authenticated: true,
+                sandbox_available: true,
+                sandbox_qualified: true,
+                workloads_ready: true,
+            },
             profiles: vec![
                 ProfileView {
                     id: "legacy".into(),
@@ -1719,7 +1755,9 @@ class Handler(BaseHTTPRequestHandler):
                     initialized=True, research_state=state,
                     autonomous_task_alive=(state == 'RUNNING'), autonomous_failure=None)
     def profiles(self):
-        return dict(schema_version=1, current=profile, recommended='codex', profiles=[
+        return dict(schema_version=1, current=profile, recommended='codex', codex=dict(
+            installed=True, authenticated=True, sandbox_available=True,
+            sandbox_qualified=True, workloads_ready=True), profiles=[
             dict(id=name, status=readiness, reason='fixture', providers={})
             for name, readiness in [('legacy', 'BLOCKED'), ('codex', 'READY')]])
     def do_GET(self):

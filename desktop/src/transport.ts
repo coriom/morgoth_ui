@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { components } from "./api.generated";
+import type { DesktopCodexReadinessV1 } from "../../types/morgoth";
 
 export type Status = components["schemas"]["ManagementStatus"];
 export type DomainList = components["schemas"]["DomainList"];
@@ -43,6 +44,7 @@ export type ResearchEngineStatus = {
 };
 export type ResearchProfiles = {
   schema_version: number; current: string; recommended: string | null;
+  codex: DesktopCodexReadinessV1;
   profiles: Array<{ id: string; status: "READY" | "BLOCKED" | "UNAVAILABLE";
     reason: string; providers: Record<string, string> }>;
 };

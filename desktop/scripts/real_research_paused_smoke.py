@@ -171,8 +171,8 @@ def main() -> int:
     parser.add_argument("--native-binary", type=Path)
     parser.add_argument("--window-seconds", type=int, default=20)
     parser.add_argument("--native-only", action="store_true")
-    parser.add_argument("--claude-ready", action="store_true",
-                        help="Require the real backend Claude profile in a disposable PAUSED engine")
+    parser.add_argument("--codex-readiness", action="store_true",
+                        help="Non-inference installed CLI and confined ChatGPT-login facts")
     parser.add_argument("--window-domain", choices=("crypto", "weather"), default="crypto")
     args = parser.parse_args()
     if args.native_only and not args.native_binary:
@@ -181,7 +181,7 @@ def main() -> int:
     python = args.python.absolute()
     binary = args.binary.resolve(strict=True)
     assert python.is_file() and binary.is_file()
-    assert subprocess.check_output(["git", "-C", str(backend), "rev-parse", "HEAD"], text=True).strip() == "9b982540e4bb53a2b5045d22dc67eee525a557eb"
+    assert subprocess.check_output(["git", "-C", str(backend), "rev-parse", "HEAD"], text=True).strip() == "7bff6c92ffe958cb11411a1f23fa6f917cf0fe32"
     assert not subprocess.check_output(["git", "-C", str(backend), "status", "--porcelain", "--untracked-files=all"])
     pg_bin = Path("/usr/lib/postgresql/16/bin")
     with tempfile.TemporaryDirectory(prefix="morgoth-real-paused-") as directory:
@@ -220,15 +220,16 @@ def main() -> int:
                 "MORGOTH_DESKTOP_RESEARCH_LOG_RETENTION_DAYS": "1",
                 "MORGOTH_DESKTOP_RESEARCH_LOG_LEVEL_THOUGHT": "false",
             }
-            if args.claude_ready:
-                claude = shutil.which("claude")
-                assert claude, "BLOCKED_CLAUDE_BINARY_UNAVAILABLE"
-                # Supply only the native provider executable directory. Rust
-                # derives any interpreter directory from the executable chain.
-                env["PATH"] = f"{Path(claude).parent}:/usr/bin:/bin"
+            if args.codex_readiness:
+                codex = shutil.which("codex")
+                node = shutil.which("node")
+                assert codex and node, "BLOCKED_CODEX_NATIVE_RUNTIME"
+                runtime_dirs = dict.fromkeys((str(Path(codex).parent), str(Path(node).parent),
+                                              "/usr/bin", "/bin"))
+                env["PATH"] = ":".join(runtime_dirs)
                 env["HOME"] = os.environ["HOME"]
             if not args.native_only:
-                run([str(binary), *(["--claude-ready"] if args.claude_ready else [])],
+                run([str(binary), *(["--codex-readiness"] if args.codex_readiness else [])],
                     env=env, timeout=180)
                 assert FakeOllama.requests and set(FakeOllama.requests) == {"GET /api/tags"}, FakeOllama.requests
                 normal_count = len(FakeOllama.requests)

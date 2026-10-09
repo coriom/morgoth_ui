@@ -46,7 +46,8 @@ function ResearchPane({ project, transport }: { project: Project; transport: Res
   const current = profiles.data?.profiles.find((item) => item.id === profiles.data.current);
   const canStart = ownsEngine && engine?.state === "PAUSED" && engine.runtime?.awakening_ready === true
     && engine.runtime?.profile === "codex" && engine.runtime?.profile_status === "READY"
-    && current?.id === "codex" && current?.status === "READY";
+    && current?.id === "codex" && current?.status === "READY"
+    && profiles.data?.codex.workloads_ready === true;
 
   return <section aria-label="Moteur de recherche">
     <h3>Moteur de recherche</h3>
@@ -69,6 +70,13 @@ function ResearchPane({ project, transport }: { project: Project; transport: Res
           {profiles.isError && <p role="alert">Profils indisponibles.</p>}
           {profiles.data && <>
             <p>Profil actuel : {profiles.data.current} · recommandation : {profiles.data.recommended ?? "aucune"}</p>
+            <dl className="details" aria-label="Qualification Codex">
+              <div><dt>Codex installé</dt><dd>{profiles.data.codex.installed ? "Oui" : "Non"}</dd></div>
+              <div><dt>Authentification Codex</dt><dd>{profiles.data.codex.authenticated ? "Disponible" : "Indisponible"}</dd></div>
+              <div><dt>Confinement disponible</dt><dd>{profiles.data.codex.sandbox_available ? "Oui" : "Non"}</dd></div>
+              <div><dt>Confinement qualifié</dt><dd>{profiles.data.codex.sandbox_qualified ? "Oui" : "Non"}</dd></div>
+              <div><dt>Charges de recherche Codex</dt><dd>{profiles.data.codex.workloads_ready ? "Prêtes" : "Bloquées"}</dd></div>
+            </dl>
             {profiles.data.profiles.find((item) => item.id === "codex")?.status === "BLOCKED" &&
               <p>Codex est bloqué tant que sa qualification de sécurité n’est pas terminée. La recherche ne peut pas démarrer.</p>}
             <ul>{profiles.data.profiles.map((item) => <li key={item.id}>

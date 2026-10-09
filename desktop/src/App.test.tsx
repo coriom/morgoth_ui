@@ -28,11 +28,13 @@ function mockTransport(overrides: Partial<ManagementTransport> = {}): Management
   };
 }
 const stopped: ResearchEngineStatus = { state: "STOPPED", project_id: null, domain: null, diagnostic: null, runtime: null };
+const blockedCodex = { installed: true, authenticated: true, sandbox_available: true,
+  sandbox_qualified: false, workloads_ready: false };
 function mockResearch(overrides: Partial<ResearchTransport> = {}): ResearchTransport {
   return {
     status: vi.fn(async () => stopped), initialize: vi.fn(async () => stopped),
-    profiles: vi.fn(async () => ({ schema_version: 1, current: "legacy", recommended: null, profiles: [] })),
-    selectProfile: vi.fn(async () => ({ schema_version: 1, current: "codex", recommended: null, profiles: [] })),
+    profiles: vi.fn(async () => ({ schema_version: 1, current: "legacy", recommended: null, profiles: [], codex: blockedCodex })),
+    selectProfile: vi.fn(async () => ({ schema_version: 1, current: "codex", recommended: null, profiles: [], codex: blockedCodex })),
     start: vi.fn(async () => stopped), stop: vi.fn(async () => stopped), ...overrides,
   };
 }
@@ -132,7 +134,7 @@ describe("one selected research engine", () => {
     runtime: { schema_version: 1, project: "research_a", domain: "crypto", code_sha: "a".repeat(40),
       initialized: true, awakening_ready: true, research_state: "PAUSED", autonomous_task_alive: false,
       profile: "legacy", profile_status: "BLOCKED" } };
-  const profileList = { schema_version: 1, current: "legacy", recommended: null, profiles: [
+  const profileList = { schema_version: 1, current: "legacy", recommended: null, codex: blockedCodex, profiles: [
     { id: "legacy", status: "BLOCKED" as const, reason: "synthetic", providers: {} },
     { id: "codex", status: "BLOCKED" as const, reason: "synthetic", providers: {} },
   ] };
@@ -152,9 +154,25 @@ describe("one selected research engine", () => {
     expect(await screen.findByText(/Moteur prêt · recherche en pause/)).toBeTruthy();
     await waitFor(() => expect(screen.getByRole("button", { name: "Sélectionner codex" })).toHaveProperty("disabled", true));
     expect(screen.getByRole("button", { name: "Sélectionner codex" }).closest("li")?.textContent).toContain("codex · BLOCKED");
+    expect(screen.getByText("Confinement qualifié").nextElementSibling?.textContent).toBe("Non");
+    expect(screen.getByText("Charges de recherche Codex").nextElementSibling?.textContent).toBe("Bloquées");
     expect(screen.queryByRole("button", { name: "Démarrer la recherche" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Sélectionner claude" })).toBeNull();
     expect(research.selectProfile).not.toHaveBeenCalled();
+  });
+  it("does not start when a profile says READY but sandbox qualification is false", async () => {
+    const readyProfile = { ...profileList, current: "codex", profiles: [
+      { id: "codex", status: "READY" as const, reason: "synthetic", providers: {} },
+    ] };
+    const research = mockResearch({
+      status: vi.fn(async () => ({ ...paused, runtime: { ...paused.runtime!, profile: "codex", profile_status: "READY" as const } })),
+      profiles: vi.fn(async () => readyProfile),
+    });
+    render(<App transport={mockTransport()} research={research} />);
+    fireEvent.click(await screen.findByRole("button", { name: /research_a/ }));
+    expect(await screen.findByText("Charges de recherche Codex")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Démarrer la recherche" })).toBeNull();
+    expect(research.start).not.toHaveBeenCalled();
   });
   it("does not rebind a running engine when another Project is selected", async () => {
     const running = { ...paused, state: "RUNNING" as const, runtime: { ...paused.runtime!, research_state: "RUNNING" } };

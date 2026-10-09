@@ -1,5 +1,16 @@
 # PROGRESS.md — Morgoth UI Development Tracker
 
+## 2026-10-09 — Integrated Codex confinement, workload gate still blocked
+
+Desktop pins backend `7bff6c92ffe958cb11411a1f23fa6f917cf0fe32`.
+The Management OpenAPI is byte-identical. The strict Rust/TypeScript profile
+contract distinguishes installed, authenticated, sandbox available,
+sandbox qualified and workloads ready. Integrated Bubblewrap host tests
+passed, but the one authorized model-authority canary returned a safe
+`cli_diagnostic`. No text probe or Weather run followed. Codex remains
+BLOCKED with `SAFE_FOR_WORKLOADS=False`; Management remains independent.
+See `desktop/README.md` for the exact proof boundary and security limits.
+
 ## 2026-10-09 — Codex-only Desktop provider target
 
 The Desktop pins backend `b51aee7361075e1d206f9615c5b24ec772376a14`.

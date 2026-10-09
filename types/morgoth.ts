@@ -32,6 +32,15 @@ export interface DesktopRuntimeLivenessV1 {
   autonomous_task_alive: boolean;
   autonomous_failure: "TASK_CANCELLED" | "TASK_FAILED" | "TASK_EXITED" | null;
 }
+
+/** Safe Codex readiness facts in the authenticated Desktop profile response. */
+export interface DesktopCodexReadinessV1 {
+  installed: boolean;
+  authenticated: boolean;
+  sandbox_available: boolean;
+  sandbox_qualified: boolean;
+  workloads_ready: boolean;
+}
 export type ThoughtColorDomain = "code" | "research" | "finance" | "system" | "other";
 export type ObjectiveCategory = "research" | "capability" | "monitoring" | "optimization";
 export type ObjectiveStatus = "pending" | "in_progress" | "completed" | "failed" | "blocked";

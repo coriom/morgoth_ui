@@ -8,11 +8,55 @@ React Projects screen → thirteen fixed Tauri commands
   → Rust ResearchEngineSupervisor → one selected-Project research child
 ```
 
-Both supervisors pin backend `b51aee7361075e1d206f9615c5b24ec772376a14` and refuse another HEAD or a dirty checkout. The Management OpenAPI regenerated from that commit is byte-identical to the pinned frontend artifact (SHA-256 `681e6e6311ded43bdd28e387178641caec45535c201a3dce4ed8ecc765e79b76`). `npm run contract:check` validates the generated TypeScript types. The strict Rust runtime/profile DTOs match the backend response models; five authenticated research routes remain fixed in Rust, including cheap `/liveness` for steady-state monitoring.
+Both supervisors pin backend `7bff6c92ffe958cb11411a1f23fa6f917cf0fe32` and refuse another HEAD or a dirty checkout. The Management OpenAPI regenerated from that commit is byte-identical to the pinned frontend artifact (SHA-256 `681e6e6311ded43bdd28e387178641caec45535c201a3dce4ed8ecc765e79b76`). `npm run contract:check` validates the generated TypeScript types. The strict Rust runtime/profile DTOs match the backend response models; five authenticated research routes remain fixed in Rust, including cheap `/liveness` for steady-state monitoring.
 
 The former two-second Rust monitor polled `/status`, which recomputes profile readiness through Ollama tags, hardware and Claude version probes. Backend `6a0dc9d` adds token-protected `/liveness` containing only identity and owned-task state; Rust now polls it and retains the last explicit full profile-readiness result for display. A backend task failure maps to a bounded `BACKEND_TASK_*` diagnostic. Full status and profile controls still perform qualified readiness checks. This removes the control-plane liveness hazard; causality of the prior `d5122ba` failure remains unproven.
 
 ## Current provider target — 2026-10-09
+
+The production Codex invocation now enters a mandatory Bubblewrap 0.9.0 Linux
+filesystem namespace. It sees read-only system executables/libraries, DNS/TLS
+configuration, its installed CLI package and Node runtime, a private writable
+temporary workspace, and one narrow read-only Codex authentication file.
+The Codex process can read that credential; this is not an auth broker.
+Networking is shared with the host, so network isolation is **not** claimed.
+No operator HOME or Morgoth repository tree is mounted. A missing sandbox,
+unsafe mount or setup failure fails closed; no direct subprocess fallback exists.
+
+The integrated host tests denied synthetic outside reads and writes, fake
+SSH/home/repository reads and symlink traversal; confined non-inference
+ChatGPT login worked. Whole-process timeout and cancellation cleanup passed.
+The **one** authenticated model-authority canary returned the safe diagnostic
+`cli_diagnostic` after 23.2 seconds. It did not pass the JSON event gate; the
+underlying diagnostic remains unclassified. No fixed text probe followed.
+`SAFE_FOR_WORKLOADS=False`, Codex profile BLOCKED, and research START refused.
+Installed, authenticated and sandbox-available now appear separately from
+qualified/workloads-ready in the Desktop profile view. No Weather run occurred.
+Human Gate 3 remains human-only.
+
+Current verification: Management OpenAPI byte-identical; frontend contract,
+16 tests and production asset build passed; Rust 20 library, 5 watchdog and
+8 transport tests passed, as did formatting, strict Clippy and the actual
+Tauri Linux build. The Rust-owned Management and missing-research-config
+containment smokes passed. A disposable Unix-socket `morgoth_test` run reached
+real Crypto and Weather PAUSED, preserved the Project lease and exact-child
+reaping, and showed inspectable NOT_READY with Management alive. Its fake
+Ollama saw 11 `GET /api/tags` requests only. The profile catalog correctly
+showed Codex BLOCKED and sandbox qualification false. No START or inference
+was invoked by these Desktop smokes. The current binary was built from this
+worktree at the shared Cargo target path
+`/home/corio/Morgoth/dev-desktop-codex-only-provider-v1/desktop/src-tauri/target/debug/morgoth-desktop`;
+it is a Linux x86-64 ELF, 28,586,408 bytes. No new native-window click proof
+is claimed for this branch.
+
+A separate no-inference `--codex-readiness` variant supplied only the installed
+Codex and Node executable directories in the trusted native PATH and the
+operator HOME. The actual Rust child narrowed PATH again, the confined CLI
+login status succeeded, and the authenticated backend profile response reported
+installed=true, authenticated=true, sandbox_available=true,
+sandbox_qualified=false and workloads_ready=false. Its temporary Crypto
+engine stayed PAUSED; the fake Ollama saw only `GET /api/tags`. This proves
+native executable discovery and non-inference login, not model authority.
 
 The supported managed catalog is `legacy` and `codex`. CHAT uses local Ollama;
 THESIS, SYNTHESIS, REFLECT, SHADOW and SCOUT target Codex CLI. Claude is not
@@ -28,11 +72,15 @@ but no Codex workload is attempted while the backend gate is BLOCKED.
 | Claude / Anthropic subscription required | NO |
 | OpenAI API key required | NO |
 | Local Ollama CHAT | YES |
-| Managed Codex profile selection / autonomous START | BLOCKED pending confinement qualification |
+| Managed Codex profile selection / autonomous START | BLOCKED: model-authority canary returned `cli_diagnostic` |
 | Human Gate 3 | YES |
 
 Installed Codex is `codex-cli 0.162.0`; non-inference login status reports an
 existing ChatGPT login. Required CLI flags and feature names are present.
+
+The following table and prototype account are retained from the preceding
+foundation branch. Their “ABSENT” and “not run” entries describe that earlier
+state; the integrated results above supersede them for this branch.
 
 | 0.162.0 capability | Verdict | Evidence |
 |---|---|---|
@@ -96,12 +144,18 @@ CARGO_BUILD_JOBS=2 cargo build --locked --bin real-research-paused-smoke
 cd ..
 python3 scripts/smoke.py --backend <absolute-pinned-backend-worktree> --python <absolute-python-venv-executable>
 python3 scripts/real_research_paused_smoke.py \
-  --backend <absolute-clean-6a0dc9d-worktree> \
+  --backend <absolute-clean-7bff6c9-worktree> \
   --python <absolute-python-venv-executable> \
   --binary src-tauri/target/debug/real-research-paused-smoke
+# Optional current-branch non-inference Codex discovery and confined-login check:
+python3 scripts/real_research_paused_smoke.py \
+  --backend <absolute-clean-7bff6c9-worktree> \
+  --python <absolute-python-venv-executable> \
+  --binary src-tauri/target/debug/real-research-paused-smoke \
+  --codex-readiness
 # Optional WSLg native window, with a local Vite server started and stopped by the harness:
 python3 scripts/real_research_paused_smoke.py \
-  --backend <absolute-clean-6a0dc9d-worktree> \
+  --backend <absolute-clean-7bff6c9-worktree> \
   --python <absolute-python-venv-executable> \
   --binary src-tauri/target/debug/real-research-paused-smoke \
   --native-binary src-tauri/target/debug/morgoth-desktop
