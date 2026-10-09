@@ -1,5 +1,16 @@
 # PROGRESS.md — Morgoth UI Development Tracker
 
+## 2026-10-09 — Claude auth valid; installed safe-mode flag mismatch
+
+One gated diagnostic confirmed Claude Code 2.1.138 is logged in via `claude.ai`.
+The bounded read-only doctor check timed out with no private output disclosed.
+The sole safe-mode model call exited 1 with fixed class
+`CLAUDE_DIAG_ARGUMENT_REJECTED`; non-inference CLI help did not list
+`--safe-mode`. **CLAUDE_CUSTOMIZATION_CAUSE_NOT_PROVEN**. No retry, Weather,
+research START, backend change, or new WebView authority. The next step is a
+separate review of installed CLI support before any provider change. See
+`desktop/README.md` for historical attempts and bounded evidence.
+
 ## 2026-10-09 — Claude operator-environment differential blocked
 
 The one authorized operator-environment `_claude_cli_call` returned
