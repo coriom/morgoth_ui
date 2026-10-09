@@ -2,7 +2,7 @@
 
 ## 2026-10-09 — Codex-only Desktop provider target
 
-The Desktop pins backend `ea222a22d8f15226f30e2e3af6fa615aa8e2a06d`.
+The Desktop pins backend `b51aee7361075e1d206f9615c5b24ec772376a14`.
 Management OpenAPI remains byte-identical. Native research startup discovers
 Codex/Node only; no Claude executable or readiness probe is required. The
 Projects screen displays the backend Codex BLOCKED verdict and permits START

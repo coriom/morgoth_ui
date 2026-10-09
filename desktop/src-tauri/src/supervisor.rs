@@ -14,7 +14,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-pub const BACKEND_SHA: &str = "ea222a22d8f15226f30e2e3af6fa615aa8e2a06d";
+pub const BACKEND_SHA: &str = "b51aee7361075e1d206f9615c5b24ec772376a14";
 const STARTUP_LIMIT: Duration = Duration::from_secs(15);
 const STOP_GRACE: Duration = Duration::from_secs(3);
 
