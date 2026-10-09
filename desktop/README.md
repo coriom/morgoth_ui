@@ -8,9 +8,59 @@ React Projects screen → thirteen fixed Tauri commands
   → Rust ResearchEngineSupervisor → one selected-Project research child
 ```
 
-Both supervisors pin backend `9b982540e4bb53a2b5045d22dc67eee525a557eb` and refuse another HEAD or a dirty checkout. The Management OpenAPI artifact regenerated from that commit is byte-identical to the pinned frontend artifact (SHA-256 `681e6e6311ded43bdd28e387178641caec45535c201a3dce4ed8ecc765e79b76`). `npm run contract:check` validates the generated TypeScript types. The strict Rust runtime/profile DTOs match the backend response models; five authenticated research routes remain fixed in Rust, including cheap `/liveness` for steady-state monitoring.
+Both supervisors pin backend `ea222a22d8f15226f30e2e3af6fa615aa8e2a06d` and refuse another HEAD or a dirty checkout. The Management OpenAPI regenerated from that commit is byte-identical to the pinned frontend artifact (SHA-256 `681e6e6311ded43bdd28e387178641caec45535c201a3dce4ed8ecc765e79b76`). `npm run contract:check` validates the generated TypeScript types. The strict Rust runtime/profile DTOs match the backend response models; five authenticated research routes remain fixed in Rust, including cheap `/liveness` for steady-state monitoring.
 
 The former two-second Rust monitor polled `/status`, which recomputes profile readiness through Ollama tags, hardware and Claude version probes. Backend `6a0dc9d` adds token-protected `/liveness` containing only identity and owned-task state; Rust now polls it and retains the last explicit full profile-readiness result for display. A backend task failure maps to a bounded `BACKEND_TASK_*` diagnostic. Full status and profile controls still perform qualified readiness checks. This removes the control-plane liveness hazard; causality of the prior `d5122ba` failure remains unproven.
+
+## Current provider target — 2026-10-09
+
+The supported managed catalog is `legacy` and `codex`. CHAT uses local Ollama;
+THESIS, SYNTHESIS, REFLECT, SHADOW and SCOUT target Codex CLI. Claude is not
+required, probed or recommended. The Rust research child locates only the
+native Codex executable and a Node interpreter directory when its wrapper
+requires one. It inherits neither the parent's complete PATH nor API keys.
+The existing operator HOME is passed for future ChatGPT CLI authentication,
+but no Codex workload is attempted while the backend gate is BLOCKED.
+
+| Current architecture | State |
+|---|---|
+| External provider | Codex CLI; `SAFE_FOR_WORKLOADS=False` |
+| Claude / Anthropic subscription required | NO |
+| OpenAI API key required | NO |
+| Local Ollama CHAT | YES |
+| Managed Codex profile selection / autonomous START | BLOCKED pending confinement qualification |
+| Human Gate 3 | YES |
+
+Installed Codex is `codex-cli 0.162.0`; non-inference login status reports an
+existing ChatGPT login. Required CLI flags and feature names are present.
+
+| 0.162.0 capability | Verdict | Evidence |
+|---|---|---|
+| Ephemeral, ignore-user-config/rules, sandbox, JSON, final-file flags | PRESENT | installed `codex exec --help` |
+| Feature enable/disable and pinned tool-disable names | PRESENT | installed help and feature list |
+| Approval, web, MCP, apps, history and shell restrictions in a model turn | UNQUALIFIED | configured argv only; no event proof |
+| Whole-process host-file confinement in Morgoth provider | ABSENT | current subprocess launch has no namespace |
+| ChatGPT auth with narrow read-only login mount | PRESENT IN PROTOTYPE | namespaced non-inference `login status` |
+| Model-authorized outside read/write and tool-event denial | UNQUALIFIED | integrated canaries not run |
+
+Bubblewrap 0.9.0 can hide synthetic outside files and the repository while
+mounting only the two local Codex login files read-only; login status still
+works. The backend provider has **not** integrated this namespace, and model
+event/text canaries have not passed. No Codex model call, Weather finalization,
+or real Codex workload is claimed. The next step is a reviewed whole-process
+filesystem boundary and one gated text probe; no environment override can
+activate Codex early. Historical Claude experiments below remain as an
+append-only record, not current operating instructions.
+
+On this branch, the unchanged backend canonical hermetic runner passed
+2,078 tests (2 skipped). Desktop contract check, 15 frontend tests, asset
+build, Rust formatting, 19 library tests, 5 historical watchdog unit tests,
+8 transport tests and strict Clippy passed. The actual Tauri build produced
+`src-tauri/target/debug/morgoth-desktop`, an x86-64 Linux ELF of 28,567,064
+bytes. The disposable Rust-owned Management smoke and missing-research-config
+containment smoke passed against the pinned backend. A fresh real PAUSED/
+NOT_READY smoke was not run because no `morgoth_test` URL was configured;
+previous proofs remain historical. No Weather/Codex inference was run.
 
 ## Versions and tested target
 
@@ -252,7 +302,7 @@ The French screen loads Domains/Projects from the API and separates configuratio
 
 ## Native research development configuration and limits
 
-The Rust process accepts `MORGOTH_DESKTOP_BACKEND_ROOT`, `MORGOTH_DESKTOP_PYTHON`, and `MORGOTH_DESKTOP_HOME` at startup. Research initialization additionally requires native-only `MORGOTH_DESKTOP_RESEARCH_POSTGRES_URL`, `MORGOTH_DESKTOP_RESEARCH_OLLAMA_BASE_URL`, `MORGOTH_DESKTOP_RESEARCH_OLLAMA_PRIMARY_MODEL`, `MORGOTH_DESKTOP_RESEARCH_OLLAMA_AGENT_MODEL`, `MORGOTH_DESKTOP_RESEARCH_MAX_CONCURRENT_AGENTS`, `MORGOTH_DESKTOP_RESEARCH_LOG_RETENTION_DAYS`, and `MORGOTH_DESKTOP_RESEARCH_LOG_LEVEL_THOUGHT`. No value is accepted from React. Rust generates a fresh process-local `SECRET_KEY`; the child receives an explicit environment, not inherited production `.env`, task overrides or unrelated API keys. Rust locates the existing Claude executable and supplies the native user-home context without reading or copying its credentials. Claude READY is a non-inference precondition check, not proof of login/quota. Codex cannot run while the backend qualification lock is set.
+The Rust process accepts `MORGOTH_DESKTOP_BACKEND_ROOT`, `MORGOTH_DESKTOP_PYTHON`, and `MORGOTH_DESKTOP_HOME` at startup. Research initialization additionally requires native-only `MORGOTH_DESKTOP_RESEARCH_POSTGRES_URL`, `MORGOTH_DESKTOP_RESEARCH_OLLAMA_BASE_URL`, `MORGOTH_DESKTOP_RESEARCH_OLLAMA_PRIMARY_MODEL`, `MORGOTH_DESKTOP_RESEARCH_OLLAMA_AGENT_MODEL`, `MORGOTH_DESKTOP_RESEARCH_MAX_CONCURRENT_AGENTS`, `MORGOTH_DESKTOP_RESEARCH_LOG_RETENTION_DAYS`, and `MORGOTH_DESKTOP_RESEARCH_LOG_LEVEL_THOUGHT`. No value is accepted from React. Rust generates a fresh process-local `SECRET_KEY`; the child receives an explicit environment, not inherited production `.env`, task overrides or unrelated API keys. Rust locates the existing Codex executable and, for its Node wrapper, the minimal interpreter directory. It supplies native user-home context without reading or copying credentials. Codex remains BLOCKED while the backend qualification lock is set; binary presence and login status alone cannot make it READY.
 
 The research child starts PAUSED or NOT_READY. Backend `6a0dc9d` uses structural rail checks and a bounded local Ollama `/api/tags` preflight for Desktop PAUSED, and initializes its own objective storage; it does not run research tools, warmup chat or recurring research merely on initialization. The Rust client reads `<Project.runtime_dir>/auth/ui_token` only after confirming listener ownership, and never returns the token/path to JS. The future Desktop installer must replace the Python-checkout locator. Management auto-start remains independent. Chat/events, multiple simultaneous engines, installers and Windows/macOS qualification are deferred.
 

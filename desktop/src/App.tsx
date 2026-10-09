@@ -45,7 +45,8 @@ function ResearchPane({ project, transport }: { project: Project; transport: Res
   };
   const current = profiles.data?.profiles.find((item) => item.id === profiles.data.current);
   const canStart = ownsEngine && engine?.state === "PAUSED" && engine.runtime?.awakening_ready === true
-    && engine.runtime?.profile_status === "READY" && current?.status === "READY";
+    && engine.runtime?.profile === "codex" && engine.runtime?.profile_status === "READY"
+    && current?.id === "codex" && current?.status === "READY";
 
   return <section aria-label="Moteur de recherche">
     <h3>Moteur de recherche</h3>
@@ -68,6 +69,8 @@ function ResearchPane({ project, transport }: { project: Project; transport: Res
           {profiles.isError && <p role="alert">Profils indisponibles.</p>}
           {profiles.data && <>
             <p>Profil actuel : {profiles.data.current} · recommandation : {profiles.data.recommended ?? "aucune"}</p>
+            {profiles.data.profiles.find((item) => item.id === "codex")?.status === "BLOCKED" &&
+              <p>Codex est bloqué tant que sa qualification de sécurité n’est pas terminée. La recherche ne peut pas démarrer.</p>}
             <ul>{profiles.data.profiles.map((item) => <li key={item.id}>
               <strong>{item.id}</strong> · {item.status}
               {item.id === profiles.data.current ? " · actif" : null}

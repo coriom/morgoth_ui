@@ -1,5 +1,16 @@
 # PROGRESS.md — Morgoth UI Development Tracker
 
+## 2026-10-09 — Codex-only Desktop provider target
+
+The Desktop pins backend `ea222a22d8f15226f30e2e3af6fa615aa8e2a06d`.
+Management OpenAPI remains byte-identical. Native research startup discovers
+Codex/Node only; no Claude executable or readiness probe is required. The
+Projects screen displays the backend Codex BLOCKED verdict and permits START
+only for a READY selected Codex profile. Backend SAFE_FOR_WORKLOADS remains
+False pending integrated whole-process confinement and event/text canaries.
+No Codex inference, Weather finalization, production state or provider key
+was used in this pivot.
+
 ## 2026-10-09 — Claude update command succeeded; active CLI incompatible
 
 The sole authorized `claude update` exited 0, but the active executable's

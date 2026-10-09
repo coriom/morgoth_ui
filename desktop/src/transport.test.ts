@@ -24,7 +24,7 @@ describe("fixed native transport", () => {
     await nativeResearch.status();
     await nativeResearch.initialize("research_a");
     await nativeResearch.profiles();
-    await nativeResearch.selectProfile("claude");
+    await nativeResearch.selectProfile("codex");
     await nativeResearch.start();
     await nativeResearch.stop();
     expect(invoke.mock.calls.map((call) => call[0])).toEqual([
@@ -32,6 +32,6 @@ describe("fixed native transport", () => {
       "select_research_profile", "start_research", "stop_research_engine",
     ]);
     expect(invoke.mock.calls[1]?.[1]).toEqual({ projectId: "research_a" });
-    expect(invoke.mock.calls[3]?.[1]).toEqual({ profileId: "claude" });
+    expect(invoke.mock.calls[3]?.[1]).toEqual({ profileId: "codex" });
   });
 });

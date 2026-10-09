@@ -397,7 +397,7 @@ impl ResearchConfig {
         {
             return Err("PROVIDER_HOME_INVALID");
         }
-        let provider_runtime = ProviderRuntime::discover(&provider_home);
+        let provider_runtime = ProviderRuntime::discover();
         Ok(Self {
             shared,
             postgres_url: read("MORGOTH_DESKTOP_RESEARCH_POSTGRES_URL")?,
@@ -416,23 +416,23 @@ impl ResearchConfig {
 
 #[derive(Clone)]
 struct ProviderRuntime {
-    claude_executable_dir: PathBuf,
+    codex_executable_dir: PathBuf,
     required_runtime_dirs: Vec<PathBuf>,
 }
 
 impl ProviderRuntime {
-    fn discover(home: &Path) -> Option<Self> {
+    fn discover() -> Option<Self> {
         let native_path = std::env::var_os("PATH")?;
-        Self::from_native_path(&native_path, home)
+        Self::from_native_path(&native_path)
     }
 
-    fn from_native_path(native_path: &std::ffi::OsStr, home: &Path) -> Option<Self> {
-        let claude_executable_dir = find_executable_dir("claude", native_path)?;
-        let claude = claude_executable_dir.join("claude");
+    fn from_native_path(native_path: &std::ffi::OsStr) -> Option<Self> {
+        let codex_executable_dir = find_executable_dir("codex", native_path)?;
+        let codex = codex_executable_dir.join("codex");
         let mut required_runtime_dirs = Vec::new();
-        // Only an env-based Node wrapper needs Node on PATH. The installed
-        // native Claude binary has no such dependency.
-        let mut file = File::open(&claude).ok()?;
+        // The installed npm wrapper uses env node. Resolve only its interpreter
+        // directory; do not copy the native parent's whole PATH or credentials.
+        let mut file = File::open(&codex).ok()?;
         let mut prefix = [0_u8; 96];
         let count = file.read(&mut prefix[..2]).ok()?;
         if count == 2 && &prefix[..2] == b"#!" {
@@ -442,16 +442,15 @@ impl ProviderRuntime {
                 required_runtime_dirs.push(find_executable_dir("node", native_path)?);
             }
         }
-        let runtime = Self {
-            claude_executable_dir,
+        Some(Self {
+            codex_executable_dir,
             required_runtime_dirs,
-        };
-        runtime.probe(home).then_some(runtime)
+        })
     }
 
     fn path_value(&self) -> std::ffi::OsString {
         let mut dirs = Vec::new();
-        for dir in std::iter::once(self.claude_executable_dir.as_path())
+        for dir in std::iter::once(self.codex_executable_dir.as_path())
             .chain(self.required_runtime_dirs.iter().map(PathBuf::as_path))
             .chain([Path::new("/usr/bin"), Path::new("/bin")])
         {
@@ -460,34 +459,6 @@ impl ProviderRuntime {
             }
         }
         std::env::join_paths(dirs).expect("validated native executable directories")
-    }
-
-    fn probe(&self, home: &Path) -> bool {
-        let mut child = match Command::new(self.claude_executable_dir.join("claude"))
-            .arg("--version")
-            .env_clear()
-            .env("PATH", self.path_value())
-            .env("HOME", home)
-            .env("LANG", "C.UTF-8")
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-        {
-            Ok(child) => child,
-            Err(_) => return false,
-        };
-        let deadline = Instant::now() + Duration::from_secs(5);
-        loop {
-            match child.try_wait() {
-                Ok(Some(status)) => return status.success(),
-                Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(20)),
-                _ => {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    return false;
-                }
-            }
-        }
     }
 }
 
@@ -1007,6 +978,19 @@ impl ResearchEngineSupervisor {
         Ok(result)
     }
     pub async fn start(&self) -> Result<ResearchEngineStatus, NativeError> {
+        let snapshot = self.status();
+        if snapshot.state != ResearchPhase::Paused
+            || snapshot.runtime.as_ref().is_none_or(|runtime| {
+                runtime.profile != "codex"
+                    || runtime.profile_status != "READY"
+                    || !runtime.awakening_ready
+            })
+        {
+            return Err(NativeError::new(
+                "PROFILE_NOT_READY",
+                "Profil Codex non qualifié ou moteur non prêt.",
+            ));
+        }
         let client = self.client()?;
         let status = client.start().await?;
         self.update(status);
@@ -1148,50 +1132,29 @@ mod tests {
     use std::{fs, io::Write as _, process::Stdio};
 
     #[test]
-    fn native_provider_context_is_minimal_and_wrapper_runtime_is_explicit() {
+    fn native_codex_path_is_minimal_and_wrapper_runtime_is_explicit() {
         let root = tempfile::tempdir().unwrap();
-        let claude_dir = root.path().join("claude-bin");
+        let codex_dir = root.path().join("codex-bin");
         let node_dir = root.path().join("node-bin");
         let unrelated = root.path().join("unrelated");
-        for dir in [&claude_dir, &node_dir, &unrelated] {
+        for dir in [&codex_dir, &node_dir, &unrelated] {
             fs::create_dir(dir).unwrap();
         }
-        let claude = claude_dir.join("claude");
-        fs::write(&claude, b"#!/bin/sh\nexit 0\n").unwrap();
-        fs::set_permissions(&claude, fs::Permissions::from_mode(0o700)).unwrap();
-        let native_path = std::env::join_paths([&claude_dir, &unrelated, &node_dir]).unwrap();
-        assert_eq!(
-            find_executable_dir("claude", &native_path),
-            Some(claude_dir.clone())
-        );
-        assert!(ProviderRuntime {
-            claude_executable_dir: claude_dir.clone(),
-            required_runtime_dirs: Vec::new(),
-        }
-        .probe(root.path()));
-        let runtime = ProviderRuntime::from_native_path(&native_path, root.path()).unwrap();
-        assert!(runtime.required_runtime_dirs.is_empty());
-        assert!(runtime.probe(root.path()));
-        assert!(!runtime.path_value().to_string_lossy().contains("unrelated"));
-
-        fs::write(
-            &claude,
-            b"#!/usr/bin/env node\nthis is not valid JavaScript\n",
-        )
-        .unwrap();
-        fs::set_permissions(&claude, fs::Permissions::from_mode(0o700)).unwrap();
+        let codex = codex_dir.join("codex");
+        fs::write(&codex, b"#!/usr/bin/env node\n").unwrap();
+        fs::set_permissions(&codex, fs::Permissions::from_mode(0o700)).unwrap();
         let node = node_dir.join("node");
         fs::write(&node, b"#!/bin/sh\nexit 0\n").unwrap();
         fs::set_permissions(&node, fs::Permissions::from_mode(0o700)).unwrap();
-        let old = ProviderRuntime {
-            claude_executable_dir: claude_dir.clone(),
-            required_runtime_dirs: Vec::new(),
-        };
-        assert!(!old.probe(root.path()));
-        let runtime = ProviderRuntime::from_native_path(&native_path, root.path()).unwrap();
+        let native_path = std::env::join_paths([&codex_dir, &unrelated, &node_dir]).unwrap();
+        let runtime = ProviderRuntime::from_native_path(&native_path).unwrap();
         assert_eq!(runtime.required_runtime_dirs, vec![node_dir]);
-        assert!(runtime.probe(root.path()));
+        assert!(runtime
+            .path_value()
+            .to_string_lossy()
+            .starts_with(&codex_dir.to_string_lossy().to_string()));
         assert!(!runtime.path_value().to_string_lossy().contains("unrelated"));
+        assert!(ProviderRuntime::from_native_path(unrelated.as_os_str()).is_none());
     }
 
     #[test]
@@ -1288,7 +1251,7 @@ mod tests {
             log_level_thought: "0".into(),
             provider_home: home.path().into(),
             provider_runtime: Some(ProviderRuntime {
-                claude_executable_dir: "/opt/synthetic-claude/bin".into(),
+                codex_executable_dir: "/opt/synthetic-codex/bin".into(),
                 required_runtime_dirs: Vec::new(),
             }),
             runtime_overrides: Vec::new(),
@@ -1335,7 +1298,7 @@ mod tests {
             .unwrap();
         assert!(path
             .to_string_lossy()
-            .starts_with("/opt/synthetic-claude/bin:"));
+            .starts_with("/opt/synthetic-codex/bin:"));
     }
 
     #[test]
@@ -1611,7 +1574,7 @@ mod tests {
     fn synthetic_paused_profile_selection_start_uses_only_fixed_routes() {
         let (_home, path, token) = private_token();
         let mut selected = status("PAUSED");
-        selected.profile = "claude".into();
+        selected.profile = "codex".into();
         selected.profile_status = "READY".into();
         let mut running = selected.clone();
         running.research_state = "RUNNING".into();
@@ -1619,7 +1582,7 @@ mod tests {
         let before = ProfilesResponse {
             schema_version: 1,
             current: "legacy".into(),
-            recommended: Some("claude".into()),
+            recommended: Some("codex".into()),
             profiles: vec![
                 ProfileView {
                     id: "legacy".into(),
@@ -1628,21 +1591,15 @@ mod tests {
                     providers: Default::default(),
                 },
                 ProfileView {
-                    id: "claude".into(),
-                    status: "READY".into(),
-                    reason: "synthetic".into(),
-                    providers: Default::default(),
-                },
-                ProfileView {
                     id: "codex".into(),
-                    status: "BLOCKED".into(),
+                    status: "READY".into(),
                     reason: "synthetic".into(),
                     providers: Default::default(),
                 },
             ],
         };
         let after = ProfilesResponse {
-            current: "claude".into(),
+            current: "codex".into(),
             ..before.clone()
         };
         let replies = [
@@ -1685,11 +1642,11 @@ mod tests {
                     .find(|p| p.id == "codex")
                     .unwrap()
                     .status,
-                "BLOCKED"
+                "READY"
             );
             assert_eq!(
-                client.select_profile("claude").await.unwrap().current,
-                "claude"
+                client.select_profile("codex").await.unwrap().current,
+                "codex"
             );
             assert_eq!(client.start().await.unwrap().research_state, "RUNNING");
         });
@@ -1703,7 +1660,7 @@ mod tests {
             assert!(request.starts_with(expected));
             assert!(request.contains(&format!("x-morgoth-token: {token}")));
         }
-        assert!(requests[2].contains("\"profile\":\"claude\""));
+        assert!(requests[2].contains("\"profile\":\"codex\""));
         assert!(!requests
             .iter()
             .any(|r| r.contains("codex-cli") || r.contains("/api/chat")));
@@ -1756,15 +1713,15 @@ class Handler(BaseHTTPRequestHandler):
         return dict(schema_version=1, project=project, domain='crypto', code_sha='__SHA__',
                     initialized=True, awakening_ready=True, research_state=state,
                     autonomous_task_alive=(state == 'RUNNING'), profile=profile,
-                    profile_status=('READY' if profile == 'claude' else 'BLOCKED'))
+                    profile_status=('READY' if profile == 'codex' else 'BLOCKED'))
     def liveness(self):
         return dict(schema_version=1, project=project, domain='crypto', code_sha='__SHA__',
                     initialized=True, research_state=state,
                     autonomous_task_alive=(state == 'RUNNING'), autonomous_failure=None)
     def profiles(self):
-        return dict(schema_version=1, current=profile, recommended='claude', profiles=[
+        return dict(schema_version=1, current=profile, recommended='codex', profiles=[
             dict(id=name, status=readiness, reason='fixture', providers={})
-            for name, readiness in [('legacy', 'BLOCKED'), ('claude', 'READY'), ('codex', 'BLOCKED')]])
+            for name, readiness in [('legacy', 'BLOCKED'), ('codex', 'READY')]])
     def do_GET(self):
         global liveness_calls
         if not self.authorized(): return
@@ -1782,14 +1739,15 @@ class Handler(BaseHTTPRequestHandler):
         if not self.authorized(): return
         if self.path == '/api/runtime/v1/profile':
             value = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
-            if value != {'profile': 'claude'}: self.send_error(409); return
-            profile = 'claude'; self.reply(self.profiles())
+            if value != {'profile': 'codex'}: self.send_error(409); return
+            profile = 'codex'; self.reply(self.profiles())
         elif self.path == '/api/runtime/v1/start':
-            if profile != 'claude': self.send_error(409); return
+            if profile != 'codex': self.send_error(409); return
             state = 'RUNNING'; self.reply(self.status())
         else: self.send_error(404)
 HTTPServer(('127.0.0.1', port), Handler).serve_forever()
-"###.replace("__SHA__", BACKEND_SHA);
+"###
+        .replace("__SHA__", BACKEND_SHA);
         fs::write(&script, source).unwrap();
         fs::set_permissions(&script, fs::Permissions::from_mode(0o700)).unwrap();
         let config = ResearchConfig {
@@ -1828,6 +1786,10 @@ HTTPServer(('127.0.0.1', port), Handler).serve_forever()
             .build()
             .unwrap();
         rt.block_on(async {
+            assert_eq!(
+                supervisor.start().await.err().unwrap().kind,
+                "PROFILE_NOT_READY"
+            );
             let profiles = supervisor.profiles().await.unwrap();
             assert_eq!(profiles.current, "legacy");
             assert_eq!(
@@ -1837,11 +1799,11 @@ HTTPServer(('127.0.0.1', port), Handler).serve_forever()
                     .find(|p| p.id == "codex")
                     .unwrap()
                     .status,
-                "BLOCKED"
+                "READY"
             );
             assert_eq!(
-                supervisor.select_profile("claude").await.unwrap().current,
-                "claude"
+                supervisor.select_profile("codex").await.unwrap().current,
+                "codex"
             );
             assert_eq!(
                 supervisor.start().await.unwrap().state,
