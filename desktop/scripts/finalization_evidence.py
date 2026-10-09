@@ -16,6 +16,7 @@ from loguru import logger
 
 from core.project import current_namespace
 from memory.persistent import CYCLE_FAILURE_STAGES
+from self_modify.reflect_llm import ReflectLLMError
 
 logger.remove()
 
@@ -46,6 +47,26 @@ def sanitize_cycle_failures(rows: Sequence[Mapping[str, object]]) -> list[dict[s
                 or re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,63}", error_class) is None):
             raise RuntimeError("INVALID_CYCLE_FAILURE_RECORD")
         safe.append({"cycle": cycle, "stage": stage, "error_class": error_class})
+    return safe
+
+
+def sanitize_llm_calls(rows: Sequence[Mapping[str, object]]) -> list[dict[str, object]]:
+    """Emit only bounded provider completion metadata, never process output."""
+    if len(rows) > 20:
+        raise RuntimeError("CALLS_BOUND_EXCEEDED")
+    safe = []
+    for row in rows:
+        task, provider, outcome = row["task"], row["provider"], row["outcome"]
+        code, size, latency = row["error_code"], row["response_bytes"], row["latency_ms"]
+        if (task not in ("synthesis", "thesis") or provider != "claude-cli"
+                or not isinstance(outcome, str)
+                or re.fullmatch(r"(?:ok|error:[A-Za-z_][A-Za-z0-9_]{0,63})", outcome) is None
+                or (code is not None and code not in ReflectLLMError._SAFE_CODES)
+                or not isinstance(size, int) or isinstance(size, bool) or size < 0
+                or not isinstance(latency, int) or isinstance(latency, bool) or latency < 0):
+            raise RuntimeError("INVALID_LLM_CALL_RECORD")
+        safe.append({"task": task, "provider": provider, "outcome": outcome,
+                     "error_code": code, "response_bytes": size, "latency_ms": latency})
     return safe
 
 
@@ -112,7 +133,7 @@ async def inspect(objective_id: str) -> dict[str, object]:
             if call_count > 20:
                 raise RuntimeError("CALLS_BOUND_EXCEEDED")
             calls = await conn.fetch(
-                "SELECT task, provider, outcome, response_bytes FROM llm_calls "
+                "SELECT task, provider, outcome, error_code, response_bytes, latency_ms FROM llm_calls "
                 "WHERE task IN ('synthesis','thesis') ORDER BY created_at, id"
             )
             fidelity = await conn.fetch(
@@ -153,7 +174,7 @@ async def inspect(objective_id: str) -> dict[str, object]:
                 "synthesis_bytes": synthesis["bytes"] if synthesis and synthesis["bytes"] else 0,
                 "synthesis_md5": synthesis["digest"] if synthesis else None,
                 "synthesis_sources": synthesis_sources,
-                "llm_calls": [dict(call) for call in calls],
+                "llm_calls": sanitize_llm_calls(calls),
                 "fallback_count": fallbacks,
                 "theses": [{"id": str(t["thesis_id"])} for t in theses],
                 "persisted_drop_subject_count": sum(

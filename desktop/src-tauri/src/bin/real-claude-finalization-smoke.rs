@@ -173,7 +173,39 @@ struct LlmCall {
     task: String,
     provider: String,
     outcome: String,
+    error_code: Option<String>,
     response_bytes: u32,
+    latency_ms: u32,
+}
+
+fn provider_failure_code(task: &str, safe_code: Option<&str>) -> &'static str {
+    match (task, safe_code) {
+        ("synthesis", Some("CLAUDE_CLI_NOT_FOUND")) => "BLOCKED_SYNTHESIS_CLAUDE_CLI_NOT_FOUND",
+        ("synthesis", Some("CLAUDE_CLI_TIMEOUT")) => "BLOCKED_SYNTHESIS_CLAUDE_CLI_TIMEOUT",
+        ("synthesis", Some("CLAUDE_CLI_EXIT_NONZERO")) => {
+            "BLOCKED_SYNTHESIS_CLAUDE_CLI_EXIT_NONZERO"
+        }
+        ("synthesis", Some("CLAUDE_CLI_JSON_INVALID")) => {
+            "BLOCKED_SYNTHESIS_CLAUDE_CLI_JSON_INVALID"
+        }
+        ("synthesis", Some("CLAUDE_CLI_JSON_NOT_OBJECT")) => {
+            "BLOCKED_SYNTHESIS_CLAUDE_CLI_JSON_NOT_OBJECT"
+        }
+        ("synthesis", Some("CLAUDE_CLI_REPORTED_ERROR")) => {
+            "BLOCKED_SYNTHESIS_CLAUDE_CLI_REPORTED_ERROR"
+        }
+        ("thesis", Some("CLAUDE_CLI_NOT_FOUND")) => "BLOCKED_THESIS_CLAUDE_CLI_NOT_FOUND",
+        ("thesis", Some("CLAUDE_CLI_TIMEOUT")) => "BLOCKED_THESIS_CLAUDE_CLI_TIMEOUT",
+        ("thesis", Some("CLAUDE_CLI_EXIT_NONZERO")) => "BLOCKED_THESIS_CLAUDE_CLI_EXIT_NONZERO",
+        ("thesis", Some("CLAUDE_CLI_JSON_INVALID")) => "BLOCKED_THESIS_CLAUDE_CLI_JSON_INVALID",
+        ("thesis", Some("CLAUDE_CLI_JSON_NOT_OBJECT")) => {
+            "BLOCKED_THESIS_CLAUDE_CLI_JSON_NOT_OBJECT"
+        }
+        ("thesis", Some("CLAUDE_CLI_REPORTED_ERROR")) => "BLOCKED_THESIS_CLAUDE_CLI_REPORTED_ERROR",
+        ("synthesis", _) => "BLOCKED_SYNTHESIS_PROVIDER_UNKNOWN",
+        ("thesis", _) => "BLOCKED_THESIS_PROVIDER_UNKNOWN",
+        _ => "BLOCKED_UNEXPECTED_PROVIDER_CALL",
+    }
 }
 
 #[derive(Deserialize)]
@@ -478,7 +510,9 @@ fn main() {
                         call.task.as_str(),
                         call.provider.as_str(),
                         call.outcome.as_str(),
+                        call.error_code.as_deref(),
                         call.response_bytes,
+                        call.latency_ms,
                     ))
                     .collect::<Vec<_>>()
             ));
@@ -526,6 +560,12 @@ fn main() {
                 }),
                 "BLOCKED_UNEXPECTED_PROVIDER_CALL"
             );
+            if let Some(call) = snapshot.llm_calls.iter().find(|call| call.outcome != "ok") {
+                panic!(
+                    "{}",
+                    provider_failure_code(&call.task, call.error_code.as_deref())
+                );
+            }
             let synthesis_ok = snapshot
                 .llm_calls
                 .iter()
@@ -533,6 +573,8 @@ fn main() {
                     call.task == "synthesis"
                         && call.provider == "claude-cli"
                         && call.outcome == "ok"
+                        && call.error_code.is_none()
+                        && call.response_bytes > 0
                 })
                 .count()
                 == 1;
@@ -540,7 +582,11 @@ fn main() {
                 .llm_calls
                 .iter()
                 .filter(|call| {
-                    call.task == "thesis" && call.provider == "claude-cli" && call.outcome == "ok"
+                    call.task == "thesis"
+                        && call.provider == "claude-cli"
+                        && call.outcome == "ok"
+                        && call.error_code.is_none()
+                        && call.response_bytes > 0
                 })
                 .count()
                 == 1;
@@ -627,6 +673,7 @@ fn main() {
                     .filter(|call| call.task == task
                         && call.provider == "claude-cli"
                         && call.outcome == "ok"
+                        && call.error_code.is_none()
                         && call.response_bytes > 0)
                     .count(),
                 1,
@@ -727,6 +774,22 @@ fn main() {
 #[cfg(test)]
 mod watchdog_tests {
     use super::*;
+
+    #[test]
+    fn provider_failures_have_only_fixed_safe_diagnostics() {
+        assert_eq!(
+            provider_failure_code("synthesis", Some("CLAUDE_CLI_TIMEOUT")),
+            "BLOCKED_SYNTHESIS_CLAUDE_CLI_TIMEOUT"
+        );
+        assert_eq!(
+            provider_failure_code("thesis", Some("CLAUDE_CLI_REPORTED_ERROR")),
+            "BLOCKED_THESIS_CLAUDE_CLI_REPORTED_ERROR"
+        );
+        assert_eq!(
+            provider_failure_code("synthesis", Some("TOP_SECRET_DO_NOT_PERSIST")),
+            "BLOCKED_SYNTHESIS_PROVIDER_UNKNOWN"
+        );
+    }
 
     #[test]
     fn first_durable_failure_stops_before_finalization_wait() {

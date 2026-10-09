@@ -3,10 +3,23 @@
 import json
 import unittest
 
-from finalization_evidence import sanitize_cycle_failures
+from finalization_evidence import sanitize_cycle_failures, sanitize_llm_calls
 
 
 class FailureEvidenceTests(unittest.TestCase):
+    def test_llm_call_serialization_excludes_raw_provider_output(self) -> None:
+        row = {"task": "synthesis", "provider": "claude-cli",
+               "outcome": "error:ReflectLLMError", "error_code": "CLAUDE_CLI_TIMEOUT",
+               "response_bytes": 0, "latency_ms": 42,
+               "stderr": "TOP_SECRET_DO_NOT_PERSIST", "prompt": "TOP_SECRET_DO_NOT_PERSIST"}
+        output = json.dumps(sanitize_llm_calls([row]))
+        self.assertNotIn("TOP_SECRET", output)
+        self.assertEqual(json.loads(output)[0]["error_code"], "CLAUDE_CLI_TIMEOUT")
+        for altered in ({**row, "error_code": "TOP_SECRET_DO_NOT_PERSIST"},
+                        {**row, "outcome": "error:secret text"}):
+            with self.assertRaisesRegex(RuntimeError, "INVALID_LLM_CALL_RECORD"):
+                sanitize_llm_calls([altered])
+
     def test_extra_raw_exception_fields_never_enter_json(self) -> None:
         rows = [{
             "cycle": 1, "stage": "WORK_INFERENCE", "error_class": "ReadTimeout",

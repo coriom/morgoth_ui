@@ -8,7 +8,7 @@ React Projects screen → thirteen fixed Tauri commands
   → Rust ResearchEngineSupervisor → one selected-Project research child
 ```
 
-Both supervisors pin backend `3d60e1432a4bd6ae0891a3eb66a89fb9c70f572a` and refuse another HEAD or a dirty checkout. The Management OpenAPI artifact regenerated from that commit is byte-identical to the pinned frontend artifact (SHA-256 `681e6e6311ded43bdd28e387178641caec45535c201a3dce4ed8ecc765e79b76`). `npm run contract:check` validates the generated TypeScript types. The strict Rust runtime/profile DTOs match the backend response models; five authenticated research routes remain fixed in Rust, including cheap `/liveness` for steady-state monitoring.
+Both supervisors pin backend `9b982540e4bb53a2b5045d22dc67eee525a557eb` and refuse another HEAD or a dirty checkout. The Management OpenAPI artifact regenerated from that commit is byte-identical to the pinned frontend artifact (SHA-256 `681e6e6311ded43bdd28e387178641caec45535c201a3dce4ed8ecc765e79b76`). `npm run contract:check` validates the generated TypeScript types. The strict Rust runtime/profile DTOs match the backend response models; five authenticated research routes remain fixed in Rust, including cheap `/liveness` for steady-state monitoring.
 
 The former two-second Rust monitor polled `/status`, which recomputes profile readiness through Ollama tags, hardware and Claude version probes. Backend `6a0dc9d` adds token-protected `/liveness` containing only identity and owned-task state; Rust now polls it and retains the last explicit full profile-readiness result for display. A backend task failure maps to a bounded `BACKEND_TASK_*` diagnostic. Full status and profile controls still perform qualified readiness checks. This removes the control-plane liveness hazard; causality of the prior `d5122ba` failure remains unproven.
 
@@ -193,6 +193,14 @@ One fresh disposable `morgoth_test` run used objective `ddd7f871-cc47-47d4-a8db-
 | Claude thesis; thesis/abstention; live numeric gate | NOT EXERCISED |
 | Fallback; second objective | 0; 0 |
 | Outcome | **BLOCKED_SYNTHESIS_PROVIDER**; no retry |
+
+### 2026-10-09: isolated Claude CLI provider diagnosis
+
+Backend `9b982540e4bb53a2b5045d22dc67eee525a557eb` adds a fixed `ReflectLLMError.safe_code` and nullable Project-local `llm_calls.error_code`. The historical `outcome=error:ReflectLLMError` remains unchanged. The previous synthesis failure **cannot** be classified retroactively: its disposable database was deleted before `error_code` existed. The Management OpenAPI remained byte-identical; both native supervisors and disposable wrappers now pin this clean commit. The finalization helper reads only bounded task, provider, outcome, safe code, response size and latency; fixed Rust diagnostics distinguish known provider failure classes. No WebView command was added.
+
+The non-inference sanitized environment passed `claude --version` and `claude --help` checks for `-p`, `--output-format` and `--tools`. Exactly **one** isolated call used the pinned backend `_claude_cli_call` with prompt `Reply with exactly OK.`, native minimal PATH, operator HOME, `LANG=C.UTF-8`, no `ANTHROPIC_API_KEY`, and the provider's neutral temporary cwd. It returned **BLOCKED / CLAUDE_CLI_EXIT_NONZERO** after 19,265 ms. No response body, CLI stdout/stderr, prompt transcript or auth material was emitted. This safe class proves a nonzero CLI exit; it does **not** establish whether authentication, quota, argument rejection or network was responsible. The gate stopped live inference: **no Weather finalization attempt and no retry** on this branch. Claude synthesis/thesis, thesis-or-abstention and live numeric fidelity remain unqualified.
+
+To reproduce the guarded probe in a later *separately authorized* attempt, use `python scripts/claude_provider_probe.py --backend <absolute-clean-pinned-backend-worktree> --python <absolute-python-venv-executable>` from `desktop/`. The command checks the pinned checkout and CLI flags, then makes one inference; do not run it as a readiness check. Earlier `d512`, `6a0`, `393c`, `e11e`, `b6` and `3d60` attempts remain recorded above.
 
 The WSLg Linux window was launched again on 2026-10-08 with a disposable Weather Project and fake `/api/tags` Ollama, with no research START. AT-SPI showed `Desktop probe desktop_probe · weather`; selecting that ordinary Project button revealed `Moteur de recherche` and `Initialiser le moteur`. The loaded Project catalog and Rust-owned Management child establish management connectivity. No native initialize/START click was made. The bounded harness reaped its window and child.
 

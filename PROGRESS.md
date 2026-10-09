@@ -1,5 +1,17 @@
 # PROGRESS.md — Morgoth UI Development Tracker
 
+## 2026-10-09 — Safe Claude provider code; isolated gate blocked
+
+Both supervisors pin clean backend `9b982540e4bb53a2b5045d22dc67eee525a557eb`;
+Management OpenAPI is unchanged. Bounded finalization evidence now includes
+`llm_calls.error_code` and latency, with fixed Rust failure diagnostics and no
+WebView authority change. Native CLI version/help checks passed. The **one**
+isolated `_claude_cli_call` returned `CLAUDE_CLI_EXIT_NONZERO` after 19,265 ms.
+No Weather qualification ran and no retry occurred. Previous generic synthesis
+failure remains unclassified. Frontend 15 tests, Rust 19+5+8 tests, strict Clippy,
+native build, Management/synthetic research and real PAUSED/NOT_READY passed;
+see `desktop/README.md` for separate proof boundaries. No dependency added.
+
 ## 2026-10-09 — Durable cycle diagnostics; one synthesis-provider block
 
 Both native supervisors now pin clean backend `3d60e14`; regenerated
