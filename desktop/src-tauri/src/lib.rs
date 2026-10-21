@@ -515,15 +515,6 @@ mod desktop {
         supervisor.client()?.validate_project(&project_id).await
     }
     #[tauri::command]
-    pub async fn create_project(
-        window: WebviewWindow,
-        supervisor: State<'_, ManagementSupervisor>,
-        input: CreateProjectRequest,
-    ) -> Result<ProjectCreation, NativeError> {
-        main_only(&window)?;
-        supervisor.client()?.create_project(&input).await
-    }
-    #[tauri::command]
     pub fn research_engine_status(
         window: WebviewWindow,
         supervisor: State<'_, ResearchEngineSupervisor>,
@@ -532,52 +523,12 @@ mod desktop {
         Ok(supervisor.status())
     }
     #[tauri::command]
-    pub async fn initialize_research_engine(
-        window: WebviewWindow,
-        supervisor: State<'_, ResearchEngineSupervisor>,
-        project_id: String,
-    ) -> Result<ResearchEngineStatus, NativeError> {
-        main_only(&window)?;
-        supervisor.initialize(project_id).await
-    }
-    #[tauri::command]
     pub async fn research_profiles(
         window: WebviewWindow,
         supervisor: State<'_, ResearchEngineSupervisor>,
     ) -> Result<ProfilesResponse, NativeError> {
         main_only(&window)?;
         supervisor.profiles().await
-    }
-    #[tauri::command]
-    pub async fn select_research_profile(
-        window: WebviewWindow,
-        supervisor: State<'_, ResearchEngineSupervisor>,
-        profile_id: String,
-    ) -> Result<ProfilesResponse, NativeError> {
-        main_only(&window)?;
-        supervisor.select_profile(&profile_id).await
-    }
-    #[tauri::command]
-    pub async fn start_research(
-        window: WebviewWindow,
-        supervisor: State<'_, ResearchEngineSupervisor>,
-    ) -> Result<ResearchEngineStatus, NativeError> {
-        main_only(&window)?;
-        supervisor.start().await
-    }
-    #[tauri::command]
-    pub async fn stop_research_engine(
-        window: WebviewWindow,
-        supervisor: State<'_, ResearchEngineSupervisor>,
-    ) -> Result<ResearchEngineStatus, NativeError> {
-        main_only(&window)?;
-        let owned = supervisor.inner().clone();
-        tauri::async_runtime::spawn_blocking(move || owned.stop())
-            .await
-            .map_err(|_| {
-                NativeError::new("RESEARCH_STOP_FAILED", "Arrêt du moteur non confirmé.")
-            })?;
-        Ok(supervisor.status())
     }
     pub fn run() {
         let config = SupervisorConfig::from_environment();
@@ -595,7 +546,7 @@ mod desktop {
                     "tauri://localhost"
                 };
                 WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
-                    .title("Morgoth · Projets")
+                    .title("Morgoth · Command Center")
                     .inner_size(1120.0, 780.0)
                     .on_navigation(move |url| {
                         let origin = url.origin().ascii_serialization();
@@ -612,13 +563,8 @@ mod desktop {
                 list_projects,
                 get_project,
                 validate_project,
-                create_project,
                 research_engine_status,
-                initialize_research_engine,
                 research_profiles,
-                select_research_profile,
-                start_research,
-                stop_research_engine
             ])
             .build(tauri::generate_context!())
             .expect("Morgoth desktop runtime failed");

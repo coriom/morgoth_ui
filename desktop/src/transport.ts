@@ -7,8 +7,6 @@ export type DomainList = components["schemas"]["DomainList"];
 export type ProjectList = components["schemas"]["ProjectList"];
 export type Project = components["schemas"]["ProjectView"];
 export type Validation = components["schemas"]["ProjectValidation"];
-export type Creation = components["schemas"]["ProjectCreation"];
-export type CreateInput = components["schemas"]["CreateProjectRequest"];
 export type RuntimeStatus = { state: "STARTING" | "READY" | "FAILED" | "STOPPING" | "STOPPED"; diagnostic: string | null };
 
 export interface ManagementTransport {
@@ -18,7 +16,6 @@ export interface ManagementTransport {
   projects(): Promise<ProjectList>;
   project(id: string): Promise<Project>;
   validation(id: string): Promise<Validation>;
-  create(input: CreateInput): Promise<Creation>;
 }
 
 /** Only fixed commands cross the WebView-to-native boundary. */
@@ -29,7 +26,6 @@ export const nativeManagement: ManagementTransport = {
   projects: () => invoke<ProjectList>("list_projects"),
   project: (id) => invoke<Project>("get_project", { projectId: id }),
   validation: (id) => invoke<Validation>("validate_project", { projectId: id }),
-  create: (input) => invoke<Creation>("create_project", { input }),
 };
 
 export type ResearchPhase = "STOPPED" | "STARTING" | "PAUSED" | "NOT_READY" | "RUNNING" | "FAILED" | "STOPPING";
@@ -50,21 +46,13 @@ export type ResearchProfiles = {
 };
 export interface ResearchTransport {
   status(): Promise<ResearchEngineStatus>;
-  initialize(projectId: string): Promise<ResearchEngineStatus>;
   profiles(): Promise<ResearchProfiles>;
-  selectProfile(profileId: string): Promise<ResearchProfiles>;
-  start(): Promise<ResearchEngineStatus>;
-  stop(): Promise<ResearchEngineStatus>;
 }
 
-/** Native authority is limited to six fixed research operations. */
+/** D1 native authority exposes only status and profile reads. */
 export const nativeResearch: ResearchTransport = {
   status: () => invoke<ResearchEngineStatus>("research_engine_status"),
-  initialize: (projectId) => invoke<ResearchEngineStatus>("initialize_research_engine", { projectId }),
   profiles: () => invoke<ResearchProfiles>("research_profiles"),
-  selectProfile: (profileId) => invoke<ResearchProfiles>("select_research_profile", { profileId }),
-  start: () => invoke<ResearchEngineStatus>("start_research"),
-  stop: () => invoke<ResearchEngineStatus>("stop_research_engine"),
 };
 
 export type NativeError = { kind?: string; code?: string; status?: number };

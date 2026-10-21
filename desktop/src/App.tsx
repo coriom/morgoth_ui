@@ -1,212 +1,178 @@
-import { useState, type FormEvent } from "react";
-import { QueryClient, QueryClientProvider, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { managementError, nativeManagement, nativeResearch, type CreateInput, type ManagementTransport,
-  type Project, type ResearchEngineStatus, type ResearchTransport } from "./transport";
+import { useState, type ReactNode } from "react";
+import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
+import { nativeManagement, nativeResearch, type ManagementTransport, type ResearchTransport } from "./transport";
+import { readManagementStatus, readProject, readProjectList, readResearchProfiles, readResearchStatus, readRuntimeStatus } from "./readModels";
 
-const connection = "native-management-v1";
-const researchConnection = "native-research-v1";
+type View = "overview" | "missions" | "capabilities" | "models" | "security" | "projects";
+const views: ReadonlyArray<{ id: View; label: string; code: string }> = [
+  { id: "overview", label: "Vue d’ensemble", code: "01" },
+  { id: "missions", label: "Missions", code: "02" },
+  { id: "capabilities", label: "Capacités", code: "03" },
+  { id: "models", label: "Modèles & runtime", code: "04" },
+  { id: "security", label: "Sécurité", code: "05" },
+  { id: "projects", label: "Projets", code: "06" },
+];
 
-function ProjectDetails({ project }: { project: Project }) {
-  return <dl className="details">
-    <div><dt>Identifiant</dt><dd>{project.id}</dd></div>
-    <div><dt>Domaine</dt><dd>{project.domain}</dd></div>
-    <div><dt>Schéma PostgreSQL</dt><dd>{project.postgres_schema}</dd></div>
-    <div><dt>Préfixe Chroma</dt><dd>{project.chroma_prefix || "—"}</dd></div>
-    <div><dt>Espace de travail</dt><dd>{project.workspace_root || "Projet historique"}</dd></div>
-    <div><dt>Coffre</dt><dd>{project.vault_dir}</dd></div>
-    <div><dt>État local</dt><dd>{project.runtime_dir}</dd></div>
-  </dl>;
+function Fact({ label, value, source = "Observé", tone = "neutral" }: {
+  label: string; value: string; source?: string; tone?: "neutral" | "good" | "warn";
+}) {
+  return <div className="fact"><dt>{label}<small>{source}</small></dt><dd className={tone}>{value}</dd></div>;
 }
 
-/** Selecting a Project changes only this view; no engine is started or rebound. */
-function ResearchPane({ project, transport }: { project: Project; transport: ResearchTransport }) {
-  const cache = useQueryClient();
-  const status = useQuery({ queryKey: [researchConnection, "status"], queryFn: transport.status,
-    refetchInterval: (query) => query.state.data?.state === "STARTING" ? 500 : 2000 });
-  const engine = status.data;
-  const ownsEngine = engine?.project_id === project.id;
-  const activeElsewhere = !!engine?.project_id && !ownsEngine && engine.state !== "STOPPED";
-  const initialized = ownsEngine && ["PAUSED", "NOT_READY", "RUNNING"].includes(engine?.state ?? "");
-  const profiles = useQuery({ queryKey: [researchConnection, "profiles", engine?.project_id],
-    queryFn: transport.profiles, enabled: initialized });
-  const refresh = async () => {
-    await cache.invalidateQueries({ queryKey: [researchConnection, "status"] });
-    await cache.invalidateQueries({ queryKey: [researchConnection, "profiles"] });
-  };
-  const initialize = useMutation({ mutationFn: () => transport.initialize(project.id), onSuccess: refresh });
-  const select = useMutation({ mutationFn: (id: string) => transport.selectProfile(id), onSuccess: refresh });
-  const start = useMutation({ mutationFn: transport.start, onSuccess: refresh });
-  const stop = useMutation({ mutationFn: transport.stop, onSuccess: refresh });
-  const busy = initialize.isPending || select.isPending || start.isPending || stop.isPending;
-  const labels: Record<ResearchEngineStatus["state"], string> = {
-    STOPPED: "Moteur non initialisé", STARTING: "Initialisation…",
-    PAUSED: "Moteur prêt · recherche en pause", NOT_READY: "Dépendances incomplètes",
-    RUNNING: "Recherche autonome active", FAILED: "Moteur en erreur", STOPPING: "Arrêt en cours…",
-  };
-  const current = profiles.data?.profiles.find((item) => item.id === profiles.data.current);
-  const canStart = ownsEngine && engine?.state === "PAUSED" && engine.runtime?.awakening_ready === true
-    && engine.runtime?.profile === "codex" && engine.runtime?.profile_status === "READY"
-    && current?.id === "codex" && current?.status === "READY"
-    && profiles.data?.codex.workloads_ready === true;
-
-  return <section aria-label="Moteur de recherche">
-    <h3>Moteur de recherche</h3>
-    {project.legacy ? <p>La supervision Desktop n’est pas disponible pour le projet historique.</p> : <>
-      {status.isPending && <p className="skeleton">Chargement de l’état du moteur…</p>}
-      {status.isError && <p role="alert">État du moteur indisponible. La gestion des projets reste accessible.</p>}
-      {engine && <>
-        <p className="state">{ownsEngine || engine.state === "STOPPED" ? labels[engine.state]
-          : `Le moteur du projet ${engine.project_id} reste actif · ${labels[engine.state]}`}</p>
-        {activeElsewhere && <p>Choisissez {engine.project_id} pour l’arrêter avant d’initialiser ce projet.</p>}
-        {ownsEngine && engine.state === "NOT_READY" && <p>Le processus est accessible, mais ses dépendances ne permettent pas de démarrer la recherche.</p>}
-        {ownsEngine && engine.state === "FAILED" && <p role="alert">Échec du moteur. La gestion des projets reste disponible.</p>}
-        {engine.state === "STOPPED" && <button type="button" disabled={busy || !project.configuration_valid}
-          onClick={() => initialize.mutate()}>Initialiser le moteur</button>}
-        {ownsEngine && engine.state !== "STOPPED" && engine.state !== "STOPPING" &&
-          <button type="button" disabled={busy} onClick={() => stop.mutate()}>Arrêter le moteur</button>}
-        {initialized && <>
-          <h3>Profil LLM</h3>
-          {profiles.isPending && <p className="skeleton">Chargement des profils…</p>}
-          {profiles.isError && <p role="alert">Profils indisponibles.</p>}
-          {profiles.data && <>
-            <p>Profil actuel : {profiles.data.current} · recommandation : {profiles.data.recommended ?? "aucune"}</p>
-            <dl className="details" aria-label="Qualification Codex">
-              <div><dt>Codex installé</dt><dd>{profiles.data.codex.installed ? "Oui" : "Non"}</dd></div>
-              <div><dt>Authentification Codex</dt><dd>{profiles.data.codex.authenticated ? "Disponible" : "Indisponible"}</dd></div>
-              <div><dt>Confinement disponible</dt><dd>{profiles.data.codex.sandbox_available ? "Oui" : "Non"}</dd></div>
-              <div><dt>Confinement qualifié</dt><dd>{profiles.data.codex.sandbox_qualified ? "Oui" : "Non"}</dd></div>
-              <div><dt>Charges de recherche Codex</dt><dd>{profiles.data.codex.workloads_ready ? "Prêtes" : "Bloquées"}</dd></div>
-            </dl>
-            {profiles.data.profiles.find((item) => item.id === "codex")?.status === "BLOCKED" &&
-              <p>Codex est bloqué tant que sa qualification de sécurité n’est pas terminée. La recherche ne peut pas démarrer.</p>}
-            <ul>{profiles.data.profiles.map((item) => <li key={item.id}>
-              <strong>{item.id}</strong> · {item.status}
-              {item.id === profiles.data.current ? " · actif" : null}
-              {item.id !== profiles.data.current && engine.state === "PAUSED" && <button type="button"
-                disabled={busy || item.status !== "READY"} onClick={() => select.mutate(item.id)}>Sélectionner {item.id}</button>}
-            </li>)}</ul>
-          </>}
-          {engine.state === "PAUSED" && !canStart && <p>La recherche attend un profil prêt et des dépendances disponibles.</p>}
-          {canStart && <button type="button" className="primary" disabled={busy}
-            onClick={() => start.mutate()}>Démarrer la recherche</button>}
-        </>}
-      </>}
-      {(initialize.isError || select.isError || start.isError || stop.isError) &&
-        <p role="alert">Opération refusée ou issue incertaine. Actualisez l’état du moteur avant de réessayer.</p>}
-    </>}
-  </section>;
+function EmptyEvidence({ title, children }: { title: string; children: ReactNode }) {
+  return <div className="empty-evidence"><span aria-hidden="true">—</span><h3>{title}</h3><p>{children}</p></div>;
 }
 
-export function ProjectsScreen({ transport, research }: { transport: ManagementTransport; research: ResearchTransport }) {
-  const cache = useQueryClient();
+/** D1 calls only fixed native read commands; it never mounts Project or research mutations. */
+export function CommandCenter({ transport, research }: { transport: ManagementTransport; research: ResearchTransport }) {
+  const [view, setView] = useState<View>("overview");
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [name, setName] = useState("");
-  const [id, setId] = useState("");
-  const [domain, setDomain] = useState("");
-  const [notice, setNotice] = useState("");
-  const runtime = useQuery({ queryKey: [connection, "runtime"], queryFn: transport.runtimeStatus,
-    refetchInterval: (query) => query.state.data?.state === "READY" ? 2000 : query.state.data?.state === "STARTING" ? 500 : false });
-  const ready = runtime.data?.state === "READY";
-  const status = useQuery({ queryKey: [connection, "status"], queryFn: transport.status, enabled: ready });
-  const connected = ready && status.isSuccess && status.data.management_available;
-  const starting = runtime.isPending || runtime.data?.state === "STARTING" || (ready && status.isPending);
-  const domains = useQuery({ queryKey: [connection, "domains"], queryFn: transport.domains, enabled: connected });
-  const projects = useQuery({ queryKey: [connection, "projects"], queryFn: transport.projects, enabled: connected });
-  const selected = useQuery({ queryKey: [connection, "project", selectedId],
-    queryFn: () => transport.project(selectedId!), enabled: connected && selectedId !== null });
-  const validation = useQuery({ queryKey: [connection, "validation", selectedId],
-    queryFn: () => transport.validation(selectedId!), enabled: false, retry: false });
-  const create = useMutation({
-    mutationFn: (input: CreateInput) => transport.create(input),
-    onSuccess: async (result) => {
-      await cache.invalidateQueries({ queryKey: [connection, "projects"] });
-      setSelectedId(result.project.id);
-      setNotice(result.durability_confirmed
-        ? "Projet créé. Ni le stockage ni la recherche n’ont été démarrés."
-        : "Projet créé ; confirmation de durabilité indisponible. Rafraîchissez le catalogue avant toute autre action.");
-      setName(""); setId(""); setDomain("");
-    },
-  });
-  function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (create.isPending) return;
-    setNotice("");
-    create.mutate({ id: id.trim(), name: name.trim(), domain });
-  }
-  const createError = create.isError ? managementError(create.error) : null;
-  const uncertain = createError?.kind === "UNCERTAIN_CREATE";
-  const conflict = createError?.code === "ALREADY_EXISTS";
-  const availableDomains = domains.data?.domains.filter((item) => item.configuration_valid) ?? [];
+  const runtime = useQuery({ queryKey: ["d1", "management-runtime"], queryFn: async () => readRuntimeStatus(await transport.runtimeStatus()) });
+  const ready = runtime.isSuccess && runtime.data.state === "READY";
+  const management = useQuery({ queryKey: ["d1", "management-status"], queryFn: async () => readManagementStatus(await transport.status()), enabled: ready });
+  const connected = ready && management.isSuccess && management.data.management_available === true;
+  const projects = useQuery({ queryKey: ["d1", "projects"], queryFn: async () => readProjectList(await transport.projects()), enabled: connected });
+  const selectedInCatalog = connected && projects.isSuccess && projects.data.projects.some((item) => item.id === selectedId);
+  const project = useQuery({ queryKey: ["d1", "project", selectedId], queryFn: async () => readProject(await transport.project(selectedId!)),
+    enabled: connected && selectedId !== null && selectedInCatalog });
+  const engine = useQuery({ queryKey: ["d1", "research-status"], queryFn: async () => readResearchStatus(await research.status()), enabled: connected });
+  const profiles = useQuery({ queryKey: ["d1", "research-profiles", engine.data?.project_id],
+    queryFn: async () => readResearchProfiles(await research.profiles()),
+    enabled: connected && engine.isSuccess && engine.data.project_id != null && engine.data.state !== "STOPPED" && (view === "models" || view === "security") });
+  const projectData = connected && projects.isSuccess ? projects.data : undefined;
+  const engineData = connected && engine.isSuccess ? engine.data : undefined;
+  const profileData = connected && engine.isSuccess && profiles.isSuccess ? profiles.data : undefined;
+  const managerLoading = runtime.isPending || (ready && management.isPending);
+  const managerError = runtime.isError || management.isError || (!managerLoading && !connected);
+  const projectCount = connected && projectData ? String(projectData.projects.length) : "Indisponible";
+  const refreshBusy = runtime.isFetching || management.isFetching || projects.isFetching || project.isFetching
+    || engine.isFetching || profiles.isFetching;
 
-  return <main className="shell">
-    <header className="masthead"><span className="eyebrow">MORGOTH / LOCAL</span><h1>Projets</h1>
-      <p>Configurez des espaces isolés et contrôlez explicitement un moteur de recherche.</p></header>
-    <section className="connection panel" aria-label="Connexion de gestion">
-      <div><h2>Service de gestion</h2><p>{starting ? "Démarrage de la gestion…" : connected ? "Gestion connectée" : "Gestion locale indisponible"}</p></div>
-      <span className={connected ? "pill good" : "pill"}>{starting ? "Démarrage" : connected ? "Connectée" : "Non connectée"}</span>
-      {!connected && !starting && <button type="button" onClick={() => { runtime.refetch(); if (ready) status.refetch(); }}>Vérifier</button>}
-    </section>
-    {connected && <div className="grid">
-      <section className="panel" aria-label="Liste des projets">
-        <div className="section-head"><h2>Catalogue</h2><button type="button" onClick={() => projects.refetch()}>Actualiser</button></div>
-        {projects.isPending && <p className="skeleton">Chargement des projets…</p>}
-        {projects.isError && <p role="alert">Catalogue indisponible. Réessayez.</p>}
-        {projects.data?.projects.length === 0 && <p>Aucun projet configuré.</p>}
-        <ul className="project-list">{projects.data?.projects.map((item) => <li key={item.id}>
-          <button type="button" className={selectedId === item.id ? "selected" : ""}
-            onClick={() => { setSelectedId(item.id); setNotice(""); }}>
-            <strong>{item.name}</strong><span>{item.id} · {item.domain}{item.legacy ? " · historique" : ""}</span>
-          </button></li>)}</ul>
+  return <div className="command-layout">
+    <aside className="sidebar" aria-label="Navigation principale">
+      <div className="brand"><span className="brand-glyph" aria-hidden="true">M</span><div><strong>MORGOTH</strong><small>LOCAL COMMAND / D1</small></div></div>
+      <div className="nav-caption">ESPACES</div>
+      <nav aria-label="Espaces de supervision" className="nav-list">{views.map((item) =>
+        <button key={item.id} type="button" aria-current={view === item.id ? "page" : undefined}
+          className={view === item.id ? "nav-link active" : "nav-link"} onClick={() => setView(item.id)}>
+          <span className="nav-code">{item.code}</span>{item.label}</button>)}</nav>
+      <div className="sidebar-foot"><span className="status-dot" aria-hidden="true" /><span>Supervision locale<br /><strong>Lecture seule</strong></span></div>
+    </aside>
+    <main className="workspace">
+      <header className="topbar"><div><p className="eyebrow">MORGOTH / SUPERVISION</p><h1>{views.find((item) => item.id === view)?.label}</h1></div>
+        <span className="read-only-tag">AUCUNE ACTION D’EXÉCUTION</span></header>
+      <section className="connection-strip" aria-label="État de connexion">
+        <span className={`connection-indicator ${connected ? "online" : ""}`} aria-hidden="true" />
+        <div><strong>{managerLoading ? "Connexion en cours" : refreshBusy && connected ? "Vérification en cours" : connected ? "Gestion locale accessible" : "Gestion locale indisponible"}</strong>
+          <span>{managerLoading ? "Lecture du superviseur natif" : connected ? "API de gestion authentifiée par le processus natif" : "Aucune activité déduite de l’interface"}</span></div>
+        <button type="button" disabled={refreshBusy} onClick={() => { void runtime.refetch(); if (ready) void management.refetch();
+          if (connected) { void projects.refetch(); void engine.refetch(); if (selectedInCatalog) void project.refetch();
+            if (profiles.isSuccess) void profiles.refetch(); } }}>Actualiser</button>
       </section>
-      <section className="panel" aria-label="Configuration du projet">
-        <h2>Configuration</h2>
-        {!selectedId && <p>Sélectionnez un projet pour consulter sa configuration.</p>}
-        {selectedId && selected.isPending && <p className="skeleton">Chargement de la configuration…</p>}
-        {selected.isError && <p role="alert">Configuration indisponible. Réessayez.</p>}
-        {selected.data?.id === selectedId && <><h3>{selected.data.name}</h3><ProjectDetails project={selected.data} />
-          <p className="state">Configuration : {selected.data.configuration_valid ? "valide" : "invalide"} · Recherche : non vérifiée</p>
-          <button type="button" disabled={validation.isFetching} onClick={() => validation.refetch()}>Valider la configuration</button>
-          {validation.isFetching && <p>Validation en cours…</p>}
-          {validation.isError && <p role="alert">Validation impossible.</p>}
-          {validation.data && !validation.isFetching && <p role="status">{validation.data.configuration_valid ? "Configuration valide" : "Configuration invalide"} ; exécution non vérifiée.</p>}
-          <ResearchPane project={selected.data} transport={research} />
-        </>}
-      </section>
-      <section className="panel create-panel" aria-label="Nouveau projet">
-        <h2>Nouveau projet</h2>
-        <form onSubmit={submit} noValidate>
-          <label htmlFor="project-name">Nom affiché</label>
-          <input id="project-name" value={name} onChange={(event) => setName(event.target.value)} required maxLength={128} />
-          <label htmlFor="project-id">Identifiant machine</label>
-          <input id="project-id" value={id} onChange={(event) => setId(event.target.value)} required aria-describedby="id-help" />
-          <small id="id-help">Lettres minuscules, chiffres et tirets bas. Identité permanente.</small>
-          <label htmlFor="project-domain">Domaine installé</label>
-          <select id="project-domain" value={domain} onChange={(event) => setDomain(event.target.value)} required disabled={domains.isPending}>
-            <option value="">Choisir un domaine</option>
-            {availableDomains.map((item) => <option key={item.id} value={item.id}>{item.id}{item.tagline ? ` — ${item.tagline}` : ""}</option>)}
-          </select>
-          {domains.isError && <p role="alert">Domaines indisponibles.</p>}
-          {domains.data?.domains.filter((item) => !item.configuration_valid).map((item) =>
-            <p key={item.id} className="muted">{item.id} indisponible : {item.diagnostic || "configuration invalide"}</p>)}
-          {conflict && <p role="alert">Cet identifiant existe déjà. Aucun projet n’a été écrasé.</p>}
-          {createError && !conflict && <p role="alert">{uncertain
-            ? "Résultat de création incertain. Actualisez le catalogue avant toute nouvelle tentative."
-            : createError.code === "INVALID_REQUEST" ? "Vérifiez le nom et l’identifiant."
-            : createError.code === "UNKNOWN_DOMAIN" ? "Ce domaine n’est plus disponible."
-            : "Création impossible. Vérifiez le catalogue avant toute nouvelle tentative."}</p>}
-          {uncertain && <button type="button" onClick={() => projects.refetch()}>Vérifier le catalogue</button>}
-          <button className="primary" type="submit" disabled={create.isPending || !domain || !name.trim() || !id.trim() || !connected}>
-            {create.isPending ? "Création en cours…" : "Créer le projet"}</button>
-        </form>
-        {notice && <p className="notice" role="status">{notice}</p>}
-      </section>
-    </div>}
-    <footer>Un seul moteur de recherche supervisé · Démarrage autonome explicite</footer>
-  </main>;
+      {managerError && <p className="notice warn" role="alert">Les données du backend restent indisponibles. Aucune activité n’est présumée.</p>}
+
+      {view === "overview" && <div className="content-stack">
+        <p className="section-intro">État attesté par les contrats de lecture locaux. La connexion au service de gestion ne prouve pas que l’agent fonctionne.</p>
+        <div className="metric-grid">
+          <section className="metric"><span>GESTION LOCALE</span><strong>{managerLoading ? "Chargement…" : connected ? "Disponible" : "Indisponible"}</strong><small>Processus natif + statut de gestion</small></section>
+          <section className="metric"><span>PROJETS CONFIGURÉS</span><strong>{projects.isPending && connected ? "Chargement…" : projectCount}</strong><small>Catalogue de configuration, pas missions actives</small></section>
+          <section className="metric"><span>MOTEUR DE RECHERCHE</span><strong>{engine.isPending && connected ? "Chargement…" : engineData?.state ?? "Indisponible"}</strong><small>État du superviseur; autonomie non déduite</small></section>
+          <section className="metric"><span>MISSIONS GÉNÉRALISTES</span><strong>Non exposées</strong><small>Pas de lecture Project-scopée dans ce contrat</small></section>
+        </div>
+        <div className="two-column">
+          <section className="panel"><p className="eyebrow">01 / ÉTAT</p><h2>Ce qui est observable</h2><dl className="fact-list">
+            <Fact label="Management" value={connected ? "Connecté" : "Non confirmé"} tone={connected ? "good" : "warn"} />
+            <Fact label="Recherche" value={engineData?.state ?? "Indisponible"} source="Superviseur natif" />
+            <Fact label="Project du moteur" value={engineData?.project_id ?? "Aucun confirmé"} source="Superviseur natif" />
+            <Fact label="Modèle Ollama chargé" value="Non exposé" source="Indisponible" />
+          </dl></section>
+          <section className="panel"><p className="eyebrow">02 / GOUVERNANCE</p><h2>Limites en vigueur</h2><div className="boundary-list">
+            <p><strong>Workloads Codex</strong><span>{profileData ? profileData.codex.workloads_ready ? "Prêts selon le profil observé" : "Bloqués selon le profil observé" : "Non vérifiables depuis cette vue"}</span></p>
+            <p><strong>Human Gate 3</strong><span>Décision humaine; aucune commande d’approbation ici</span></p>
+            <p><strong>Browser lab</strong><span>Qualification synthétique; aucune autorité de site réel</span></p>
+          </div></section>
+        </div>
+        <section className="panel"><p className="eyebrow">03 / ÉVÉNEMENTS</p><h2>Historique récent</h2>
+          <EmptyEvidence title="Flux non connecté">Aucun flux d’événements Project-scopé n’est publié au transport Desktop. Aucun événement fictif n’est affiché.</EmptyEvidence></section>
+      </div>}
+
+      {view === "missions" && <div className="content-stack"><p className="section-intro">Une mission requiert un objectif, un Project, des checkpoints et des preuves d’issue.</p>
+        <section className="panel"><div className="panel-heading"><div><p className="eyebrow">MISSION WORKSPACE</p><h2>Missions et décisions</h2></div><span className="tag">INDISPONIBLE</span></div>
+          <EmptyEvidence title="Aucun registre de missions accessible">Le backend possède des checkpoints Project-scopés expérimentaux, mais le transport natif ne publie ni liste ni détail en lecture seule. « Indisponible » ne signifie pas zéro mission.</EmptyEvidence></section>
+        <section className="panel"><h2>Contrat de lecture nécessaire</h2><p>Identité du Project, état, étapes confirmées, gaps de capacité, attente d’approbation, échec ou refus et preuve de résultat. Aucune action Démarrer, Reprendre ou Réessayer n’est fournie.</p></section></div>}
+
+      {view === "capabilities" && <div className="content-stack"><p className="section-intro">Un contrat appris, une validation isolée et une permission d’exécution sont des faits distincts.</p>
+        <div className="two-column"><section className="panel"><p className="eyebrow">INVENTAIRE</p><h2>Capacités Project-scopées</h2>
+          <EmptyEvidence title="Inventaire non exposé">Le Desktop n’a pas de lecture authentifiée des versions, sources, validations, révocations ou portées des capacités.</EmptyEvidence></section>
+          <section className="panel"><p className="eyebrow">PROCÉDURES</p><h2>Apprentissage expérimental</h2>
+          <EmptyEvidence title="Procédures non exposées">Les expériences navigateur synthétiques ne confèrent aucune autorisation de site réel. Aucun enregistrement de démonstration n’est présenté comme capacité active.</EmptyEvidence></section></div></div>}
+
+      {view === "models" && <div className="content-stack"><p className="section-intro">Le profil de recherche est observable lorsque son moteur est initialisé. La liste Ollama installée ou chargée n’est pas exposée.</p>
+        <div className="two-column"><section className="panel"><p className="eyebrow">RUNTIME</p><h2>Recherche supervisée</h2><dl className="fact-list">
+          <Fact label="État" value={engineData?.state ?? "Indisponible"} source="Superviseur natif" />
+          <Fact label="Project associé" value={engineData?.project_id ?? "Aucun confirmé"} source="Superviseur natif" />
+          <Fact label="Profil configuré" value={engineData?.runtime?.profile ?? "Indisponible"} source="Runtime si initialisé" />
+          <Fact label="Profil prêt" value={engineData?.runtime?.profile_status ?? "Indisponible"} source="Runtime si initialisé" />
+        </dl></section><section className="panel"><p className="eyebrow">MODÈLES LOCAUX</p><h2>Ollama</h2><dl className="fact-list">
+          <Fact label="Connectivité Ollama" value="Non exposée" source="Indisponible" />
+          <Fact label="Modèles installés" value="Non exposés" source="Indisponible" />
+          <Fact label="Modèles chargés" value="Non exposés" source="Indisponible" />
+          <Fact label="CPU / GPU / mémoire" value="Non mesurés" source="Indisponible" />
+        </dl></section></div>
+        <section className="panel"><p className="eyebrow">PROFILS</p><h2>Qualification disponible</h2>
+          {profiles.isPending && profiles.fetchStatus === "fetching" && <p className="skeleton">Lecture des profils…</p>}
+          {profiles.isError && <p role="alert">Profils indisponibles ou invalides.</p>}
+          {profileData ? <><p>Profil courant : <strong>{profileData.current}</strong> · recommandation : {profileData.recommended ?? "aucune"}</p>
+            <div className="table-wrap"><table><thead><tr><th>Profil</th><th>Statut</th><th>Qualification</th></tr></thead><tbody>{profileData.profiles.map((item) => <tr key={item.id}><td>{item.id}</td><td>{item.status}</td><td>{item.id === "codex" ? profileData.codex.workloads_ready ? "Workloads prêts selon le backend" : "Workloads bloqués" : "Voir statut du profil"}</td></tr>)}</tbody></table></div></>
+            : !profiles.isError && <EmptyEvidence title="Profil non disponible">Cette vue ne peut ni initialiser un moteur ni lancer une inférence.</EmptyEvidence>}
+        </section></div>}
+
+      {view === "security" && <div className="content-stack"><p className="section-intro">Les indicateurs séparent les constats du superviseur, la politique revue dans le code et ce que Desktop ne peut pas vérifier.</p>
+        <div className="two-column"><section className="panel"><p className="eyebrow">AUTORITÉ</p><h2>Actions et approbations</h2><dl className="fact-list">
+          <Fact label="Commandes d’exécution dans D1" value="Aucune" source="Interface D1" tone="good" />
+          <Fact label="Human Gate 3" value="Humain uniquement" source="Règle de gouvernance" />
+          <Fact label="Approbations en attente" value="Non exposées" source="Indisponible" />
+          <Fact label="Tentatives bloquées" value="Non exposées" source="Indisponible" />
+          <Fact label="SAFE_FOR_WORKLOADS" value="Non exposé en temps réel" source="Indisponible; baseline revue = false" />
+        </dl></section><section className="panel"><p className="eyebrow">CONFINEMENT</p><h2>Exécution séparée</h2><dl className="fact-list">
+          <Fact label="Codex installé" value={profileData ? profileData.codex.installed ? "Oui" : "Non" : "Indisponible"} source="Profil si disponible" />
+          <Fact label="Sandbox disponible" value={profileData ? profileData.codex.sandbox_available ? "Oui" : "Non" : "Indisponible"} source="Profil si disponible" />
+          <Fact label="Sandbox qualifié" value={profileData ? profileData.codex.sandbox_qualified ? "Oui" : "Non" : "Indisponible"} source="Profil si disponible" />
+          <Fact label="Workloads Codex" value={profileData ? profileData.codex.workloads_ready ? "Prêts selon le backend" : "Bloqués" : "Indisponibles"} source="Profil si disponible" tone={profileData?.codex.workloads_ready ? "good" : "warn"} />
+          <Fact label="Sites Web réels" value="Non autorisés par ce Desktop" source="Portée D1" />
+        </dl></section></div>
+        <section className="panel"><h2>Contrat d’approbation</h2><p>Un enregistrement validé ou une procédure mémorisée n’est pas un grant. Les approbations Project-scopées ne sont pas lisibles ici; Desktop n’émet aucune autorisation.</p></section></div>}
+
+      {view === "projects" && <div className="content-stack"><p className="section-intro">Catalogue de configuration. Ni stockage, ni recherche, ni mission ne sont démarrés par cette vue.</p>
+        <div className="two-column projects-grid"><section className="panel"><div className="panel-heading"><div><p className="eyebrow">CATALOGUE</p><h2>Projects</h2></div><span className="tag">{projectCount}</span></div>
+          {projects.isPending && connected && <p className="skeleton">Lecture du catalogue…</p>}
+          {projects.isError && <p role="alert">Catalogue indisponible ou invalide.</p>}
+          {!connected && <EmptyEvidence title="Catalogue indisponible">Le service de gestion n’est pas confirmé.</EmptyEvidence>}
+          {projectData?.projects.length === 0 && <EmptyEvidence title="Aucun Project configuré">Le catalogue de configuration est vide.</EmptyEvidence>}
+          <ul className="project-list">{projectData?.projects.map((item) => <li key={item.id}><button type="button" className={selectedId === item.id ? "selected" : ""}
+            onClick={() => setSelectedId(item.id)} aria-current={selectedId === item.id ? "true" : undefined}><strong>{item.name}</strong><span>{item.id} · {item.domain}{item.legacy ? " · historique" : ""}</span></button></li>)}</ul>
+        </section><section className="panel"><p className="eyebrow">PORTÉE SÉLECTIONNÉE</p><h2>Détail du Project</h2>
+          {!selectedId && <EmptyEvidence title="Sélectionnez un Project">Le choix change seulement le périmètre affiché.</EmptyEvidence>}
+          {selectedId && !selectedInCatalog && <p role="alert">Project absent du catalogue courant. Aucun détail n’est affiché.</p>}
+          {selectedInCatalog && project.isPending && <p className="skeleton">Lecture du Project…</p>}
+          {project.isError && <p role="alert">Détail indisponible ou invalide.</p>}
+          {selectedInCatalog && project.data && project.data.id === selectedId && <><h3>{project.data.name}</h3><dl className="fact-list">
+            <Fact label="Identifiant" value={project.data.id} />
+            <Fact label="Domaine" value={project.data.domain} />
+            <Fact label="Schéma PostgreSQL" value={project.data.postgres_schema} source="Configuration" />
+            <Fact label="Configuration" value={project.data.configuration_valid ? "Valide" : "Invalide"} source="Catalogue, non revalidé" />
+            <Fact label="Runtime vérifié" value={project.data.runtime_checked ? "Oui" : "Non"} source="Catalogue" />
+            <Fact label="Moteur du Project" value={engineData?.project_id === selectedId ? engineData.state : "Aucun moteur attribué observé"} source="Superviseur natif" />
+          </dl></>}
+        </section></div></div>}
+      <footer className="workspace-footer"><span>DESKTOP D1 · LECTURE SEULE</span><span>Un état absent reste inconnu.</span></footer>
+    </main>
+  </div>;
 }
 
+/** Own one query cache for this native window; no retries or background polling. */
 export function App({ transport = nativeManagement, research = nativeResearch }:
   { transport?: ManagementTransport; research?: ResearchTransport }) {
-  const [queryClient] = useState(() => new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 10_000 } } }));
-  return <QueryClientProvider client={queryClient}><ProjectsScreen transport={transport} research={research} /></QueryClientProvider>;
+  const [queryClient] = useState(() => new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 10_000, refetchOnWindowFocus: false } } }));
+  return <QueryClientProvider client={queryClient}><CommandCenter transport={transport} research={research} /></QueryClientProvider>;
 }

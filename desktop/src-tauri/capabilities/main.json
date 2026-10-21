@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "main",
-  "description": "Only fixed management and research commands in the local main window",
+  "description": "D1 read-only management and research status commands in the local main window",
   "windows": ["main"],
-  "permissions": ["allow-management-runtime-status", "allow-management-status", "allow-list-domains", "allow-list-projects", "allow-get-project", "allow-validate-project", "allow-create-project", "allow-research-engine-status", "allow-initialize-research-engine", "allow-research-profiles", "allow-select-research-profile", "allow-start-research", "allow-stop-research-engine"]
+  "permissions": ["allow-management-runtime-status", "allow-management-status", "allow-list-domains", "allow-list-projects", "allow-get-project", "allow-validate-project", "allow-research-engine-status", "allow-research-profiles"]
 }

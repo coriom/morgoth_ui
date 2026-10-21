@@ -1,5 +1,19 @@
 # PROGRESS.md — Morgoth UI Development Tracker
 
+## 2026-10-21 — Desktop D1 command center candidate (feature branch)
+
+The native Tauri/Vite Desktop now has six read-only supervision views: Overview,
+Missions, Capabilities, Models, Security and Projects. The fixed native
+transport and Tauri main-window capability were narrowed from thirteen to
+eight read commands; Project creation and research mutation IPC commands are
+no longer registered in the D1 window. Management Project configuration and
+one research supervisor/profile are the only live data sources. Generalist
+mission records, capability inventory, approval queues, Ollama residency and
+resource metrics are explicitly unavailable until authenticated Project-scoped
+read contracts exist. No backend, protected governance, production service or
+Desktop reference worktree was changed. No dependency was added. Audit, field
+matrix and exact acceptance evidence are in `docs/DESKTOP-D1-*.md`.
+
 ## 2026-10-09 — Integrated Codex confinement, workload gate still blocked
 
 Desktop pins backend `7bff6c92ffe958cb11411a1f23fa6f917cf0fe32`.

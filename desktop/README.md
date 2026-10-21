@@ -1,5 +1,19 @@
 # Morgoth Projects Desktop V1
 
+## D1 read-only command center candidate — 2026-10-21
+
+The feature branch `feat/morgoth-desktop-command-center-v1` replaces the
+visible Projects control screen with six read-only supervision views. Its
+WebView capability and registered IPC handler expose eight read commands;
+Project creation and research initialize/profile/start/stop are not available
+to this D1 window. The Rust supervisors remain in source for a future,
+separately reviewed control flow. The native Management backend pin below is
+unchanged. Mission, capability, approval and Ollama-residency data have no
+approved Desktop read contract and are displayed as unavailable. See
+`../docs/DESKTOP-D1-AUDIT.md`, `../docs/DESKTOP-D1-INTEGRATION.md` and
+`../docs/DESKTOP-D1-ACCEPTANCE.md` for current candidate evidence. The
+historical V1 behavior below describes the pinned predecessor, not D1.
+
 This is a separate React/TypeScript/Vite + Tauri 2 application inside the UI repository. The existing Next.js app remains separate. The Desktop starts its own Management API and may initialize **one explicitly selected managed Project** research engine; autonomous research starts only after an explicit profile choice and Start action.
 
 ```
