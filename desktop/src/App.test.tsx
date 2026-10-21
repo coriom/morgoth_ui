@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { App } from "./App";
-import type { ManagementTransport, Project, ResearchEngineStatus, ResearchTransport } from "./transport";
+import type { ManagementTransport, Project, ResearchEngineStatus, ResearchTransport, OllamaTransport, OllamaStatus } from "./transport";
 
 afterEach(cleanup);
 const project = (id: string): Project => ({ id, name: id, domain: "crypto", legacy: false,
@@ -23,6 +23,14 @@ function research(overrides: Partial<ResearchTransport> = {}): ResearchTransport
     codex: { installed: true, authenticated: true, sandbox_available: true, sandbox_qualified: false, workloads_ready: false },
     profiles: [{ id: "codex", status: "BLOCKED" as const, reason: "gate", providers: {} }] };
   return { status: vi.fn(async () => stopped), profiles: vi.fn(async () => profiles), ...overrides };
+}
+const localStatus: OllamaStatus = { source: "OLLAMA_LOOPBACK_GET_V1", observed_at_ms: 1_700_000_000_000,
+  service_state: "REACHABLE", installed_state: "OBSERVED", loaded_state: "OBSERVED", failure_class: null,
+  configured_model: null, installed: [{ id: "model:1", size_bytes: 1048576 }], loaded: [],
+  resources: { linux_mem_available_bytes: 2_097_152, linux_swap_total_bytes: null, linux_swap_used_bytes: null,
+    cgroup_memory_limit_bytes: null, cgroup_memory_current_bytes: null, cgroup_memory_headroom_bytes: null } };
+function local(overrides: Partial<OllamaTransport> = {}): OllamaTransport {
+  return { status: vi.fn(async () => localStatus), ...overrides };
 }
 function nav(label: string) { fireEvent.click(screen.getByRole("button", { name: new RegExp(label) })); }
 
@@ -47,7 +55,7 @@ describe("read-only command center", () => {
     expect(await screen.findByText("Gestion locale accessible")).toBeTruthy();
     expect(await screen.findByText("2")).toBeTruthy();
     expect(screen.getByText("Lecture Project")).toBeTruthy();
-    expect(screen.getByText("Modèle Ollama chargé").nextElementSibling?.textContent).toBe("Non exposé");
+    expect(screen.getByText("Modèles Ollama résidents").nextElementSibling?.textContent).toBe("Non lus ou indisponibles");
   });
   it("never exposes create, initialize, start, stop, select-profile or inference actions", async () => {
     const transport = management(); const engine = research();
@@ -110,7 +118,7 @@ describe("read-only command center", () => {
     render(<App transport={management()} research={engine} />);
     nav("Modèles");
     expect(await screen.findByText("Workloads bloqués")).toBeTruthy();
-    expect(screen.getByText("Connectivité Ollama").nextElementSibling?.textContent).toBe("Non exposée");
+    expect(screen.getByText("Lecture non demandée. Aucun appel d’inférence n’est effectué pour renseigner cette vue.")).toBeTruthy();
     nav("Sécurité");
     const security = screen.getByText("SAFE_FOR_WORKLOADS").closest(".fact");
     expect(security?.textContent).toContain("Non exposé en temps réel");
@@ -198,5 +206,40 @@ describe("read-only command center", () => {
     expect(await screen.findByText(/Registre indisponible ou incompatible/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Old checkpoint" })).toBeNull();
     expect(screen.queryByText("private backend")).toBeNull();
+  });
+  it("reads local model status only after manual action and treats unloaded as healthy", async () => {
+    const models = local();
+    render(<App transport={management()} research={research()} ollama={models} />);
+    nav("Modèles");
+    expect(models.status).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Lire l’état local" }));
+    expect(await screen.findByText("model:1")).toBeTruthy();
+    expect(screen.getByText("Aucun modèle résident")).toBeTruthy();
+    expect(screen.getByText("Placement CPU / GPU").nextElementSibling?.textContent).toBe("Inconnu");
+    expect(models.status).toHaveBeenCalledTimes(1);
+  });
+  it("shows an unreachable local model as unavailable and never retries", async () => {
+    const status = vi.fn(async () => ({ ...localStatus, service_state: "UNAVAILABLE" as const,
+      installed_state: "UNAVAILABLE" as const, loaded_state: "UNAVAILABLE" as const,
+      installed: [], loaded: [], failure_class: "CONNECT" as const }));
+    render(<App transport={management()} research={research()} ollama={local({ status })} />);
+    nav("Modèles");
+    fireEvent.click(screen.getByRole("button", { name: "Lire l’état local" }));
+    expect(await screen.findByText("Liste indisponible.")).toBeTruthy();
+    expect(screen.getByText("Connectivité Ollama").nextElementSibling?.textContent).toBe("Indisponible");
+    expect(status).toHaveBeenCalledTimes(1);
+  });
+  it("hides a previous local model result after a failed manual refresh", async () => {
+    const status = vi.fn().mockResolvedValueOnce(localStatus).mockRejectedValueOnce(new Error("private model metadata"));
+    render(<App transport={management()} research={research()} ollama={local({ status })} />);
+    nav("Modèles");
+    fireEvent.click(screen.getByRole("button", { name: "Lire l’état local" }));
+    expect(await screen.findByText("model:1")).toBeTruthy();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Lire l’état local" }).hasAttribute("disabled")).toBe(false));
+    fireEvent.click(screen.getByRole("button", { name: "Lire l’état local" }));
+    expect(await screen.findByText(/Statut local indisponible ou incompatible/)).toBeTruthy();
+    expect(screen.queryByText("model:1")).toBeNull();
+    expect(screen.queryByText("private model metadata")).toBeNull();
+    expect(status).toHaveBeenCalledTimes(2);
   });
 });

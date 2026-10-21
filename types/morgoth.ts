@@ -530,3 +530,24 @@ export interface DesktopCapabilityPageV1 {
   next_offset: number | null;
   source: "DISPOSABLE_POSTGRESQL";
 }
+
+/** Native-only, manual, non-generative Ollama observation. Never implies inference qualification. */
+export interface DesktopOllamaStatusV1 {
+  source: "OLLAMA_LOOPBACK_GET_V1";
+  observed_at_ms: number;
+  service_state: "REACHABLE" | "UNAVAILABLE";
+  installed_state: "OBSERVED" | "UNAVAILABLE";
+  loaded_state: "OBSERVED" | "UNAVAILABLE";
+  failure_class: "CONNECT" | "TIMEOUT" | "TRANSPORT" | "HTTP_STATUS" | "REDIRECT_REJECTED" | "INCOMPATIBLE_RESPONSE" | "OVERSIZED_RESPONSE" | null;
+  configured_model: string | null;
+  installed: Array<{ id: string; size_bytes: number }>;
+  loaded: Array<{ id: string; size_bytes: number; ollama_reported_vram_bytes: number | null }>;
+  resources: {
+    linux_mem_available_bytes: number | null;
+    linux_swap_total_bytes: number | null;
+    linux_swap_used_bytes: number | null;
+    cgroup_memory_limit_bytes: number | null;
+    cgroup_memory_current_bytes: number | null;
+    cgroup_memory_headroom_bytes: number | null;
+  };
+}

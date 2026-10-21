@@ -5,6 +5,7 @@ use reqwest::{header, Method};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{io::Read, path::Path, time::Duration};
 
+pub mod ollama_read;
 #[cfg(target_os = "linux")]
 pub mod research;
 #[cfg(target_os = "linux")]
@@ -786,6 +787,16 @@ mod desktop {
         main_only(&window)?;
         supervisor.profiles().await
     }
+    #[tauri::command]
+    pub async fn ollama_status_read(
+        window: WebviewWindow,
+    ) -> Result<crate::ollama_read::OllamaStatusRead, NativeError> {
+        main_only(&window)?;
+        let reader = crate::ollama_read::OllamaReader::from_environment().map_err(|_| {
+            NativeError::new("CONFIG_REJECTED", "Configuration Ollama locale invalide.")
+        })?;
+        Ok(reader.read().await)
+    }
     pub fn run() {
         let config = SupervisorConfig::from_environment();
         let supervisor = ManagementSupervisor::start(config.clone());
@@ -824,6 +835,7 @@ mod desktop {
                 list_capability_reads,
                 research_engine_status,
                 research_profiles,
+                ollama_status_read,
             ])
             .build(tauri::generate_context!())
             .expect("Morgoth desktop runtime failed");

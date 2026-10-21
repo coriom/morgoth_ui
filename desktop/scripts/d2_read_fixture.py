@@ -62,8 +62,8 @@ def main() -> int:
     root = ui.parent
     backend = root / "dev-desktop-d2-backend"
     branch = subprocess.check_output(["git", "-C", str(ui), "branch", "--show-current"], text=True).strip()
-    if branch != "feat/morgoth-desktop-d2-read-models-v1":
-        raise SystemExit("D2_UI_BRANCH_MISMATCH")
+    if branch != "feat/morgoth-desktop-d3-model-observability-v1":
+        raise SystemExit("D3_UI_BRANCH_MISMATCH")
     if subprocess.check_output(["git", "-C", str(ui), "status", "--porcelain", "--untracked-files=all"], text=True).strip():
         raise SystemExit("D2_UI_DIRTY")
     sha = "5fc01cc6f465ff021cac7735d44245ca6e79e87b"

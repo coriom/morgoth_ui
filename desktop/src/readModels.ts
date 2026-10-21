@@ -1,4 +1,4 @@
-import type { Project, ProjectList, ResearchEngineStatus, ResearchProfiles, RuntimeStatus, Status, MissionPage, Mission, CapabilityPage } from "./transport";
+import type { Project, ProjectList, ResearchEngineStatus, ResearchProfiles, RuntimeStatus, Status, MissionPage, Mission, CapabilityPage, OllamaStatus } from "./transport";
 
 function record(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -107,4 +107,44 @@ export function readResearchProfiles(value: unknown): ResearchProfiles {
       || !["READY", "BLOCKED", "UNAVAILABLE"].includes(String(profile.status))) invalid();
   }
   return value as ResearchProfiles;
+}
+
+const modelId = (value: unknown): value is string => bounded(value, 96) && /^[A-Za-z0-9_.:/-]+$/.test(value);
+const byteCount = (value: unknown): value is number => Number.isSafeInteger(value) && (value as number) >= 0;
+const byteOrUnknown = (value: unknown): value is number | null => value === null || byteCount(value);
+
+/** Reject extra model metadata, private text, impossible states and unsafe numeric values. */
+export function readOllamaStatus(value: unknown): OllamaStatus {
+  if (!record(value) || value.source !== "OLLAMA_LOOPBACK_GET_V1"
+    || !Number.isSafeInteger(value.observed_at_ms) || (value.observed_at_ms as number) <= 0
+    || !["REACHABLE", "UNAVAILABLE"].includes(String(value.service_state))
+    || !["OBSERVED", "UNAVAILABLE"].includes(String(value.installed_state))
+    || !["OBSERVED", "UNAVAILABLE"].includes(String(value.loaded_state))
+    || !(value.failure_class === null || ["CONNECT", "TIMEOUT", "TRANSPORT", "HTTP_STATUS", "REDIRECT_REJECTED", "INCOMPATIBLE_RESPONSE", "OVERSIZED_RESPONSE"].includes(String(value.failure_class)))
+    || !(value.configured_model === null || modelId(value.configured_model))
+    || !Array.isArray(value.installed) || value.installed.length > 64
+    || !Array.isArray(value.loaded) || value.loaded.length > 64
+    || !record(value.resources)
+    || Object.keys(value).some((key) => !["source", "observed_at_ms", "service_state", "installed_state", "loaded_state", "failure_class", "configured_model", "installed", "loaded", "resources"].includes(key))) invalid();
+  if (value.installed_state === "UNAVAILABLE" && value.installed.length !== 0
+    || value.loaded_state === "UNAVAILABLE" && value.loaded.length !== 0
+    || value.service_state === "UNAVAILABLE" && (value.installed_state !== "UNAVAILABLE" || value.loaded_state !== "UNAVAILABLE")
+    || value.loaded_state === "OBSERVED" && value.installed_state !== "OBSERVED"
+    || value.failure_class === null && (value.installed_state !== "OBSERVED" || value.loaded_state !== "OBSERVED")) invalid();
+  for (const item of value.installed) {
+    if (!record(item) || !modelId(item.id) || !byteCount(item.size_bytes)
+      || Object.keys(item).some((key) => !["id", "size_bytes"].includes(key))) invalid();
+  }
+  for (const item of value.loaded) {
+    if (!record(item) || !modelId(item.id) || !byteCount(item.size_bytes) || !byteOrUnknown(item.ollama_reported_vram_bytes)
+      || Object.keys(item).some((key) => !["id", "size_bytes", "ollama_reported_vram_bytes"].includes(key))) invalid();
+  }
+  if (new Set(value.installed.map((item: { id: string }) => item.id)).size !== value.installed.length
+    || new Set(value.loaded.map((item: { id: string }) => item.id)).size !== value.loaded.length) invalid();
+  const resourceFields = ["linux_mem_available_bytes", "linux_swap_total_bytes", "linux_swap_used_bytes",
+    "cgroup_memory_limit_bytes", "cgroup_memory_current_bytes", "cgroup_memory_headroom_bytes"];
+  const resources = value.resources as Record<string, unknown>;
+  if (Object.keys(resources).length !== resourceFields.length
+    || resourceFields.some((field) => !byteOrUnknown(resources[field]))) invalid();
+  return value as unknown as OllamaStatus;
 }

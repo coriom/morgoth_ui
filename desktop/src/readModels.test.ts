@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readCapabilityPage, readManagementStatus, readMissionPage, readProjectList, readResearchProfiles, readResearchStatus, readRuntimeStatus } from "./readModels";
+import { readCapabilityPage, readManagementStatus, readMissionPage, readOllamaStatus, readProjectList, readResearchProfiles, readResearchStatus, readRuntimeStatus } from "./readModels";
 
 describe("read model boundary", () => {
   it("rejects unsupported status and runtime values", () => {
@@ -11,6 +11,18 @@ describe("read model boundary", () => {
     expect(() => readProjectList({ projects: [p, p], configuration_valid: true, runtime_checked: false })).toThrow("INVALID_READ_MODEL");
     expect(() => readProjectList({ projects: [{ ...p, configuration_valid: "yes" }], configuration_valid: true, runtime_checked: false })).toThrow("INVALID_READ_MODEL");
     expect(() => readProjectList({ projects: [{ ...p, vault_dir: "/private" }], configuration_valid: true, runtime_checked: false })).toThrow("INVALID_READ_MODEL");
+  });
+  it("accepts only bounded local-model metadata and honest unknown resources", () => {
+    const status = { source: "OLLAMA_LOOPBACK_GET_V1", observed_at_ms: 1_700_000_000_000,
+      service_state: "REACHABLE", installed_state: "OBSERVED", loaded_state: "OBSERVED", failure_class: null,
+      configured_model: null, installed: [{ id: "model:1", size_bytes: 4096 }], loaded: [],
+      resources: { linux_mem_available_bytes: null, linux_swap_total_bytes: null, linux_swap_used_bytes: null,
+        cgroup_memory_limit_bytes: null, cgroup_memory_current_bytes: null, cgroup_memory_headroom_bytes: null } };
+    expect(readOllamaStatus(status).loaded).toEqual([]);
+    expect(() => readOllamaStatus({ ...status, installed: [{ id: "model:1", size_bytes: 1, digest: "private" }] })).toThrow("INVALID_READ_MODEL");
+    expect(() => readOllamaStatus({ ...status, loaded_state: "UNAVAILABLE", failure_class: null })).toThrow("INVALID_READ_MODEL");
+    expect(() => readOllamaStatus({ ...status, installed: [{ id: "bad\nname", size_bytes: 1 }] })).toThrow("INVALID_READ_MODEL");
+    expect(() => readOllamaStatus({ ...status, resources: { ...status.resources, linux_mem_available_bytes: Number.MAX_SAFE_INTEGER + 1 } })).toThrow("INVALID_READ_MODEL");
   });
   it("rejects cross-Project and private fields in historical mission and capability pages", () => {
     const mission = { mission_id: "00000000-0000-0000-0000-000000000001", project_id: "a", objective: "Synthetic task",

@@ -407,3 +407,13 @@ From the clean D2 candidate worktree, after building the native binaries, the sa
 ```
 
 It creates a temporary Unix-socket-only PostgreSQL cluster and two Project manifests, seeds one **synthetic** historical mission/capability in `project_a`, verifies Rust-owned authenticated reads and cross-Project refusal, then opens the local Tauri window. Select `project_a` in Projects to inspect the synthetic record; `project_b` must be empty. Closing the window stops the owned local processes and removes the temporary cluster/home. This command does not read production PostgreSQL, run research, infer with Ollama, approve a capability or access external sites. The non-window proof uses the same command without `--window`. See `docs/DESKTOP-D2-*.md` for provenance and limitations.
+
+## Desktop D3 candidate: manual Ollama observation
+
+From the clean D3 feature worktree, after building `morgoth-desktop` and `d2-read-smoke` with `cargo build --locked --offline --features desktop --bin morgoth-desktop` and `cargo build --locked --offline --bin d2-read-smoke`, run:
+
+```bash
+/home/corio/Morgoth/morgoth/.venv/bin/python desktop/scripts/d2_read_fixture.py --window
+```
+
+The disposable Project fixture and backend pin are unchanged. In the native Models workspace, press **Lire l’état local** for at most one native `/api/tags` and one `/api/ps` GET to literal loopback. No Ollama request is made merely by opening the window. If the service is unreachable, the view reports unavailable. Host memory and cgroup fields are Linux guest observations only; GPU placement and utilization remain unknown. See `docs/DESKTOP-D3-*.md` for the field contract and native acceptance evidence.

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { nativeManagement, nativeResearch } from "./transport";
+import { nativeManagement, nativeResearch, nativeOllama } from "./transport";
 
 const { invoke } = vi.hoisted(() => ({ invoke: vi.fn(async (_command: string, _args?: unknown) => ({})) }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke }));
@@ -29,5 +29,10 @@ describe("D2 fixed native read transport", () => {
     await nativeResearch.profiles();
     expect(invoke.mock.calls.map((call) => call[0])).toEqual(["research_engine_status", "research_profiles"]);
     expect(Object.keys(nativeResearch)).toEqual(["status", "profiles"]);
+  });
+  it("uses one argument-free local-model read command", async () => {
+    await nativeOllama.status();
+    expect(invoke.mock.calls).toEqual([["ollama_status_read"]]);
+    expect(Object.keys(nativeOllama)).toEqual(["status"]);
   });
 });

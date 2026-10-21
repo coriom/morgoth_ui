@@ -1,3 +1,16 @@
+## 2026-10-21 — Desktop D3 native acceptance and local model observation candidate
+
+The D2 connected WSLg window was exercised through native AT-SPI controls:
+six workspaces rendered, disposable Project A mission/capability records were
+visible, and Project B remained empty without inherited detail. D3 adds one
+manual, argument-free Tauri read command for fixed loopback Ollama `/api/tags`
+and `/api/ps`, plus bounded Linux procfs/cgroup measurements. The Models view
+distinguishes installed, resident, configured and unqualified states. There is
+no inference, model loading, polling, backend change or new dependency. The
+D2 backend SHA, optional `morgoth_test` Project reads and protected Desktop
+reference remain unchanged. See `docs/DESKTOP-D3-*.md` for verification and
+remaining hardware/OS limits.
+
 ## 2026-10-21 — Desktop D2 Project-scoped read candidate
 
 A separate D2 worktree adds authenticated native mission and capability reads

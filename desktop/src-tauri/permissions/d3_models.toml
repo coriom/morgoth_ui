@@ -1,0 +1,5 @@
+# Manual, non-generative local-model status read in the main window only.
+[[permission]]
+identifier = "allow-ollama-status-read"
+description = "Enables fixed loopback Ollama installed/resident model status reads."
+commands.allow = ["ollama_status_read"]

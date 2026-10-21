@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
-import { nativeManagement, nativeResearch, type ManagementTransport, type ResearchTransport } from "./transport";
-import { readCapabilityPage, readManagementStatus, readMission, readMissionPage, readProject, readProjectList, readResearchProfiles, readResearchStatus, readRuntimeStatus } from "./readModels";
+import { nativeManagement, nativeResearch, nativeOllama, type ManagementTransport, type ResearchTransport, type OllamaTransport } from "./transport";
+import { readCapabilityPage, readManagementStatus, readMission, readMissionPage, readOllamaStatus, readProject, readProjectList, readResearchProfiles, readResearchStatus, readRuntimeStatus } from "./readModels";
 
 type View = "overview" | "missions" | "capabilities" | "models" | "security" | "projects";
 const views: ReadonlyArray<{ id: View; label: string; code: string }> = [
@@ -24,7 +24,10 @@ function EmptyEvidence({ title, children }: { title: string; children: ReactNode
 }
 
 /** D2 calls only fixed native read commands; it never mounts Project or research mutations. */
-export function CommandCenter({ transport, research }: { transport: ManagementTransport; research: ResearchTransport }) {
+const mib = (value: number | null): string => value === null ? "Inconnu"
+  : value < 1_048_576 ? `${value} octets` : `${(value / 1_048_576).toFixed(1)} MiB`;
+
+export function CommandCenter({ transport, research, ollama }: { transport: ManagementTransport; research: ResearchTransport; ollama: OllamaTransport }) {
   const [view, setView] = useState<View>("overview");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [missionOffset, setMissionOffset] = useState(0);
@@ -51,17 +54,20 @@ export function CommandCenter({ transport, research }: { transport: ManagementTr
   const profiles = useQuery({ queryKey: ["d1", "research-profiles", engine.data?.project_id],
     queryFn: async () => readResearchProfiles(await research.profiles()),
     enabled: connected && engine.isSuccess && engine.data.project_id != null && engine.data.state !== "STOPPED" && (view === "models" || view === "security") });
+  const localModels = useQuery({ queryKey: ["d3", "ollama-status"],
+    queryFn: async () => readOllamaStatus(await ollama.status()), enabled: false });
   const projectData = connected && projects.isSuccess ? projects.data : undefined;
   const missionData = connected && selectedInCatalog && missions.isSuccess && missions.data.project_id === selectedId ? missions.data : undefined;
   const detailData = connected && selectedInCatalog && mission.isSuccess && mission.data.project_id === selectedId && mission.data.mission_id === selectedMissionId ? mission.data : undefined;
   const capabilityData = connected && selectedInCatalog && capabilities.isSuccess && capabilities.data.project_id === selectedId ? capabilities.data : undefined;
   const engineData = connected && engine.isSuccess ? engine.data : undefined;
   const profileData = connected && engine.isSuccess && profiles.isSuccess ? profiles.data : undefined;
+  const localModelData = localModels.isSuccess ? localModels.data : undefined;
   const managerLoading = runtime.isPending || (ready && management.isPending);
   const managerError = runtime.isError || management.isError || (!managerLoading && !connected);
   const projectCount = connected && projectData ? String(projectData.projects.length) : "Indisponible";
   const refreshBusy = runtime.isFetching || management.isFetching || projects.isFetching || project.isFetching
-    || engine.isFetching || profiles.isFetching || missions.isFetching || mission.isFetching || capabilities.isFetching;
+    || engine.isFetching || profiles.isFetching || missions.isFetching || mission.isFetching || capabilities.isFetching || localModels.isFetching;
   const chooseProject = (id: string) => { setSelectedId(id); setSelectedMissionId(null); setMissionOffset(0); setCapabilityOffset(0); };
 
   return <div className="command-layout">
@@ -82,6 +88,7 @@ export function CommandCenter({ transport, research }: { transport: ManagementTr
         <div><strong>{managerLoading ? "Connexion en cours" : refreshBusy && connected ? "Vérification en cours" : connected ? "Gestion locale accessible" : "Gestion locale indisponible"}</strong>
           <span>{managerLoading ? "Lecture du superviseur natif" : connected ? "API de gestion authentifiée par le processus natif" : "Aucune activité déduite de l’interface"}</span></div>
         <button type="button" disabled={refreshBusy} onClick={() => { void runtime.refetch(); if (ready) void management.refetch();
+          if (view === "models") void localModels.refetch();
           if (connected) { void projects.refetch(); void engine.refetch(); if (selectedInCatalog) { void project.refetch();
             if (view === "missions") { void missions.refetch(); if (selectedMissionId) void mission.refetch(); }
             if (view === "capabilities" || view === "security") void capabilities.refetch(); }
@@ -102,7 +109,7 @@ export function CommandCenter({ transport, research }: { transport: ManagementTr
             <Fact label="Management" value={connected ? "Connecté" : "Non confirmé"} tone={connected ? "good" : "warn"} />
             <Fact label="Recherche" value={engineData?.state ?? "Indisponible"} source="Superviseur natif" />
             <Fact label="Project du moteur" value={engineData?.project_id ?? "Aucun confirmé"} source="Superviseur natif" />
-            <Fact label="Modèle Ollama chargé" value="Non exposé" source="Indisponible" />
+            <Fact label="Modèles Ollama résidents" value={localModelData?.loaded_state === "OBSERVED" ? String(localModelData.loaded.length) : "Non lus ou indisponibles"} source="Lecture locale manuelle uniquement" />
           </dl></section>
           <section className="panel"><p className="eyebrow">02 / GOUVERNANCE</p><h2>Limites en vigueur</h2><div className="boundary-list">
             <p><strong>Workloads Codex</strong><span>{profileData ? profileData.codex.workloads_ready ? "Prêts selon le profil observé" : "Bloqués selon le profil observé" : "Non vérifiables depuis cette vue"}</span></p>
@@ -154,18 +161,41 @@ export function CommandCenter({ transport, research }: { transport: ManagementTr
         </section>}
         <section className="panel"><h2>Procédures navigateur</h2><p>Un enregistrement synthétique, même validé, ne confère aucun droit sur un site réel.</p></section></div>}
 
-      {view === "models" && <div className="content-stack"><p className="section-intro">Le profil de recherche est observable lorsque son moteur est initialisé. La liste Ollama installée ou chargée n’est pas exposée.</p>
+      {view === "models" && <div className="content-stack"><p className="section-intro">Lecture locale non générative, sur demande. Un modèle installé, résident ou déclaré n’est pas qualifié pour une mission.</p>
         <div className="two-column"><section className="panel"><p className="eyebrow">RUNTIME</p><h2>Recherche supervisée</h2><dl className="fact-list">
           <Fact label="État" value={engineData?.state ?? "Indisponible"} source="Superviseur natif" />
           <Fact label="Project associé" value={engineData?.project_id ?? "Aucun confirmé"} source="Superviseur natif" />
           <Fact label="Profil configuré" value={engineData?.runtime?.profile ?? "Indisponible"} source="Runtime si initialisé" />
           <Fact label="Profil prêt" value={engineData?.runtime?.profile_status ?? "Indisponible"} source="Runtime si initialisé" />
-        </dl></section><section className="panel"><p className="eyebrow">MODÈLES LOCAUX</p><h2>Ollama</h2><dl className="fact-list">
-          <Fact label="Connectivité Ollama" value="Non exposée" source="Indisponible" />
-          <Fact label="Modèles installés" value="Non exposés" source="Indisponible" />
-          <Fact label="Modèles chargés" value="Non exposés" source="Indisponible" />
-          <Fact label="CPU / GPU / mémoire" value="Non mesurés" source="Indisponible" />
-        </dl></section></div>
+        </dl></section><section className="panel"><div className="panel-heading"><div><p className="eyebrow">MODÈLES LOCAUX</p><h2>Ollama</h2></div>
+          <button type="button" disabled={localModels.isFetching} onClick={() => void localModels.refetch()}>Lire l’état local</button></div>
+          {!localModels.isFetched && <p>Lecture non demandée. Aucun appel d’inférence n’est effectué pour renseigner cette vue.</p>}
+          {localModels.isFetching && <p className="skeleton">Lecture locale bornée…</p>}
+          {localModels.isError && <p role="alert">Statut local indisponible ou incompatible. Aucun ancien résultat n’est présenté comme actuel.</p>}
+          {localModelData && <dl className="fact-list">
+            <Fact label="Connectivité Ollama" value={localModelData.service_state === "REACHABLE" ? "Accessible" : "Indisponible"} source="GET local /api/tags" tone={localModelData.service_state === "REACHABLE" ? "good" : "warn"} />
+            <Fact label="Dernière lecture" value={new Date(localModelData.observed_at_ms).toLocaleString("fr-FR")} source="Horloge locale du processus natif" />
+            <Fact label="Identité déclarée" value={localModelData.configured_model ?? "Inconnue"} source="Configuration native optionnelle, pas modèle CHAT" />
+            <Fact label="Modèles installés" value={localModelData.installed_state === "OBSERVED" ? String(localModelData.installed.length) : "Indisponibles"} source="GET /api/tags" />
+            <Fact label="Modèles résidents" value={localModelData.loaded_state === "OBSERVED" ? String(localModelData.loaded.length) : "Indisponibles"} source="GET /api/ps; zéro = aucun résident" />
+            <Fact label="Échec de lecture" value={localModelData.failure_class ?? "Aucun"} source="Classe fixe, aucun corps HTTP" />
+          </dl>}
+        </section></div>
+        {localModelData && <div className="two-column"><section className="panel"><h2>Installés</h2>
+          {localModelData.installed_state !== "OBSERVED" ? <p>Liste indisponible.</p> : localModelData.installed.length === 0 ? <EmptyEvidence title="Aucun modèle installé">Liste Ollama accessible et vide.</EmptyEvidence>
+            : <div className="table-wrap"><table><thead><tr><th>Identifiant</th><th>Taille déclarée</th></tr></thead><tbody>{localModelData.installed.map((item) => <tr key={item.id}><td>{item.id}</td><td>{mib(item.size_bytes)}</td></tr>)}</tbody></table></div>}
+        </section><section className="panel"><h2>Résidents</h2>
+          {localModelData.loaded_state !== "OBSERVED" ? <p>Résidence non vérifiée.</p> : localModelData.loaded.length === 0 ? <EmptyEvidence title="Aucun modèle résident">Le service répond; aucun modèle n’est actuellement listé comme chargé.</EmptyEvidence>
+            : <div className="table-wrap"><table><thead><tr><th>Identifiant</th><th>Taille déclarée</th><th>VRAM rapportée</th></tr></thead><tbody>{localModelData.loaded.map((item) => <tr key={item.id}><td>{item.id}</td><td>{mib(item.size_bytes)}</td><td>{mib(item.ollama_reported_vram_bytes)}</td></tr>)}</tbody></table></div>}
+        </section></div>}
+        {localModelData && <section className="panel"><h2>Ressources Linux observées</h2><dl className="fact-list">
+          <Fact label="Mémoire disponible" value={mib(localModelData.resources.linux_mem_available_bytes)} source="/proc/meminfo du système Linux invité" />
+          <Fact label="Swap total / utilisé" value={`${mib(localModelData.resources.linux_swap_total_bytes)} / ${mib(localModelData.resources.linux_swap_used_bytes)}`} source="/proc/meminfo" />
+          <Fact label="Limite / usage cgroup" value={`${mib(localModelData.resources.cgroup_memory_limit_bytes)} / ${mib(localModelData.resources.cgroup_memory_current_bytes)}`} source="cgroup v2 si disponible" />
+          <Fact label="Marge cgroup" value={mib(localModelData.resources.cgroup_memory_headroom_bytes)} source="Calculée seulement si limite et usage connus" />
+          <Fact label="Placement CPU / GPU" value="Inconnu" source="Aucune mesure de placement" />
+          <Fact label="Utilisation GPU réelle" value="Inconnue" source="VRAM Ollama ≠ utilisation GPU mesurée" />
+        </dl></section>}
         <section className="panel"><p className="eyebrow">PROFILS</p><h2>Qualification disponible</h2>
           {profiles.isPending && profiles.fetchStatus === "fetching" && <p className="skeleton">Lecture des profils…</p>}
           {profiles.isError && <p role="alert">Profils indisponibles ou invalides.</p>}
@@ -217,8 +247,8 @@ export function CommandCenter({ transport, research }: { transport: ManagementTr
 }
 
 /** Own one query cache for this native window; no retries or background polling. */
-export function App({ transport = nativeManagement, research = nativeResearch }:
-  { transport?: ManagementTransport; research?: ResearchTransport }) {
+export function App({ transport = nativeManagement, research = nativeResearch, ollama = nativeOllama }:
+  { transport?: ManagementTransport; research?: ResearchTransport; ollama?: OllamaTransport }) {
   const [queryClient] = useState(() => new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 10_000, refetchOnWindowFocus: false } } }));
-  return <QueryClientProvider client={queryClient}><CommandCenter transport={transport} research={research} /></QueryClientProvider>;
+  return <QueryClientProvider client={queryClient}><CommandCenter transport={transport} research={research} ollama={ollama} /></QueryClientProvider>;
 }

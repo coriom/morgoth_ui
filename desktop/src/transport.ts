@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { components } from "./api.generated";
-import type { DesktopCodexReadinessV1, DesktopMissionPageV1, DesktopMissionReadV1, DesktopCapabilityPageV1 } from "../../types/morgoth";
+import type { DesktopCodexReadinessV1, DesktopMissionPageV1, DesktopMissionReadV1, DesktopCapabilityPageV1, DesktopOllamaStatusV1 } from "../../types/morgoth";
 
 export type Status = components["schemas"]["ManagementStatus"];
 export type DomainList = components["schemas"]["DomainList"];
@@ -62,6 +62,13 @@ export interface ResearchTransport {
 export const nativeResearch: ResearchTransport = {
   status: () => invoke<ResearchEngineStatus>("research_engine_status"),
   profiles: () => invoke<ResearchProfiles>("research_profiles"),
+};
+
+export type OllamaStatus = DesktopOllamaStatusV1;
+export interface OllamaTransport { status(): Promise<OllamaStatus>; }
+/** One fixed IPC command; the WebView supplies no URL, model or endpoint. */
+export const nativeOllama: OllamaTransport = {
+  status: () => invoke<OllamaStatus>("ollama_status_read"),
 };
 
 export type NativeError = { kind?: string; code?: string; status?: number };
