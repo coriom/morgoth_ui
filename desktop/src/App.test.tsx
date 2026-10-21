@@ -74,6 +74,18 @@ describe("read-only command center", () => {
     await waitFor(() => expect(transport.project).toHaveBeenCalledWith("beta"));
     expect(screen.queryByText("/tmp/alpha/vault")).toBeNull();
   });
+  it("hides a Project detail after its read fails on refresh", async () => {
+    const detail = vi.fn().mockResolvedValueOnce(project("alpha")).mockRejectedValueOnce(new Error("private detail"));
+    render(<App transport={management({ project: detail })} research={research()} />);
+    nav("Projets");
+    fireEvent.click(await screen.findByRole("button", { name: /alpha · crypto/ }));
+    expect(await screen.findByRole("heading", { name: "alpha" })).toBeTruthy();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Actualiser" }).hasAttribute("disabled")).toBe(false));
+    fireEvent.click(screen.getByRole("button", { name: "Actualiser" }));
+    expect(await screen.findByText("Détail indisponible ou invalide.")).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "alpha" })).toBeNull();
+    expect(screen.queryByText("private detail")).toBeNull();
+  });
   it("rejects a detail response for a different Project", async () => {
     const transport = management({ project: vi.fn(async () => project("beta")) });
     render(<App transport={transport} research={research()} />);

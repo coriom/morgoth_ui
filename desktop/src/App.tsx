@@ -203,7 +203,7 @@ export function CommandCenter({ transport, research }: { transport: ManagementTr
           {selectedId && !selectedInCatalog && <p role="alert">Project absent du catalogue courant. Aucun détail n’est affiché.</p>}
           {selectedInCatalog && project.isPending && <p className="skeleton">Lecture du Project…</p>}
           {project.isError && <p role="alert">Détail indisponible ou invalide.</p>}
-          {selectedInCatalog && project.data && project.data.id === selectedId && <><h3>{project.data.name}</h3><dl className="fact-list">
+          {selectedInCatalog && project.isSuccess && project.data.id === selectedId && <><h3>{project.data.name}</h3><dl className="fact-list">
             <Fact label="Identifiant" value={project.data.id} />
             <Fact label="Domaine" value={project.data.domain} />
             <Fact label="Configuration" value={project.data.configuration_valid ? "Valide" : "Invalide"} source="Catalogue, non revalidé" />
