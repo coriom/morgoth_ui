@@ -104,7 +104,10 @@ def main() -> int:
                    "MORGOTH_DESKTOP_HOME": str(home), "MORGOTH_DESKTOP_TEST_PG_SOCKET": str(socket),
                    "MORGOTH_D2_TEST_MISSION_ID": mission_id}
             _run([str(desktop / "src-tauri/target/debug/d2-read-smoke")], env=env)
-            print("D2_NATIVE_PROJECT_READ_PASS=true DISPOSABLE_TEST_ONLY=true PRODUCTION_QUALIFIED=false", flush=True)
+            # A second native process owns a new Management child and token; it
+            # must recover the same persisted read without re-seeding the DB.
+            _run([str(desktop / "src-tauri/target/debug/d2-read-smoke")], env=env)
+            print("D2_NATIVE_PROJECT_READ_PASS=true D2_FRESH_PROCESS_READ_PASS=true DISPOSABLE_TEST_ONLY=true PRODUCTION_QUALIFIED=false", flush=True)
             if args.window:
                 opener = build_opener(ProxyHandler({}))
                 gui_env = {**env, "DISPLAY": os.environ.get("DISPLAY", ""),
