@@ -1,12 +1,15 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { components } from "./api.generated";
-import type { DesktopCodexReadinessV1 } from "../../types/morgoth";
+import type { DesktopCodexReadinessV1, DesktopMissionPageV1, DesktopMissionReadV1, DesktopCapabilityPageV1 } from "../../types/morgoth";
 
 export type Status = components["schemas"]["ManagementStatus"];
 export type DomainList = components["schemas"]["DomainList"];
-export type ProjectList = components["schemas"]["ProjectList"];
-export type Project = components["schemas"]["ProjectView"];
-export type Validation = components["schemas"]["ProjectValidation"];
+export type Project = Pick<components["schemas"]["ProjectView"], "id" | "name" | "domain" | "legacy" | "configuration_valid" | "runtime_checked">;
+export type ProjectList = { projects: Project[]; configuration_valid: boolean; runtime_checked: boolean };
+export type Validation = { project: Project; configuration_valid: boolean; runtime_checked: boolean };
+export type MissionPage = DesktopMissionPageV1;
+export type Mission = DesktopMissionReadV1;
+export type CapabilityPage = DesktopCapabilityPageV1;
 export type RuntimeStatus = { state: "STARTING" | "READY" | "FAILED" | "STOPPING" | "STOPPED"; diagnostic: string | null };
 
 export interface ManagementTransport {
@@ -16,6 +19,9 @@ export interface ManagementTransport {
   projects(): Promise<ProjectList>;
   project(id: string): Promise<Project>;
   validation(id: string): Promise<Validation>;
+  missions(id: string, offset: number): Promise<MissionPage>;
+  mission(id: string, missionId: string): Promise<Mission>;
+  capabilities(id: string, offset: number): Promise<CapabilityPage>;
 }
 
 /** Only fixed commands cross the WebView-to-native boundary. */
@@ -26,6 +32,9 @@ export const nativeManagement: ManagementTransport = {
   projects: () => invoke<ProjectList>("list_projects"),
   project: (id) => invoke<Project>("get_project", { projectId: id }),
   validation: (id) => invoke<Validation>("validate_project", { projectId: id }),
+  missions: (id, offset) => invoke<MissionPage>("list_mission_reads", { projectId: id, offset }),
+  mission: (id, missionId) => invoke<Mission>("get_mission_read", { projectId: id, missionId }),
+  capabilities: (id, offset) => invoke<CapabilityPage>("list_capability_reads", { projectId: id, offset }),
 };
 
 export type ResearchPhase = "STOPPED" | "STARTING" | "PAUSED" | "NOT_READY" | "RUNNING" | "FAILED" | "STOPPING";

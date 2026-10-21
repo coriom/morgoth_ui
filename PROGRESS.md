@@ -1,3 +1,12 @@
+## 2026-10-21 — Desktop D2 Project-scoped read candidate
+
+A separate D2 worktree adds authenticated native mission and capability reads
+from the opt-in disposable `morgoth_test` backend contract. Project paths and
+schema names are removed before WebView IPC. Historical checkpoints, fixture
+validation and approval limits are labeled explicitly; no execution command
+or dependency is added. The D1 pin and protected Desktop reference remain
+unchanged. See `docs/DESKTOP-D2-*.md` for exact evidence and limitations.
+
 # PROGRESS.md — Morgoth UI Development Tracker
 
 ## 2026-10-21 — Desktop D1 command center candidate (feature branch)

@@ -14,7 +14,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-pub const BACKEND_SHA: &str = "7bff6c92ffe958cb11411a1f23fa6f917cf0fe32";
+pub const BACKEND_SHA: &str = "5fc01cc6f465ff021cac7735d44245ca6e79e87b";
 const STARTUP_LIMIT: Duration = Duration::from_secs(15);
 const STOP_GRACE: Duration = Duration::from_secs(3);
 
@@ -252,6 +252,11 @@ fn child_command(config: &SupervisorConfig, token_path: &Path, port: u16) -> Com
         .env("PYTHONDONTWRITEBYTECODE", "1")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    // D2 candidate only: an explicit native locator opts into disposable SQL reads.
+    // The backend independently requires an owner-private Unix socket and morgoth_test.
+    if let Some(socket) = std::env::var_os("MORGOTH_DESKTOP_TEST_PG_SOCKET") {
+        command.arg("--test-pg-socket").arg(socket);
+    }
     #[cfg(target_os = "linux")]
     {
         use std::os::unix::process::CommandExt;

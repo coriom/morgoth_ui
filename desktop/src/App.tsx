@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { nativeManagement, nativeResearch, type ManagementTransport, type ResearchTransport } from "./transport";
-import { readManagementStatus, readProject, readProjectList, readResearchProfiles, readResearchStatus, readRuntimeStatus } from "./readModels";
+import { readCapabilityPage, readManagementStatus, readMission, readMissionPage, readProject, readProjectList, readResearchProfiles, readResearchStatus, readRuntimeStatus } from "./readModels";
 
 type View = "overview" | "missions" | "capabilities" | "models" | "security" | "projects";
 const views: ReadonlyArray<{ id: View; label: string; code: string }> = [
@@ -23,10 +23,13 @@ function EmptyEvidence({ title, children }: { title: string; children: ReactNode
   return <div className="empty-evidence"><span aria-hidden="true">—</span><h3>{title}</h3><p>{children}</p></div>;
 }
 
-/** D1 calls only fixed native read commands; it never mounts Project or research mutations. */
+/** D2 calls only fixed native read commands; it never mounts Project or research mutations. */
 export function CommandCenter({ transport, research }: { transport: ManagementTransport; research: ResearchTransport }) {
   const [view, setView] = useState<View>("overview");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [missionOffset, setMissionOffset] = useState(0);
+  const [capabilityOffset, setCapabilityOffset] = useState(0);
+  const [selectedMissionId, setSelectedMissionId] = useState<string | null>(null);
   const runtime = useQuery({ queryKey: ["d1", "management-runtime"], queryFn: async () => readRuntimeStatus(await transport.runtimeStatus()) });
   const ready = runtime.isSuccess && runtime.data.state === "READY";
   const management = useQuery({ queryKey: ["d1", "management-status"], queryFn: async () => readManagementStatus(await transport.status()), enabled: ready });
@@ -35,22 +38,35 @@ export function CommandCenter({ transport, research }: { transport: ManagementTr
   const selectedInCatalog = connected && projects.isSuccess && projects.data.projects.some((item) => item.id === selectedId);
   const project = useQuery({ queryKey: ["d1", "project", selectedId], queryFn: async () => readProject(await transport.project(selectedId!)),
     enabled: connected && selectedId !== null && selectedInCatalog });
+  const missions = useQuery({ queryKey: ["d2", "missions", selectedId, missionOffset],
+    queryFn: async () => readMissionPage(await transport.missions(selectedId!, missionOffset), selectedId!),
+    enabled: connected && selectedInCatalog && view === "missions" });
+  const mission = useQuery({ queryKey: ["d2", "mission", selectedId, selectedMissionId],
+    queryFn: async () => readMission(await transport.mission(selectedId!, selectedMissionId!), selectedId!),
+    enabled: connected && selectedInCatalog && view === "missions" && selectedMissionId !== null });
+  const capabilities = useQuery({ queryKey: ["d2", "capabilities", selectedId, capabilityOffset],
+    queryFn: async () => readCapabilityPage(await transport.capabilities(selectedId!, capabilityOffset), selectedId!),
+    enabled: connected && selectedInCatalog && (view === "capabilities" || view === "security") });
   const engine = useQuery({ queryKey: ["d1", "research-status"], queryFn: async () => readResearchStatus(await research.status()), enabled: connected });
   const profiles = useQuery({ queryKey: ["d1", "research-profiles", engine.data?.project_id],
     queryFn: async () => readResearchProfiles(await research.profiles()),
     enabled: connected && engine.isSuccess && engine.data.project_id != null && engine.data.state !== "STOPPED" && (view === "models" || view === "security") });
   const projectData = connected && projects.isSuccess ? projects.data : undefined;
+  const missionData = connected && selectedInCatalog && missions.isSuccess && missions.data.project_id === selectedId ? missions.data : undefined;
+  const detailData = connected && selectedInCatalog && mission.isSuccess && mission.data.project_id === selectedId && mission.data.mission_id === selectedMissionId ? mission.data : undefined;
+  const capabilityData = connected && selectedInCatalog && capabilities.isSuccess && capabilities.data.project_id === selectedId ? capabilities.data : undefined;
   const engineData = connected && engine.isSuccess ? engine.data : undefined;
   const profileData = connected && engine.isSuccess && profiles.isSuccess ? profiles.data : undefined;
   const managerLoading = runtime.isPending || (ready && management.isPending);
   const managerError = runtime.isError || management.isError || (!managerLoading && !connected);
   const projectCount = connected && projectData ? String(projectData.projects.length) : "Indisponible";
   const refreshBusy = runtime.isFetching || management.isFetching || projects.isFetching || project.isFetching
-    || engine.isFetching || profiles.isFetching;
+    || engine.isFetching || profiles.isFetching || missions.isFetching || mission.isFetching || capabilities.isFetching;
+  const chooseProject = (id: string) => { setSelectedId(id); setSelectedMissionId(null); setMissionOffset(0); setCapabilityOffset(0); };
 
   return <div className="command-layout">
     <aside className="sidebar" aria-label="Navigation principale">
-      <div className="brand"><span className="brand-glyph" aria-hidden="true">M</span><div><strong>MORGOTH</strong><small>LOCAL COMMAND / D1</small></div></div>
+      <div className="brand"><span className="brand-glyph" aria-hidden="true">M</span><div><strong>MORGOTH</strong><small>LOCAL COMMAND / D2</small></div></div>
       <div className="nav-caption">ESPACES</div>
       <nav aria-label="Espaces de supervision" className="nav-list">{views.map((item) =>
         <button key={item.id} type="button" aria-current={view === item.id ? "page" : undefined}
@@ -66,7 +82,9 @@ export function CommandCenter({ transport, research }: { transport: ManagementTr
         <div><strong>{managerLoading ? "Connexion en cours" : refreshBusy && connected ? "Vérification en cours" : connected ? "Gestion locale accessible" : "Gestion locale indisponible"}</strong>
           <span>{managerLoading ? "Lecture du superviseur natif" : connected ? "API de gestion authentifiée par le processus natif" : "Aucune activité déduite de l’interface"}</span></div>
         <button type="button" disabled={refreshBusy} onClick={() => { void runtime.refetch(); if (ready) void management.refetch();
-          if (connected) { void projects.refetch(); void engine.refetch(); if (selectedInCatalog) void project.refetch();
+          if (connected) { void projects.refetch(); void engine.refetch(); if (selectedInCatalog) { void project.refetch();
+            if (view === "missions") { void missions.refetch(); if (selectedMissionId) void mission.refetch(); }
+            if (view === "capabilities" || view === "security") void capabilities.refetch(); }
             if (profiles.isSuccess) void profiles.refetch(); } }}>Actualiser</button>
       </section>
       {managerError && <p className="notice warn" role="alert">Les données du backend restent indisponibles. Aucune activité n’est présumée.</p>}
@@ -77,7 +95,7 @@ export function CommandCenter({ transport, research }: { transport: ManagementTr
           <section className="metric"><span>GESTION LOCALE</span><strong>{managerLoading ? "Chargement…" : connected ? "Disponible" : "Indisponible"}</strong><small>Processus natif + statut de gestion</small></section>
           <section className="metric"><span>PROJETS CONFIGURÉS</span><strong>{projects.isPending && connected ? "Chargement…" : projectCount}</strong><small>Catalogue de configuration, pas missions actives</small></section>
           <section className="metric"><span>MOTEUR DE RECHERCHE</span><strong>{engine.isPending && connected ? "Chargement…" : engineData?.state ?? "Indisponible"}</strong><small>État du superviseur; autonomie non déduite</small></section>
-          <section className="metric"><span>MISSIONS GÉNÉRALISTES</span><strong>Non exposées</strong><small>Pas de lecture Project-scopée dans ce contrat</small></section>
+          <section className="metric"><span>MISSIONS GÉNÉRALISTES</span><strong>Lecture Project</strong><small>Historique de test disponible après sélection; aucune activité live déduite</small></section>
         </div>
         <div className="two-column">
           <section className="panel"><p className="eyebrow">01 / ÉTAT</p><h2>Ce qui est observable</h2><dl className="fact-list">
@@ -96,16 +114,45 @@ export function CommandCenter({ transport, research }: { transport: ManagementTr
           <EmptyEvidence title="Flux non connecté">Aucun flux d’événements Project-scopé n’est publié au transport Desktop. Aucun événement fictif n’est affiché.</EmptyEvidence></section>
       </div>}
 
-      {view === "missions" && <div className="content-stack"><p className="section-intro">Une mission requiert un objectif, un Project, des checkpoints et des preuves d’issue.</p>
-        <section className="panel"><div className="panel-heading"><div><p className="eyebrow">MISSION WORKSPACE</p><h2>Missions et décisions</h2></div><span className="tag">INDISPONIBLE</span></div>
-          <EmptyEvidence title="Aucun registre de missions accessible">Le backend possède des checkpoints Project-scopés expérimentaux, mais le transport natif ne publie ni liste ni détail en lecture seule. « Indisponible » ne signifie pas zéro mission.</EmptyEvidence></section>
-        <section className="panel"><h2>Contrat de lecture nécessaire</h2><p>Identité du Project, état, étapes confirmées, gaps de capacité, attente d’approbation, échec ou refus et preuve de résultat. Aucune action Démarrer, Reprendre ou Réessayer n’est fournie.</p></section></div>}
+      {view === "missions" && <div className="content-stack"><p className="section-intro">Checkpoints historiques du Project sélectionné, issus uniquement du registre expérimental `morgoth_test`.</p>
+        {!selectedInCatalog && <EmptyEvidence title="Sélectionnez un Project">Choisissez un Project dans l’espace Projets. Le Project historique ne possède pas ce registre.</EmptyEvidence>}
+        {selectedInCatalog && <section className="panel"><div className="panel-heading"><div><p className="eyebrow">MISSION WORKSPACE</p><h2>Missions · {selectedId}</h2></div><span className="tag">HISTORIQUE · LECTURE SEULE</span></div>
+          {missions.isPending && <p className="skeleton">Lecture des checkpoints…</p>}
+          {missions.isError && <p role="alert">Registre indisponible ou incompatible pour ce Project. Aucune absence de mission n’est déduite.</p>}
+          {missionData?.missions.length === 0 && <EmptyEvidence title="Aucune mission enregistrée">Le registre de test du Project est accessible et vide pour cette page.</EmptyEvidence>}
+          {missionData && missionData.missions.length > 0 && <div className="table-wrap"><table><thead><tr><th>Mission</th><th>État du checkpoint</th><th>Mis à jour</th><th>Preuves</th></tr></thead><tbody>{missionData.missions.map((item) =>
+            <tr key={item.mission_id}><td><button type="button" className="table-link" onClick={() => setSelectedMissionId(item.mission_id)}>{item.objective}</button><small>{item.mission_id}</small></td>
+              <td>{item.state}</td><td>{new Date(item.updated_at).toLocaleString("fr-FR")}</td><td>{item.receipt_count} reçu(s) local(aux)</td></tr>)}</tbody></table></div>}
+          {missionData && <div className="pager"><button type="button" disabled={missionOffset === 0} onClick={() => { setMissionOffset(Math.max(0, missionOffset - 10)); setSelectedMissionId(null); }}>Précédent</button>
+            <span>Page {Math.floor(missionOffset / 10) + 1}</span><button type="button" disabled={missionData.next_offset === null} onClick={() => { setMissionOffset(missionData.next_offset!); setSelectedMissionId(null); }}>Suivant</button></div>}
+        </section>}
+        {selectedMissionId && selectedInCatalog && <section className="panel"><h2>Détail du checkpoint</h2>
+          {mission.isPending && <p className="skeleton">Lecture du détail…</p>}
+          {mission.isError && <p role="alert">Détail supprimé, hors Project ou indisponible.</p>}
+          {detailData && <dl className="fact-list"><Fact label="Objectif" value={detailData.objective} source="Enregistrement historique" />
+            <Fact label="État enregistré" value={detailData.state} source="Dernier checkpoint, pas statut live" />
+            <Fact label="Étapes enregistrées" value={detailData.stages.join(" → ")} source="Historique borné" />
+            <Fact label="Gaps de capacité" value={detailData.capability_gaps.join(", ") || "Aucun enregistré"} />
+            <Fact label="Échecs / refus" value={detailData.failure_codes.join(", ") || "Aucun enregistré"} />
+            <Fact label="Reprise éligible" value={detailData.resume_eligible ? "Oui selon le checkpoint" : "Non"} source="Aucune commande de reprise" />
+            <Fact label="Reçus locaux" value={String(detailData.receipt_count)} source="Nombre; résultat brut masqué" />
+            <Fact label="Créé / mis à jour" value={`${new Date(detailData.created_at).toLocaleString("fr-FR")} / ${new Date(detailData.updated_at).toLocaleString("fr-FR")}`} />
+          </dl>}</section>}
+      </div>}
 
-      {view === "capabilities" && <div className="content-stack"><p className="section-intro">Un contrat appris, une validation isolée et une permission d’exécution sont des faits distincts.</p>
-        <div className="two-column"><section className="panel"><p className="eyebrow">INVENTAIRE</p><h2>Capacités Project-scopées</h2>
-          <EmptyEvidence title="Inventaire non exposé">Le Desktop n’a pas de lecture authentifiée des versions, sources, validations, révocations ou portées des capacités.</EmptyEvidence></section>
-          <section className="panel"><p className="eyebrow">PROCÉDURES</p><h2>Apprentissage expérimental</h2>
-          <EmptyEvidence title="Procédures non exposées">Les expériences navigateur synthétiques ne confèrent aucune autorisation de site réel. Aucun enregistrement de démonstration n’est présenté comme capacité active.</EmptyEvidence></section></div></div>}
+      {view === "capabilities" && <div className="content-stack"><p className="section-intro">Inventaire expérimental du Project; validation, autorisation et exécution sont des faits distincts.</p>
+        {!selectedInCatalog && <EmptyEvidence title="Sélectionnez un Project">Choisissez un Project dans l’espace Projets.</EmptyEvidence>}
+        {selectedInCatalog && <section className="panel"><h2>Capacités · {selectedId}</h2>
+          {capabilities.isPending && <p className="skeleton">Lecture de l’inventaire…</p>}
+          {capabilities.isError && <p role="alert">Inventaire indisponible ou incompatible.</p>}
+          {capabilityData?.capabilities.length === 0 && <EmptyEvidence title="Aucune capacité enregistrée">Le registre du Project est accessible et vide pour cette page.</EmptyEvidence>}
+          {capabilityData && capabilityData.capabilities.length > 0 && <div className="table-wrap"><table><thead><tr><th>Capacité / version</th><th>Validation</th><th>État</th><th>Autorité</th><th>Source</th></tr></thead><tbody>{capabilityData.capabilities.map((item) =>
+            <tr key={`${item.capability_id}:${item.version}:${item.documentation_digest}`}><td>{item.capability_id}<small>v{item.version} · {item.documentation_digest.slice(0, 12)}…</small></td>
+              <td>{item.validation_state}</td><td>{item.state}</td><td>{item.approval_kind === "TEST_FIXTURE_ONLY" ? "Fixture de test uniquement" : "Aucun grant lu"}</td><td>{item.source_identity}</td></tr>)}</tbody></table></div>}
+          {capabilityData && <div className="pager"><button type="button" disabled={capabilityOffset === 0} onClick={() => setCapabilityOffset(Math.max(0, capabilityOffset - 10))}>Précédent</button>
+            <span>Page {Math.floor(capabilityOffset / 10) + 1}</span><button type="button" disabled={capabilityData.next_offset === null} onClick={() => setCapabilityOffset(capabilityData.next_offset!)}>Suivant</button></div>}
+        </section>}
+        <section className="panel"><h2>Procédures navigateur</h2><p>Un enregistrement synthétique, même validé, ne confère aucun droit sur un site réel.</p></section></div>}
 
       {view === "models" && <div className="content-stack"><p className="section-intro">Le profil de recherche est observable lorsque son moteur est initialisé. La liste Ollama installée ou chargée n’est pas exposée.</p>
         <div className="two-column"><section className="panel"><p className="eyebrow">RUNTIME</p><h2>Recherche supervisée</h2><dl className="fact-list">
@@ -129,9 +176,9 @@ export function CommandCenter({ transport, research }: { transport: ManagementTr
 
       {view === "security" && <div className="content-stack"><p className="section-intro">Les indicateurs séparent les constats du superviseur, la politique revue dans le code et ce que Desktop ne peut pas vérifier.</p>
         <div className="two-column"><section className="panel"><p className="eyebrow">AUTORITÉ</p><h2>Actions et approbations</h2><dl className="fact-list">
-          <Fact label="Commandes d’exécution dans D1" value="Aucune" source="Interface D1" tone="good" />
+          <Fact label="Commandes d’exécution dans D2" value="Aucune" source="Interface D2" tone="good" />
           <Fact label="Human Gate 3" value="Humain uniquement" source="Règle de gouvernance" />
-          <Fact label="Approbations en attente" value="Non exposées" source="Indisponible" />
+          <Fact label="Capacités en attente de revue" value={capabilityData ? String(capabilityData.capabilities.filter((item) => item.state === "PENDING_APPROVAL").length) : "Indisponible"} source="Page de registre test, pas file humaine" />
           <Fact label="Tentatives bloquées" value="Non exposées" source="Indisponible" />
           <Fact label="SAFE_FOR_WORKLOADS" value="Non exposé en temps réel" source="Indisponible; baseline revue = false" />
         </dl></section><section className="panel"><p className="eyebrow">CONFINEMENT</p><h2>Exécution séparée</h2><dl className="fact-list">
@@ -141,7 +188,7 @@ export function CommandCenter({ transport, research }: { transport: ManagementTr
           <Fact label="Workloads Codex" value={profileData ? profileData.codex.workloads_ready ? "Prêts selon le backend" : "Bloqués" : "Indisponibles"} source="Profil si disponible" tone={profileData?.codex.workloads_ready ? "good" : "warn"} />
           <Fact label="Sites Web réels" value="Non autorisés par ce Desktop" source="Portée D1" />
         </dl></section></div>
-        <section className="panel"><h2>Contrat d’approbation</h2><p>Un enregistrement validé ou une procédure mémorisée n’est pas un grant. Les approbations Project-scopées ne sont pas lisibles ici; Desktop n’émet aucune autorisation.</p></section></div>}
+        <section className="panel"><h2>Contrat d’approbation</h2><p>Un enregistrement validé ou une procédure mémorisée n’est pas un grant. Les grants, leurs portées et leur provenance ne sont pas publiés par D2; Desktop n’émet aucune autorisation.</p></section></div>}
 
       {view === "projects" && <div className="content-stack"><p className="section-intro">Catalogue de configuration. Ni stockage, ni recherche, ni mission ne sont démarrés par cette vue.</p>
         <div className="two-column projects-grid"><section className="panel"><div className="panel-heading"><div><p className="eyebrow">CATALOGUE</p><h2>Projects</h2></div><span className="tag">{projectCount}</span></div>
@@ -150,7 +197,7 @@ export function CommandCenter({ transport, research }: { transport: ManagementTr
           {!connected && <EmptyEvidence title="Catalogue indisponible">Le service de gestion n’est pas confirmé.</EmptyEvidence>}
           {projectData?.projects.length === 0 && <EmptyEvidence title="Aucun Project configuré">Le catalogue de configuration est vide.</EmptyEvidence>}
           <ul className="project-list">{projectData?.projects.map((item) => <li key={item.id}><button type="button" className={selectedId === item.id ? "selected" : ""}
-            onClick={() => setSelectedId(item.id)} aria-current={selectedId === item.id ? "true" : undefined}><strong>{item.name}</strong><span>{item.id} · {item.domain}{item.legacy ? " · historique" : ""}</span></button></li>)}</ul>
+            onClick={() => chooseProject(item.id)} aria-current={selectedId === item.id ? "true" : undefined}><strong>{item.name}</strong><span>{item.id} · {item.domain}{item.legacy ? " · historique" : ""}</span></button></li>)}</ul>
         </section><section className="panel"><p className="eyebrow">PORTÉE SÉLECTIONNÉE</p><h2>Détail du Project</h2>
           {!selectedId && <EmptyEvidence title="Sélectionnez un Project">Le choix change seulement le périmètre affiché.</EmptyEvidence>}
           {selectedId && !selectedInCatalog && <p role="alert">Project absent du catalogue courant. Aucun détail n’est affiché.</p>}
@@ -159,13 +206,12 @@ export function CommandCenter({ transport, research }: { transport: ManagementTr
           {selectedInCatalog && project.data && project.data.id === selectedId && <><h3>{project.data.name}</h3><dl className="fact-list">
             <Fact label="Identifiant" value={project.data.id} />
             <Fact label="Domaine" value={project.data.domain} />
-            <Fact label="Schéma PostgreSQL" value={project.data.postgres_schema} source="Configuration" />
             <Fact label="Configuration" value={project.data.configuration_valid ? "Valide" : "Invalide"} source="Catalogue, non revalidé" />
             <Fact label="Runtime vérifié" value={project.data.runtime_checked ? "Oui" : "Non"} source="Catalogue" />
             <Fact label="Moteur du Project" value={engineData?.project_id === selectedId ? engineData.state : "Aucun moteur attribué observé"} source="Superviseur natif" />
           </dl></>}
         </section></div></div>}
-      <footer className="workspace-footer"><span>DESKTOP D1 · LECTURE SEULE</span><span>Un état absent reste inconnu.</span></footer>
+      <footer className="workspace-footer"><span>DESKTOP D2 · LECTURE SEULE</span><span>Un état absent reste inconnu.</span></footer>
     </main>
   </div>;
 }

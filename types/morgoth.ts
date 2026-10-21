@@ -489,3 +489,44 @@ export interface ProjectConfig {
 }
 
 export type Project = ProjectConfig;
+
+/** D2 disposable Project-scoped Desktop read contract; historical facts only. */
+export interface DesktopMissionReadV1 {
+  mission_id: string;
+  project_id: string;
+  objective: string;
+  state: string;
+  revision: number;
+  stages: string[];
+  capability_gaps: string[];
+  failure_codes: string[];
+  resume_eligible: boolean;
+  receipt_count: number;
+  created_at: string;
+  updated_at: string;
+  evidence_kind: "HISTORICAL_CHECKPOINT";
+}
+export interface DesktopMissionPageV1 {
+  project_id: string;
+  missions: DesktopMissionReadV1[];
+  next_offset: number | null;
+  source: "DISPOSABLE_POSTGRESQL";
+}
+export interface DesktopCapabilityReadV1 {
+  capability_id: string;
+  project_id: string;
+  version: string;
+  documentation_digest: string;
+  state: string;
+  validation_state: string;
+  approval_kind: "NONE_RECORDED" | "TEST_FIXTURE_ONLY";
+  source_identity: string;
+  updated_at: string;
+  source: "DISPOSABLE_POSTGRESQL";
+}
+export interface DesktopCapabilityPageV1 {
+  project_id: string;
+  capabilities: DesktopCapabilityReadV1[];
+  next_offset: number | null;
+  source: "DISPOSABLE_POSTGRESQL";
+}

@@ -1,0 +1,15 @@
+# D2 candidate: only fixed Project evidence reads in the main window.
+[[permission]]
+identifier = "allow-list-mission-reads"
+description = "Enables the bounded Project-scoped mission list read."
+commands.allow = ["list_mission_reads"]
+
+[[permission]]
+identifier = "allow-get-mission-read"
+description = "Enables one exact Project-scoped mission detail read."
+commands.allow = ["get_mission_read"]
+
+[[permission]]
+identifier = "allow-list-capability-reads"
+description = "Enables the bounded Project-scoped capability inventory read."
+commands.allow = ["list_capability_reads"]

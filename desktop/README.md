@@ -395,3 +395,15 @@ Pre-update metadata for the operator's existing native executable: command path 
 | CONCLUSION | **BLOCKED_CLAUDE_UPDATE_INCOMPATIBLE** |
 
 The command's zero exit is **not** evidence that this active binary upgraded. The version/flag gate in [the no-output qualification harness](scripts/claude_upgrade_requalification.py) stopped before either provider call. No Claude prompt, Weather, Morgoth START, Anthropic API key, backend change, or WebView authority was involved. The updater's unchanged active binary requires a separate operator review; this chantier did not reinstall, change PATH, login, or try another update. Run `python scripts/claude_upgrade_requalification.py --backend <absolute-clean-pinned-backend-worktree> --python <absolute-venv-python>` only in a separately authorized qualification: on a compatible, authenticated CLI it can execute up to two model calls.
+
+## Desktop D2 candidate: disposable Project evidence
+
+The D2 feature worktree pins backend `5fc01cc6f465ff021cac7735d44245ca6e79e87b` and adds three read-only native commands for historical generalist missions and capability validation. The backend read routes are opt-in and accept only an owner-private Unix socket for a disposable `morgoth_test` database. Normal Management V1 has no PostgreSQL access. Project paths and schema names are removed from the WebView projection. Actual approval grants remain unavailable, and `SAFE_FOR_WORKLOADS=False` is unchanged.
+
+From the clean D2 candidate worktree, after building the native binaries, the safe preview is:
+
+```bash
+/home/corio/Morgoth/morgoth/.venv/bin/python desktop/scripts/d2_read_fixture.py --window
+```
+
+It creates a temporary Unix-socket-only PostgreSQL cluster and two Project manifests, seeds one **synthetic** historical mission/capability in `project_a`, verifies Rust-owned authenticated reads and cross-Project refusal, then opens the local Tauri window. Select `project_a` in Projects to inspect the synthetic record; `project_b` must be empty. Closing the window stops the owned local processes and removes the temporary cluster/home. This command does not read production PostgreSQL, run research, infer with Ollama, approve a capability or access external sites. The non-window proof uses the same command without `--window`. See `docs/DESKTOP-D2-*.md` for provenance and limitations.

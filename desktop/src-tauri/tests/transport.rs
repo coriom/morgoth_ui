@@ -1,6 +1,7 @@
 use morgoth_desktop::{
     read_private_token, CreateProjectRequest, DomainList, DomainView, ManagementClient,
     ManagementStatus, ProjectCreation, ProjectList, ProjectValidation, ProjectView,
+    PublicProjectView,
 };
 use serde_json::{json, Value};
 use std::{
@@ -19,6 +20,60 @@ fn token_file() -> (tempfile::TempDir, PathBuf) {
     std::fs::write(&path, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA").unwrap();
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
     (dir, path)
+}
+
+#[test]
+fn native_project_projection_excludes_internal_locations() {
+    let internal = ProjectView {
+        id: "alpha".into(),
+        name: "Alpha".into(),
+        domain: "crypto".into(),
+        legacy: false,
+        manifest_path: Some("/private/project.yaml".into()),
+        workspace_root: Some("/private/workspace".into()),
+        postgres_schema: "private_schema".into(),
+        chroma_prefix: "private_".into(),
+        vault_dir: "/private/vault".into(),
+        runtime_dir: "/private/runtime".into(),
+        configuration_valid: true,
+        runtime_checked: false,
+    };
+    let serialized = serde_json::to_string(&PublicProjectView::from(internal)).unwrap();
+    assert!(!serialized.contains("/private"));
+    assert!(!serialized.contains("private_schema"));
+    assert!(!serialized.contains("chroma_prefix"));
+}
+
+#[tokio::test]
+async fn desktop_read_path_is_fixed_and_cross_project_response_refused() {
+    let (_dir, token) = token_file();
+    let body = json!({"project_id":"other","missions":[],"next_offset":null,"source":"DISPOSABLE_POSTGRESQL"}).to_string();
+    let (port, rx, task) = server("200 OK", &body, "");
+    let err = ManagementClient::new(port, &token)
+        .unwrap()
+        .list_mission_reads("alpha", 0)
+        .await
+        .unwrap_err();
+    task.join().unwrap();
+    assert_eq!(err.kind, "INCOMPATIBLE_RESPONSE");
+    let request = rx.recv().unwrap().to_ascii_lowercase();
+    assert!(request
+        .starts_with("get /desktop-read/v1/projects/alpha/missions?limit=10&offset=0 http/1.1"));
+    assert!(!request.contains("origin:"));
+    assert!(!request.contains("cookie:"));
+}
+
+#[tokio::test]
+async fn old_backend_read_route_fails_closed() {
+    let (_dir, token) = token_file();
+    let (port, _, task) = server("404 Not Found", r#"{"detail":"Not Found"}"#, "");
+    let error = ManagementClient::new(port, &token)
+        .unwrap()
+        .list_mission_reads("alpha", 0)
+        .await
+        .unwrap_err();
+    task.join().unwrap();
+    assert_eq!(error.kind, "INCOMPATIBLE_RESPONSE");
 }
 fn server(
     status: &str,

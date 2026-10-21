@@ -69,6 +69,11 @@ h3{font-size:.95rem;margin:0 0 8px}
 table{border-collapse:collapse;width:100%;font-size:.82rem}
 td,th{padding:10px 12px;border-bottom:1px solid #33424d;text-align:left}
 th{color:#b3c1c9}
+td small{display:block;color:#91a4ae;font:.68rem ui-monospace,monospace;overflow-wrap:anywhere;margin-top:4px}
+.table-link{color:#e9d1a1;background:transparent;border:0;padding:0;text-align:left;text-decoration:underline;text-underline-offset:3px;cursor:pointer;font:inherit}
+.pager{display:flex;gap:12px;align-items:center;justify-content:flex-end;margin-top:14px;color:#b1c0c7;font-size:.75rem}
+.pager button{color:#eaf0f0;background:#243642;border:1px solid #53636d;border-radius:4px;padding:7px 12px}
+.pager button:disabled{opacity:.45;cursor:not-allowed}
 .project-list{list-style:none;margin:0;padding:0;display:grid;gap:7px}
 .project-list button{width:100%;text-align:left;background:#1d2c36;border:1px solid #40515d;color:#edf1f0;border-radius:4px;padding:13px;display:grid;gap:5px}
 .project-list button:hover,.project-list button.selected{border-color:#d8bb85;background:#2a3b45}

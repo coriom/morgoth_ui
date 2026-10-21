@@ -11,6 +11,7 @@ pub mod research;
 pub mod supervisor;
 
 const PREFIX: &str = "/management/v1";
+const READ_PREFIX: &str = "/desktop-read/v1";
 const MAX_BODY: usize = 65_536;
 
 fn required_nullable<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
@@ -78,6 +79,43 @@ pub struct ProjectView {
     pub configuration_valid: bool,
     pub runtime_checked: bool,
 }
+/// Only configuration facts required by the WebView; no native paths or schema names.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PublicProjectView {
+    pub id: String,
+    pub name: String,
+    pub domain: String,
+    pub legacy: bool,
+    pub configuration_valid: bool,
+    pub runtime_checked: bool,
+}
+impl From<ProjectView> for PublicProjectView {
+    fn from(value: ProjectView) -> Self {
+        Self {
+            id: value.id,
+            name: value.name,
+            domain: value.domain,
+            legacy: value.legacy,
+            configuration_valid: value.configuration_valid,
+            runtime_checked: value.runtime_checked,
+        }
+    }
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PublicProjectList {
+    pub projects: Vec<PublicProjectView>,
+    pub configuration_valid: bool,
+    pub runtime_checked: bool,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PublicProjectValidation {
+    pub project: PublicProjectView,
+    pub configuration_valid: bool,
+    pub runtime_checked: bool,
+}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProjectList {
@@ -100,6 +138,54 @@ pub struct ProjectCreation {
     pub durability_confirmed: bool,
     pub engine_started: bool,
     pub storage_initialized: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MissionRead {
+    pub mission_id: String,
+    pub project_id: String,
+    pub objective: String,
+    pub state: String,
+    pub revision: i64,
+    pub stages: Vec<String>,
+    pub capability_gaps: Vec<String>,
+    pub failure_codes: Vec<String>,
+    pub resume_eligible: bool,
+    pub receipt_count: i64,
+    pub created_at: String,
+    pub updated_at: String,
+    pub evidence_kind: String,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MissionReadPage {
+    pub project_id: String,
+    pub missions: Vec<MissionRead>,
+    pub next_offset: Option<u32>,
+    pub source: String,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CapabilityRead {
+    pub capability_id: String,
+    pub project_id: String,
+    pub version: String,
+    pub documentation_digest: String,
+    pub state: String,
+    pub validation_state: String,
+    pub approval_kind: String,
+    pub source_identity: String,
+    pub updated_at: String,
+    pub source: String,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CapabilityReadPage {
+    pub project_id: String,
+    pub capabilities: Vec<CapabilityRead>,
+    pub next_offset: Option<u32>,
+    pub source: String,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -269,7 +355,11 @@ impl ManagementClient {
         Self::new(port, path)
     }
     fn url(&self, path: &str) -> String {
-        format!("http://127.0.0.1:{}{PREFIX}{path}", self.port)
+        if path.starts_with(READ_PREFIX) {
+            format!("http://127.0.0.1:{}{path}", self.port)
+        } else {
+            format!("http://127.0.0.1:{}{PREFIX}{path}", self.port)
+        }
     }
     async fn call<T: DeserializeOwned>(
         &self,
@@ -448,6 +538,123 @@ impl ManagementClient {
         }
         self.call(Method::POST, "/projects", Some(input)).await
     }
+    pub async fn list_mission_reads(
+        &self,
+        id: &str,
+        offset: u32,
+    ) -> Result<MissionReadPage, NativeError> {
+        if !safe_project_id(id) || offset > 1000 {
+            return Err(NativeError::new("INVALID_REQUEST", "Lecture invalide."));
+        }
+        let page: MissionReadPage = self
+            .call(
+                Method::GET,
+                &format!("{READ_PREFIX}/projects/{id}/missions?limit=10&offset={offset}"),
+                None,
+            )
+            .await?;
+        if page.project_id != id
+            || page.source != "DISPOSABLE_POSTGRESQL"
+            || page.missions.len() > 10
+            || page.missions.iter().any(|m| {
+                m.project_id != id
+                    || m.evidence_kind != "HISTORICAL_CHECKPOINT"
+                    || m.objective.len() > 240
+                    || m.stages.len() > 16
+                    || m.capability_gaps.len() > 16
+                    || m.failure_codes.len() > 4
+                    || m.revision < 0
+                    || m.receipt_count < 0
+            })
+            || page.next_offset.is_some_and(|n| n > 1010 || n <= offset)
+        {
+            return Err(NativeError::new(
+                "INCOMPATIBLE_RESPONSE",
+                "Réponse API incompatible.",
+            ));
+        }
+        Ok(page)
+    }
+    pub async fn get_mission_read(
+        &self,
+        id: &str,
+        mission_id: &str,
+    ) -> Result<MissionRead, NativeError> {
+        if !safe_project_id(id) || !safe_uuid(mission_id) {
+            return Err(NativeError::new("INVALID_REQUEST", "Lecture invalide."));
+        }
+        let item: MissionRead = self
+            .call(
+                Method::GET,
+                &format!("{READ_PREFIX}/projects/{id}/missions/{mission_id}"),
+                None,
+            )
+            .await?;
+        if item.project_id != id
+            || item.mission_id != mission_id
+            || item.evidence_kind != "HISTORICAL_CHECKPOINT"
+            || item.objective.len() > 240
+            || item.stages.len() > 16
+            || item.capability_gaps.len() > 16
+            || item.failure_codes.len() > 4
+            || item.revision < 0
+            || item.receipt_count < 0
+        {
+            return Err(NativeError::new(
+                "INCOMPATIBLE_RESPONSE",
+                "Réponse API incompatible.",
+            ));
+        }
+        Ok(item)
+    }
+    pub async fn list_capability_reads(
+        &self,
+        id: &str,
+        offset: u32,
+    ) -> Result<CapabilityReadPage, NativeError> {
+        if !safe_project_id(id) || offset > 1000 {
+            return Err(NativeError::new("INVALID_REQUEST", "Lecture invalide."));
+        }
+        let page: CapabilityReadPage = self
+            .call(
+                Method::GET,
+                &format!("{READ_PREFIX}/projects/{id}/capabilities?limit=10&offset={offset}"),
+                None,
+            )
+            .await?;
+        if page.project_id != id
+            || page.source != "DISPOSABLE_POSTGRESQL"
+            || page.capabilities.len() > 10
+            || page.capabilities.iter().any(|c| {
+                c.project_id != id
+                    || c.source != "DISPOSABLE_POSTGRESQL"
+                    || c.source_identity.len() > 200
+                    || c.documentation_digest.len() != 64
+                    || !matches!(
+                        c.approval_kind.as_str(),
+                        "NONE_RECORDED" | "TEST_FIXTURE_ONLY"
+                    )
+            })
+            || page.next_offset.is_some_and(|n| n > 1010 || n <= offset)
+        {
+            return Err(NativeError::new(
+                "INCOMPATIBLE_RESPONSE",
+                "Réponse API incompatible.",
+            ));
+        }
+        Ok(page)
+    }
+}
+
+fn safe_uuid(value: &str) -> bool {
+    value.len() == 36
+        && value.bytes().enumerate().all(|(index, byte)| {
+            if [8, 13, 18, 23].contains(&index) {
+                byte == b'-'
+            } else {
+                byte.is_ascii_hexdigit()
+            }
+        })
 }
 
 #[cfg(feature = "desktop")]
@@ -492,27 +699,76 @@ mod desktop {
     pub async fn list_projects(
         window: WebviewWindow,
         supervisor: State<'_, ManagementSupervisor>,
-    ) -> Result<ProjectList, NativeError> {
+    ) -> Result<PublicProjectList, NativeError> {
         main_only(&window)?;
-        supervisor.client()?.list_projects().await
+        let result = supervisor.client()?.list_projects().await?;
+        Ok(PublicProjectList {
+            projects: result.projects.into_iter().map(Into::into).collect(),
+            configuration_valid: result.configuration_valid,
+            runtime_checked: result.runtime_checked,
+        })
     }
     #[tauri::command]
     pub async fn get_project(
         window: WebviewWindow,
         supervisor: State<'_, ManagementSupervisor>,
         project_id: String,
-    ) -> Result<ProjectView, NativeError> {
+    ) -> Result<PublicProjectView, NativeError> {
         main_only(&window)?;
-        supervisor.client()?.get_project(&project_id).await
+        Ok(supervisor.client()?.get_project(&project_id).await?.into())
     }
     #[tauri::command]
     pub async fn validate_project(
         window: WebviewWindow,
         supervisor: State<'_, ManagementSupervisor>,
         project_id: String,
-    ) -> Result<ProjectValidation, NativeError> {
+    ) -> Result<PublicProjectValidation, NativeError> {
         main_only(&window)?;
-        supervisor.client()?.validate_project(&project_id).await
+        let result = supervisor.client()?.validate_project(&project_id).await?;
+        Ok(PublicProjectValidation {
+            project: result.project.into(),
+            configuration_valid: result.configuration_valid,
+            runtime_checked: result.runtime_checked,
+        })
+    }
+    #[tauri::command]
+    pub async fn list_mission_reads(
+        window: WebviewWindow,
+        supervisor: State<'_, ManagementSupervisor>,
+        project_id: String,
+        offset: u32,
+    ) -> Result<MissionReadPage, NativeError> {
+        main_only(&window)?;
+        supervisor
+            .client()?
+            .list_mission_reads(&project_id, offset)
+            .await
+    }
+    #[tauri::command]
+    pub async fn get_mission_read(
+        window: WebviewWindow,
+        supervisor: State<'_, ManagementSupervisor>,
+        project_id: String,
+        mission_id: String,
+    ) -> Result<MissionRead, NativeError> {
+        main_only(&window)?;
+        supervisor
+            .client()?
+            .get_mission_read(&project_id, &mission_id)
+            .await
+    }
+    #[tauri::command]
+    pub async fn list_capability_reads(
+        window: WebviewWindow,
+        supervisor: State<'_, ManagementSupervisor>,
+        project_id: String,
+        offset: u32,
+    ) -> Result<CapabilityReadPage, NativeError> {
+        main_only(&window)?;
+        supervisor
+            .client()?
+            .list_capability_reads(&project_id, offset)
+            .await
     }
     #[tauri::command]
     pub fn research_engine_status(
@@ -563,6 +819,9 @@ mod desktop {
                 list_projects,
                 get_project,
                 validate_project,
+                list_mission_reads,
+                get_mission_read,
+                list_capability_reads,
                 research_engine_status,
                 research_profiles,
             ])

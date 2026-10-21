@@ -1,4 +1,4 @@
-import type { Project, ProjectList, ResearchEngineStatus, ResearchProfiles, RuntimeStatus, Status } from "./transport";
+import type { Project, ProjectList, ResearchEngineStatus, ResearchProfiles, RuntimeStatus, Status, MissionPage, Mission, CapabilityPage } from "./transport";
 
 function record(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -26,10 +26,53 @@ export function readManagementStatus(value: unknown): Status {
 export function readProject(value: unknown): Project {
   if (!record(value) || !bounded(value.id, 63) || !/^[a-z][a-z0-9_]{0,62}$/.test(value.id)
     || !bounded(value.name, 128)
-    || !bounded(value.domain, 128) || !bounded(value.postgres_schema, 128)
+    || !bounded(value.domain, 128)
     || typeof value.legacy !== "boolean" || typeof value.configuration_valid !== "boolean"
-    || typeof value.runtime_checked !== "boolean") invalid();
+    || typeof value.runtime_checked !== "boolean"
+    || Object.keys(value).some((key) => !["id", "name", "domain", "legacy", "configuration_valid", "runtime_checked"].includes(key))) invalid();
   return value as Project;
+}
+
+const code = (value: unknown): value is string => bounded(value, 96) && /^[A-Za-z0-9_.:-]+$/.test(value);
+const date = (value: unknown): value is string => bounded(value, 40) && !Number.isNaN(Date.parse(value));
+const uuid = (value: unknown): value is string => bounded(value, 36) && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+
+export function readMission(value: unknown, projectId: string): Mission {
+  if (!record(value) || !uuid(value.mission_id) || value.project_id !== projectId
+    || !bounded(value.objective, 240) || !code(value.state)
+    || !Number.isSafeInteger(value.revision) || (value.revision as number) < 0
+    || !Array.isArray(value.stages) || value.stages.length > 16 || !value.stages.every(code)
+    || !Array.isArray(value.capability_gaps) || value.capability_gaps.length > 16 || !value.capability_gaps.every(code)
+    || !Array.isArray(value.failure_codes) || value.failure_codes.length > 4 || !value.failure_codes.every(code)
+    || typeof value.resume_eligible !== "boolean" || !Number.isSafeInteger(value.receipt_count)
+    || (value.receipt_count as number) < 0 || !date(value.created_at) || !date(value.updated_at)
+    || value.evidence_kind !== "HISTORICAL_CHECKPOINT"
+    || Object.keys(value).some((key) => !["mission_id", "project_id", "objective", "state", "revision", "stages", "capability_gaps", "failure_codes", "resume_eligible", "receipt_count", "created_at", "updated_at", "evidence_kind"].includes(key))) invalid();
+  return value as unknown as Mission;
+}
+
+export function readMissionPage(value: unknown, projectId: string): MissionPage {
+  if (!record(value) || value.project_id !== projectId || value.source !== "DISPOSABLE_POSTGRESQL"
+    || !Array.isArray(value.missions) || value.missions.length > 10
+    || !(value.next_offset === null || (Number.isSafeInteger(value.next_offset) && (value.next_offset as number) >= 1 && (value.next_offset as number) <= 1010))) invalid();
+  value.missions.forEach((mission) => readMission(mission, projectId));
+  if (new Set(value.missions.map((mission: Mission) => mission.mission_id)).size !== value.missions.length) invalid();
+  return value as unknown as MissionPage;
+}
+
+export function readCapabilityPage(value: unknown, projectId: string): CapabilityPage {
+  if (!record(value) || value.project_id !== projectId || value.source !== "DISPOSABLE_POSTGRESQL"
+    || !Array.isArray(value.capabilities) || value.capabilities.length > 10
+    || !(value.next_offset === null || (Number.isSafeInteger(value.next_offset) && (value.next_offset as number) >= 1 && (value.next_offset as number) <= 1010))) invalid();
+  for (const item of value.capabilities) {
+    if (!record(item) || item.project_id !== projectId || !code(item.capability_id) || !code(item.version)
+      || !bounded(item.documentation_digest, 64) || !/^[0-9a-f]{64}$/.test(item.documentation_digest)
+      || !code(item.state) || !code(item.validation_state)
+      || !["NONE_RECORDED", "TEST_FIXTURE_ONLY"].includes(String(item.approval_kind))
+      || !bounded(item.source_identity, 200) || !date(item.updated_at) || item.source !== "DISPOSABLE_POSTGRESQL"
+      || Object.keys(item).some((key) => !["capability_id", "project_id", "version", "documentation_digest", "state", "validation_state", "approval_kind", "source_identity", "updated_at", "source"].includes(key))) invalid();
+  }
+  return value as unknown as CapabilityPage;
 }
 
 /** A list is configuration evidence, never a live mission inventory. */
