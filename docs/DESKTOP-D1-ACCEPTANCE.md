@@ -1,6 +1,6 @@
 # Desktop D1 acceptance record
 
-Candidate branch: `feat/morgoth-desktop-command-center-v1`, based on pinned Desktop `a7dab1b7730ba94536f6b413661512e533b36866`. Code was validated in this isolated worktree; the exact committed code SHA is recorded in the final documentation-only follow-up commit. The pinned reference worktree and backend development branch are not modified.
+Candidate branch: `feat/morgoth-desktop-command-center-v1`, based on pinned Desktop `a7dab1b7730ba94536f6b413661512e533b36866`. Exact code commit tested: `f489243cfc8d95d2c30bb978050728e3f2ad4ca7`. A later documentation-only commit records this result without changing tested runtime or tests. The pinned reference worktree and backend development branch are not modified.
 
 ## Gates
 
@@ -11,7 +11,8 @@ Candidate branch: `feat/morgoth-desktop-command-center-v1`, based on pinned Desk
 | Generated Management contract | `cd desktop && npm run contract:check` | PASS: pinned checksum and generated types match |
 | Frontend asset build | `cd desktop && npm run build` | PASS: Vite emitted production assets; dependency `use client` directive warnings are nonfatal |
 | Rust formatting and unit tests | `cd desktop/src-tauri && cargo fmt --all -- --check && cargo test --locked --offline --lib` | PASS: format + 20 library tests |
-| Native feature check/build | `cd desktop/src-tauri && cargo check --locked --offline --features desktop && cargo build --locked --offline --features desktop --bin morgoth-desktop` | PASS: Linux x86-64 ELF built; no distributable bundle configured |
+| Rust HTTP transport integration | `cd desktop/src-tauri && cargo test --locked --offline --test transport` | PASS: 8 tests against local mock transport; no production service |
+| Native feature check/build | `cd desktop/src-tauri && cargo check --locked --offline --features desktop && cargo build --locked --offline --features desktop --bin morgoth-desktop` | PASS: Linux x86-64 ELF built after current asset build; no distributable bundle configured |
 | Rust strict lint | `cd desktop/src-tauri && cargo clippy --locked --offline --features desktop --all-targets -- -D warnings` | PASS |
 | Diff/security review | `git diff --check`, Tauri capability/handler/transport comparison, secret/artifact scan | PASS before commit; repeat at publication |
 | Lint | No `desktop` lint script exists | Not run; TypeScript/Rust checks substitute for this change |
