@@ -57,7 +57,6 @@ async def _seed(socket: Path, projects: tuple[object, object]) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Disposable D2 native read proof")
     parser.add_argument("--window", action="store_true", help="open one local Tauri window after the native read proof")
-    parser.add_argument("--x11", action="store_true", help="D4 window only: use XWayland for AT-SPI keyboard testing")
     args = parser.parse_args()
     ui = Path(__file__).resolve().parents[2]
     root = ui.parent
@@ -65,8 +64,6 @@ def main() -> int:
     branch = subprocess.check_output(["git", "-C", str(ui), "branch", "--show-current"], text=True).strip()
     if branch not in {"feat/morgoth-desktop-d3-model-observability-v1", "feat/morgoth-desktop-d4-mission-workspace-v1"}:
         raise SystemExit("DESKTOP_UI_BRANCH_MISMATCH")
-    if args.x11 and (not args.window or branch != "feat/morgoth-desktop-d4-mission-workspace-v1"):
-        raise SystemExit("D4_X11_WINDOW_ONLY")
     if subprocess.check_output(["git", "-C", str(ui), "status", "--porcelain", "--untracked-files=all"], text=True).strip():
         raise SystemExit("D2_UI_DIRTY")
     sha = "5fc01cc6f465ff021cac7735d44245ca6e79e87b"
@@ -116,8 +113,6 @@ def main() -> int:
                 gui_env = {**env, "DISPLAY": os.environ.get("DISPLAY", ""),
                            "WAYLAND_DISPLAY": os.environ.get("WAYLAND_DISPLAY", ""),
                            "XDG_RUNTIME_DIR": os.environ.get("XDG_RUNTIME_DIR", "")}
-                if args.x11:
-                    gui_env["GDK_BACKEND"] = "x11"
                 vite = subprocess.Popen(["npm", "run", "dev", "--", "--strictPort"], cwd=desktop, env=gui_env,
                                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 for _ in range(30):

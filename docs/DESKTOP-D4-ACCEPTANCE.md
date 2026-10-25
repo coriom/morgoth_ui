@@ -45,8 +45,11 @@ editable-text interface was absent and synthesized keyboard events did not
 write into WebKit fields. The attempted save left the browser's required-field
 validation visible. **Native draft create/edit/reopen is therefore not yet
 visually accepted**; Rust file round trips and React interactions are separate
-passing evidence. An optional D4-only `--x11` preview allows a controlled
-XWayland keyboard test if WSLg supports it.
+passing evidence. A separate XWayland trial also failed to provide reliable
+AT-SPI text entry and did not expose a verified Management catalog. It was
+terminated by exact fixture-owned PID; its cleanup removed the owned window
+and PostgreSQL processes. This is an environment and native-interaction
+verification limit, not evidence that a typed user brief fails to save.
 
 The preview command below checks a
 clean D4 branch, pins the disposable D2 backend, creates its own temporary
@@ -54,7 +57,7 @@ Project and PostgreSQL resources, and uses a temporary HOME for local drafts:
 
 ```bash
 cd /home/corio/Morgoth/dev-desktop-d4-mission-workspace-v1
-/home/corio/Morgoth/morgoth/.venv/bin/python desktop/scripts/d2_read_fixture.py --window --x11
+/home/corio/Morgoth/morgoth/.venv/bin/python desktop/scripts/d2_read_fixture.py --window
 ```
 
 In the first window select `project_a`, create and save a draft, inspect the
