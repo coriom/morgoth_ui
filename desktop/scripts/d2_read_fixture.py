@@ -62,7 +62,7 @@ def main() -> int:
     root = ui.parent
     backend = root / "dev-desktop-d2-backend"
     branch = subprocess.check_output(["git", "-C", str(ui), "branch", "--show-current"], text=True).strip()
-    if branch not in {"feat/morgoth-desktop-d3-model-observability-v1", "feat/morgoth-desktop-d4-mission-workspace-v1"}:
+    if branch not in {"feat/morgoth-desktop-d3-model-observability-v1", "feat/morgoth-desktop-d4-mission-workspace-v1", "feat/morgoth-desktop-d5-production-workspace-v1"}:
         raise SystemExit("DESKTOP_UI_BRANCH_MISMATCH")
     if subprocess.check_output(["git", "-C", str(ui), "status", "--porcelain", "--untracked-files=all"], text=True).strip():
         raise SystemExit("D2_UI_DIRTY")
@@ -100,6 +100,7 @@ def main() -> int:
             _run(["/usr/bin/createdb", "-h", str(socket), "-U", pwd.getpwuid(os.getuid()).pw_name, "morgoth_test"], env=safe_env)
             mission_id = asyncio.run(_seed(socket, projects))
             env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": str(home), "LANG": "C.UTF-8",
+                   "XDG_DATA_HOME": str(home / ".local" / "share"),
                    "MORGOTH_DESKTOP_BACKEND_ROOT": str(backend), "MORGOTH_DESKTOP_PYTHON": sys.executable,
                    "MORGOTH_DESKTOP_HOME": str(home), "MORGOTH_DESKTOP_TEST_PG_SOCKET": str(socket),
                    "MORGOTH_D2_TEST_MISSION_ID": mission_id}
@@ -129,8 +130,8 @@ def main() -> int:
                 print("D2_WINDOW_PREVIEW=OPEN Select project_a for one synthetic mission; project_b must remain empty.", flush=True)
                 subprocess.run([str(desktop / "src-tauri/target/debug/morgoth-desktop")], env=gui_env,
                                cwd=ui, check=True)
-                if branch == "feat/morgoth-desktop-d4-mission-workspace-v1":
-                    print("D4_WINDOW_RESTART=OPEN Same disposable app-data HOME; verify saved local brief persists.", flush=True)
+                if branch in {"feat/morgoth-desktop-d4-mission-workspace-v1", "feat/morgoth-desktop-d5-production-workspace-v1"}:
+                    print("WINDOW_RESTART=OPEN Same disposable app-data HOME; verify saved local work persists.", flush=True)
                     subprocess.run([str(desktop / "src-tauri/target/debug/morgoth-desktop")], env=gui_env,
                                    cwd=ui, check=True)
         finally:

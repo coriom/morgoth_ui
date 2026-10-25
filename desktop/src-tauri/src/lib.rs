@@ -6,6 +6,7 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{io::Read, path::Path, time::Duration};
 
 pub mod drafts;
+pub mod notes;
 pub mod ollama_read;
 #[cfg(target_os = "linux")]
 pub mod research;
@@ -663,6 +664,7 @@ fn safe_uuid(value: &str) -> bool {
 mod desktop {
     use super::*;
     use crate::drafts::{Draft, DraftInput, DraftStore, DraftUpdate};
+    use crate::notes::{Note, NoteInput, NoteStore, NoteUpdate};
     use crate::research::{ProfilesResponse, ResearchEngineStatus, ResearchEngineSupervisor};
     use crate::supervisor::{ManagementRuntimeStatus, ManagementSupervisor, SupervisorConfig};
     use tauri::{Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
@@ -885,6 +887,66 @@ mod desktop {
         let store = draft_store(&app)?;
         draft_job(move || store.delete(&project_id, &draft_id, expected_revision)).await
     }
+    fn note_store(app: &tauri::AppHandle) -> Result<NoteStore, NativeError> {
+        let path = app
+            .path()
+            .app_local_data_dir()
+            .map_err(|_| NativeError::new("LOCAL_NOTE_STORAGE", "Stockage local indisponible."))?;
+        Ok(NoteStore::new(path.join("knowledge-v1")))
+    }
+    #[tauri::command]
+    pub async fn local_notes_list(
+        window: WebviewWindow,
+        app: tauri::AppHandle,
+        project_id: String,
+    ) -> Result<Vec<Note>, NativeError> {
+        main_only(&window)?;
+        let store = note_store(&app)?;
+        draft_job(move || store.list(&project_id)).await
+    }
+    #[tauri::command]
+    pub async fn local_note_get(
+        window: WebviewWindow,
+        app: tauri::AppHandle,
+        project_id: String,
+        note_id: String,
+    ) -> Result<Note, NativeError> {
+        main_only(&window)?;
+        let store = note_store(&app)?;
+        draft_job(move || store.get(&project_id, &note_id)).await
+    }
+    #[tauri::command]
+    pub async fn local_note_create(
+        window: WebviewWindow,
+        app: tauri::AppHandle,
+        input: NoteInput,
+    ) -> Result<Note, NativeError> {
+        main_only(&window)?;
+        let store = note_store(&app)?;
+        draft_job(move || store.create(input)).await
+    }
+    #[tauri::command]
+    pub async fn local_note_update(
+        window: WebviewWindow,
+        app: tauri::AppHandle,
+        input: NoteUpdate,
+    ) -> Result<Note, NativeError> {
+        main_only(&window)?;
+        let store = note_store(&app)?;
+        draft_job(move || store.update(input)).await
+    }
+    #[tauri::command]
+    pub async fn local_note_delete(
+        window: WebviewWindow,
+        app: tauri::AppHandle,
+        project_id: String,
+        note_id: String,
+        expected_revision: u64,
+    ) -> Result<(), NativeError> {
+        main_only(&window)?;
+        let store = note_store(&app)?;
+        draft_job(move || store.delete(&project_id, &note_id, expected_revision)).await
+    }
     pub fn run() {
         let config = SupervisorConfig::from_environment();
         let supervisor = ManagementSupervisor::start(config.clone());
@@ -931,6 +993,11 @@ mod desktop {
                 local_draft_create,
                 local_draft_update,
                 local_draft_delete,
+                local_notes_list,
+                local_note_get,
+                local_note_create,
+                local_note_update,
+                local_note_delete,
             ])
             .build(tauri::generate_context!())
             .expect("Morgoth desktop runtime failed");

@@ -15,7 +15,7 @@ use uuid::Uuid;
 
 const MAX_FILE: u64 = 16_384;
 const MAX_DRAFTS: usize = 200;
-const NOFOLLOW: i32 = libc::O_NOFOLLOW | libc::O_CLOEXEC;
+pub(crate) const NOFOLLOW: i32 = libc::O_NOFOLLOW | libc::O_CLOEXEC;
 
 fn refusal(code: &'static str) -> NativeError {
     NativeError {
@@ -28,13 +28,13 @@ fn refusal(code: &'static str) -> NativeError {
 fn io_error() -> NativeError {
     refusal("STORAGE_UNAVAILABLE")
 }
-fn now() -> Result<u64, NativeError> {
+pub(crate) fn now() -> Result<u64, NativeError> {
     Ok(SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|_| io_error())?
         .as_millis() as u64)
 }
-fn private_dir(path: &Path) -> Result<(), NativeError> {
+pub(crate) fn private_dir(path: &Path) -> Result<(), NativeError> {
     match fs::symlink_metadata(path) {
         Ok(meta) => {
             if !meta.is_dir()
@@ -56,7 +56,7 @@ fn private_dir(path: &Path) -> Result<(), NativeError> {
     }
     Ok(())
 }
-fn prepare_root(root: &Path) -> Result<(), NativeError> {
+pub(crate) fn prepare_root(root: &Path) -> Result<(), NativeError> {
     if !root.is_absolute() {
         return Err(refusal("UNTRUSTED_PATH"));
     }
@@ -84,7 +84,7 @@ fn prepare_root(root: &Path) -> Result<(), NativeError> {
     }
     private_dir(root)
 }
-fn private_file(path: &Path) -> Result<File, NativeError> {
+pub(crate) fn private_file(path: &Path) -> Result<File, NativeError> {
     let meta = fs::symlink_metadata(path).map_err(|_| io_error())?;
     if !meta.is_file()
         || meta.is_symlink()
@@ -110,7 +110,7 @@ fn private_file(path: &Path) -> Result<File, NativeError> {
     }
     Ok(file)
 }
-fn present(path: &Path) -> Result<bool, NativeError> {
+pub(crate) fn present(path: &Path) -> Result<bool, NativeError> {
     match fs::symlink_metadata(path) {
         Ok(_) => Ok(true),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),

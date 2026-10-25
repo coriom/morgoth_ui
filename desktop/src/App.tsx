@@ -4,16 +4,22 @@ import { nativeManagement, nativeResearch, nativeOllama, type ManagementTranspor
 import { readCapabilityPage, readManagementStatus, readOllamaStatus, readProject, readProjectList, readResearchProfiles, readResearchStatus, readRuntimeStatus } from "./readModels";
 import { nativeDrafts, readPreferred, type DraftTransport } from "./drafts";
 import { MissionWorkspace } from "./MissionWorkspace";
+import { KnowledgeWorkspace } from "./KnowledgeWorkspace";
+import { Home } from "./Home";
+import { CommandPalette } from "./CommandPalette";
+import { nativeNotes, type NoteTransport } from "./notes";
 
-type View = "overview" | "missions" | "capabilities" | "models" | "security" | "projects";
-const views: ReadonlyArray<{ id: View; label: string; code: string }> = [
-  { id: "overview", label: "Vue d’ensemble", code: "01" },
-  { id: "missions", label: "Missions", code: "02" },
-  { id: "capabilities", label: "Capacités", code: "03" },
-  { id: "models", label: "Modèles & runtime", code: "04" },
-  { id: "security", label: "Sécurité", code: "05" },
-  { id: "projects", label: "Projets", code: "06" },
+type View = "home" | "missions" | "knowledge" | "projects" | "settings" | "runtime" | "capabilities" | "models" | "security";
+const primaryViews: ReadonlyArray<{ id: View; label: string; icon: string }> = [
+  { id: "home", label: "Accueil", icon: "⌂" },
+  { id: "missions", label: "Missions", icon: "≡" },
+  { id: "knowledge", label: "Connaissances", icon: "▤" },
+  { id: "projects", label: "Projets", icon: "▦" },
+  { id: "settings", label: "Réglages", icon: "⚙" },
 ];
+const sectionName: Record<View, string> = { home: "Accueil", missions: "Missions", knowledge: "Connaissances",
+  projects: "Projets", settings: "Réglages", runtime: "Runtime", capabilities: "Capacités",
+  models: "Modèles & runtime", security: "Sécurité" };
 
 function Fact({ label, value, source = "Observé", tone = "neutral" }: {
   label: string; value: string; source?: string; tone?: "neutral" | "good" | "warn";
@@ -29,12 +35,18 @@ function EmptyEvidence({ title, children }: { title: string; children: ReactNode
 const mib = (value: number | null): string => value === null ? "Inconnu"
   : value < 1_048_576 ? `${value} octets` : `${(value / 1_048_576).toFixed(1)} MiB`;
 
-export function CommandCenter({ transport, research, ollama, drafts }: { transport: ManagementTransport; research: ResearchTransport; ollama: OllamaTransport; drafts: DraftTransport }) {
-  const [view, setView] = useState<View>("overview");
+export function CommandCenter({ transport, research, ollama, drafts, notes }: { transport: ManagementTransport; research: ResearchTransport; ollama: OllamaTransport; drafts: DraftTransport; notes: NoteTransport }) {
+  const [view, setView] = useState<View>("home");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [preferenceLoaded, setPreferenceLoaded] = useState(false);
   const [selectionError, setSelectionError] = useState(false);
   const [missionDirty, setMissionDirty] = useState(false);
+  const [noteDirty, setNoteDirty] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [missionRequest, setMissionRequest] = useState<{kind:"create"|"open";id?:string;seq:number}|null>(null);
+  const [noteCreateSignal, setNoteCreateSignal] = useState(0);
+  const [openNoteId, setOpenNoteId] = useState<string|null>(null);
+  const [requestSeq, setRequestSeq] = useState(0);
   const [refreshSignal, setRefreshSignal] = useState(0);
   const [capabilityOffset, setCapabilityOffset] = useState(0);
   useEffect(() => {
@@ -72,37 +84,41 @@ export function CommandCenter({ transport, research, ollama, drafts }: { transpo
   const refreshBusy = runtime.isFetching || management.isFetching || projects.isFetching || project.isFetching
     || engine.isFetching || profiles.isFetching || capabilities.isFetching || localModels.isFetching;
   const onDirtyChange = useCallback((value: boolean) => setMissionDirty(value), []);
-  const leaveEditor = () => !missionDirty || window.confirm("Modifications non enregistrées. Les abandonner ?");
+  const onNoteDirtyChange = useCallback((value: boolean) => setNoteDirty(value), []);
+  const leaveEditor = () => (!missionDirty && !noteDirty) || window.confirm("Modifications non enregistrées. Les abandonner ?");
   const chooseProject = async (id: string | null) => {
     if (id === selectedId || !leaveEditor()) return;
     setSelectionError(false);
-    try { await drafts.setPreferred(id); setSelectedId(id); setMissionDirty(false); setCapabilityOffset(0); }
+    try { await drafts.setPreferred(id); setSelectedId(id); setMissionDirty(false); setNoteDirty(false); setCapabilityOffset(0); setMissionRequest(null); setOpenNoteId(null); }
     catch { setSelectionError(true); }
   };
-  const navigate = (next: View) => { if (next !== view && leaveEditor()) { setView(next); setMissionDirty(false); } };
+  const navigate = (next: View) => { if (next !== view && leaveEditor()) { setView(next); setMissionDirty(false); setNoteDirty(false); setMissionRequest(null); setOpenNoteId(null); } };
+  const newDraft = () => { if (!selectedId || !leaveEditor()) return; const seq=requestSeq+1; setRequestSeq(seq);setMissionRequest({kind:"create",seq});setView("missions");setMissionDirty(false);setNoteDirty(false); };
+  const openDraft = (id: string) => { if (!leaveEditor()) return; const seq=requestSeq+1;setRequestSeq(seq);setMissionRequest({kind:"open",id,seq});setView("missions");setMissionDirty(false);setNoteDirty(false); };
+  const newNote = () => { if (!selectedId || !leaveEditor()) return;setOpenNoteId(null);setNoteCreateSignal(value=>value+1);setView("knowledge");setMissionDirty(false);setNoteDirty(false); };
+  const openNote = (id: string) => { if (!leaveEditor()) return;setOpenNoteId(id);setView("knowledge");setMissionDirty(false);setNoteDirty(false); };
   const selectedProject = projectData?.projects.find((item) => item.id === selectedId);
 
-  return <div className="command-layout">
+  return <div className={sidebarCollapsed ? "command-layout sidebar-collapsed" : "command-layout"}>
     <aside className="sidebar" aria-label="Navigation principale">
-      <div className="brand"><span className="brand-glyph" aria-hidden="true">M</span><div><strong>MORGOTH</strong><small>DESKTOP / MISSION WORKSPACE</small></div></div>
-      <div className="nav-caption">ESPACES</div>
-      <nav aria-label="Espaces de supervision" className="nav-list">{views.map((item) =>
-        <button key={item.id} type="button" aria-current={view === item.id ? "page" : undefined}
-          className={view === item.id ? "nav-link active" : "nav-link"} onClick={() => navigate(item.id)}>
-          <span className="nav-code">{item.code}</span>{item.label}</button>)}</nav>
-      <div className="sidebar-foot"><span className="status-dot" aria-hidden="true" /><span>Briefs locaux<br /><strong>Aucune exécution</strong></span></div>
+      <div className="brand"><span className="brand-glyph" aria-hidden="true">m</span><strong>morgoth</strong><button type="button" className="sidebar-toggle" aria-label={sidebarCollapsed ? "Déployer la barre latérale" : "Réduire la barre latérale"} onClick={() => setSidebarCollapsed(value=>!value)}>{sidebarCollapsed ? "›" : "‹"}</button></div>
+      <div className="sidebar-project"><label htmlFor="global-project">Espace actuel</label><select id="global-project" value={selectedId ?? ""} disabled={!preferenceLoaded} onChange={event => void chooseProject(event.target.value || null)}>
+        <option value="">Aucun Project</option>{selectedId && !selectedInCatalog && <option value={selectedId}>{selectedId} · mémorisé</option>}
+        {projectData?.projects.map(item => <option key={item.id} value={item.id}>{item.name} · {item.id}</option>)}
+      </select><small>{selectedId ? selectedInCatalog ? "Project vérifié" : "Identité locale non vérifiée" : "Aucun périmètre"}</small></div>
+      <button type="button" className="compact-project" onClick={()=>navigate("projects")}
+        aria-label={`Choisir un Project ; actuel : ${selectedProject?.name ?? selectedId ?? "aucun"}`}
+        title={selectedProject?.name ?? selectedId ?? "Choisir un Project"}>P</button>
+      <nav aria-label="Espaces" className="nav-list">{primaryViews.filter(item=>item.id!=="settings").map(item =>
+        <button key={item.id} type="button" aria-current={view===item.id ? "page" : undefined} className={view===item.id ? "nav-link active" : "nav-link"} onClick={()=>navigate(item.id)}><span aria-hidden="true">{item.icon}</span><span>{item.label}</span></button>)}</nav>
+      <div className="sidebar-bottom"><button type="button" className={view==="settings" || ["runtime","models","capabilities","security"].includes(view) ? "nav-link active" : "nav-link"} aria-current={view==="settings" ? "page" : undefined} onClick={()=>navigate("settings")}><span aria-hidden="true">⚙</span><span>Réglages</span></button>
+        <CommandPalette projectId={selectedId} projects={projectData?.projects ?? []} drafts={drafts} notes={notes}
+          navigate={next=>navigate(next)} chooseProject={id=>void chooseProject(id)} openDraft={openDraft} openNote={openNote} newDraft={newDraft} newNote={newNote} /></div>
     </aside>
     <main className="workspace">
-      <header className="topbar"><div><p className="eyebrow">MORGOTH / ESPACE LOCAL</p><h1>{views.find((item) => item.id === view)?.label}</h1></div>
-        <div className="project-context"><label htmlFor="global-project">Project courant</label>
-          <select id="global-project" value={selectedId ?? ""} disabled={!preferenceLoaded}
-            onChange={(event) => void chooseProject(event.target.value || null)}>
-            <option value="">Aucun Project sélectionné</option>
-            {selectedId && !selectedInCatalog && <option value={selectedId}>{selectedId} · mémorisé, non vérifié</option>}
-            {projectData?.projects.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.id}</option>)}
-          </select><small>{selectedId ? selectedInCatalog ? "Vérifié dans le catalogue courant" : "Identité locale non vérifiée" : "Aucun périmètre actif"}</small>
-        </div></header>
-      <section className="connection-strip" aria-label="État de connexion">
+      {view!=="home" && view!=="knowledge" && <header className="topbar"><div><p className="breadcrumb">{selectedProject?.name ?? selectedId ?? "Espace personnel"} / {sectionName[view]}</p><h1>{sectionName[view]}</h1>
+        {view==="missions" && <p>Des briefs locaux non soumis et des checkpoints historiques distincts.</p>}</div></header>}
+      {view!=="home" && view!=="knowledge" && <section className="connection-strip" aria-label="État de connexion">
         <span className={`connection-indicator ${connected ? "online" : ""}`} aria-hidden="true" />
         <div><strong>{managerLoading ? "Connexion en cours" : refreshBusy && connected ? "Vérification en cours" : connected ? "Gestion locale accessible" : "Gestion locale indisponible"}</strong>
           <span>{managerLoading ? "Lecture du superviseur natif" : connected ? "API de gestion authentifiée par le processus natif" : "Aucune activité déduite de l’interface"}</span>
@@ -112,40 +128,32 @@ export function CommandCenter({ transport, research, ollama, drafts }: { transpo
           if (connected) { void projects.refetch(); void engine.refetch(); if (selectedInCatalog) { void project.refetch();
             if (view === "capabilities" || view === "security") void capabilities.refetch(); }
             if (profiles.isSuccess) void profiles.refetch(); } }}>Actualiser</button>
-      </section>
+      </section>}
       {selectionError && <p className="notice warn" role="alert">Préférence Project indisponible. La sélection précédente est conservée.</p>}
       {selectedId && <p className="source-stamp">Project : <strong>{selectedProject?.name ?? selectedId}</strong> · {selectedInCatalog ? "catalogue Management vérifié" : "identité locale mémorisée, non vérifiée"}.
         {connected && management.isSuccess && ` Dernière lecture Management réussie : ${new Date(management.dataUpdatedAt).toLocaleString("fr-FR")}.`}</p>}
       {managerError && <p className="notice warn" role="alert">Les données du backend restent indisponibles. Aucune activité n’est présumée.</p>}
 
-      {view === "overview" && <div className="content-stack">
-        <p className="section-intro">État attesté par les contrats de lecture locaux. La connexion au service de gestion ne prouve pas que l’agent fonctionne.</p>
-        <div className="metric-grid">
-          <section className="metric"><span>GESTION LOCALE</span><strong>{managerLoading ? "Chargement…" : connected ? "Disponible" : "Indisponible"}</strong><small>Processus natif + statut de gestion</small></section>
-          <section className="metric"><span>PROJETS CONFIGURÉS</span><strong>{projects.isPending && connected ? "Chargement…" : projectCount}</strong><small>Catalogue de configuration, pas missions actives</small></section>
-          <section className="metric"><span>MOTEUR DE RECHERCHE</span><strong>{engine.isPending && connected ? "Chargement…" : engineData?.state ?? "Indisponible"}</strong><small>État du superviseur; autonomie non déduite</small></section>
-          <section className="metric"><span>MISSIONS GÉNÉRALISTES</span><strong>Lecture Project</strong><small>Historique de test disponible après sélection; aucune activité live déduite</small></section>
-        </div>
-        <div className="two-column">
-          <section className="panel"><p className="eyebrow">01 / ÉTAT</p><h2>Ce qui est observable</h2><dl className="fact-list">
-            <Fact label="Management" value={connected ? "Connecté" : "Non confirmé"} tone={connected ? "good" : "warn"} />
-            <Fact label="Recherche" value={engineData?.state ?? "Indisponible"} source="Superviseur natif" />
-            <Fact label="Project du moteur" value={engineData?.project_id ?? "Aucun confirmé"} source="Superviseur natif" />
-            <Fact label="Modèles Ollama résidents" value={localModelData?.loaded_state === "OBSERVED" ? String(localModelData.loaded.length) : "Non lus ou indisponibles"} source="Lecture locale manuelle uniquement" />
-          </dl></section>
-          <section className="panel"><p className="eyebrow">02 / GOUVERNANCE</p><h2>Limites en vigueur</h2><div className="boundary-list">
-            <p><strong>Workloads Codex</strong><span>{profileData ? profileData.codex.workloads_ready ? "Prêts selon le profil observé" : "Bloqués selon le profil observé" : "Non vérifiables depuis cette vue"}</span></p>
-            <p><strong>Human Gate 3</strong><span>Décision humaine; aucune commande d’approbation ici</span></p>
-            <p><strong>Browser lab</strong><span>Qualification synthétique; aucune autorité de site réel</span></p>
-          </div></section>
-        </div>
-        <section className="panel"><p className="eyebrow">03 / ÉVÉNEMENTS</p><h2>Historique récent</h2>
-          <EmptyEvidence title="Flux non connecté">Aucun flux d’événements Project-scopé n’est publié au transport Desktop. Aucun événement fictif n’est affiché.</EmptyEvidence></section>
-      </div>}
+      {view === "home" && <Home projectId={selectedId} projectName={selectedProject?.name ?? null} verified={selectedInCatalog}
+        drafts={drafts} notes={notes} onOpenDraft={openDraft} onNewDraft={newDraft} onOpenNote={openNote} onNewNote={newNote} onProjects={()=>navigate("projects")} />}
+      {view === "knowledge" && <KnowledgeWorkspace key={selectedId ?? "none"} projectId={selectedId} verified={selectedInCatalog}
+        transport={notes} onDirtyChange={onNoteDirtyChange} createSignal={noteCreateSignal} openNoteId={openNoteId} refreshSignal={refreshSignal} />}
+      {view === "settings" && <div className="settings-index"><h2>Votre espace, à votre rythme.</h2><p>Les observations techniques restent disponibles ici, sans commande d’exécution.</p>
+        <div className="settings-links"><button onClick={()=>navigate("runtime")}>Vue générale et diagnostics <span>→</span></button>
+          <button onClick={()=>navigate("models")}>Modèles et runtime <span>→</span></button>
+          <button onClick={()=>navigate("capabilities")}>Outils et capacités <span>→</span></button>
+          <button onClick={()=>navigate("security")}>Sécurité et permissions <span>→</span></button></div>
+        <p className="source-stamp">Apparence : thème sombre initial, jetons prêts pour une personnalisation ultérieure. Aucune préférence de thème n’est simulée.</p></div>}
+      {view === "runtime" && <div className="settings-index"><h2>Observations disponibles</h2><dl className="fact-list">
+        <Fact label="Management" value={connected ? "Accessible" : "Indisponible"} source="Lecture native" />
+        <Fact label="Recherche" value={engineData?.state ?? "Inconnue"} source="Superviseur natif" />
+        <Fact label="Project du moteur" value={engineData?.project_id ?? "Aucun confirmé"} source="Superviseur natif" />
+        <Fact label="Projects configurés" value={projectCount} source="Catalogue courant" /></dl>
+        <p>Aucun flux d’activité Project-scopé n’est connecté. Aucune activité n’est déduite de ces lectures.</p></div>}
 
       {view === "missions" && <MissionWorkspace key={selectedId ?? "none"} projectId={selectedId}
         verified={selectedInCatalog} connected={connected} transport={transport} drafts={drafts}
-        onDirtyChange={onDirtyChange} refreshSignal={refreshSignal} />}
+        onDirtyChange={onDirtyChange} refreshSignal={refreshSignal} request={missionRequest} />}
 
       {view === "capabilities" && <div className="content-stack"><p className="section-intro">Inventaire expérimental du Project; validation, autorisation et exécution sont des faits distincts.</p>
         {!selectedInCatalog && <EmptyEvidence title="Sélectionnez un Project">Choisissez un Project dans l’espace Projets.</EmptyEvidence>}
@@ -241,14 +249,14 @@ export function CommandCenter({ transport, research, ollama, drafts }: { transpo
             <Fact label="Moteur du Project" value={engineData?.project_id === selectedId ? engineData.state : "Aucun moteur attribué observé"} source="Superviseur natif" />
           </dl></>}
         </section></div></div>}
-      <footer className="workspace-footer"><span>DESKTOP D4 · BRIEFS LOCAUX / LECTURE HISTORIQUE</span><span>Un état absent reste inconnu.</span></footer>
+      <footer className="workspace-footer"><span>Morgoth · espace local</span><span>Un état absent reste inconnu.</span></footer>
     </main>
   </div>;
 }
 
 /** Own one query cache for this native window; no retries or background polling. */
-export function App({ transport = nativeManagement, research = nativeResearch, ollama = nativeOllama, drafts = nativeDrafts }:
-  { transport?: ManagementTransport; research?: ResearchTransport; ollama?: OllamaTransport; drafts?: DraftTransport }) {
+export function App({ transport = nativeManagement, research = nativeResearch, ollama = nativeOllama, drafts = nativeDrafts, notes = nativeNotes }:
+  { transport?: ManagementTransport; research?: ResearchTransport; ollama?: OllamaTransport; drafts?: DraftTransport; notes?: NoteTransport }) {
   const [queryClient] = useState(() => new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 10_000, refetchOnWindowFocus: false } } }));
-  return <QueryClientProvider client={queryClient}><CommandCenter transport={transport} research={research} ollama={ollama} drafts={drafts} /></QueryClientProvider>;
+  return <QueryClientProvider client={queryClient}><CommandCenter transport={transport} research={research} ollama={ollama} drafts={drafts} notes={notes} /></QueryClientProvider>;
 }

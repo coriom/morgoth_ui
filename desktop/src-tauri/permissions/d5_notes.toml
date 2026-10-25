@@ -1,0 +1,25 @@
+# Human-authored Project-scoped local Markdown notes only.
+[[permission]]
+identifier = "allow-local-notes-list"
+description = "List bounded local notes for one Project."
+commands.allow = ["local_notes_list"]
+
+[[permission]]
+identifier = "allow-local-note-get"
+description = "Read one local Project note."
+commands.allow = ["local_note_get"]
+
+[[permission]]
+identifier = "allow-local-note-create"
+description = "Create one local human note."
+commands.allow = ["local_note_create"]
+
+[[permission]]
+identifier = "allow-local-note-update"
+description = "Update one local note with revision checking."
+commands.allow = ["local_note_update"]
+
+[[permission]]
+identifier = "allow-local-note-delete"
+description = "Delete one local note with revision checking."
+commands.allow = ["local_note_delete"]

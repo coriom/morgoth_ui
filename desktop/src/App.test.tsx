@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { App } from "./App";
+import type { ComponentProps } from "react";
+import type { NoteTransport } from "./notes";
 import type { DraftInput, DraftTransport, LocalDraft } from "./drafts";
 import type { ManagementTransport, Project, ResearchEngineStatus, ResearchTransport, OllamaTransport, OllamaStatus } from "./transport";
 
@@ -70,48 +72,68 @@ function memoryDrafts(): DraftTransport {
       values.delete(draftId);
     }) };
 }
-function nav(label: string) { fireEvent.click(screen.getByRole("button", { name: new RegExp(label) })); }
+const emptyNotes = (): NoteTransport => ({ list: vi.fn(async () => []), get: vi.fn(async () => { throw new Error("missing"); }),
+  create: vi.fn(async () => { throw new Error("missing"); }), update: vi.fn(async () => { throw new Error("missing"); }), delete: vi.fn(async () => undefined) });
+function TestedApp(props: ComponentProps<typeof App>) { return <App notes={emptyNotes()} {...props} />; }
+function nav(label: string) {
+  const technical: Record<string,string> = { "Capacités": "Outils et capacités", "Modèles": "Modèles et runtime", "Sécurité": "Sécurité et permissions" };
+  if (technical[label]) { fireEvent.click(screen.getByRole("button", { name: /Réglages/ }));
+    fireEvent.click(screen.getByRole("button", { name: new RegExp(technical[label]) })); return; }
+  fireEvent.click(screen.getByRole("button", { name: new RegExp(label) }));
+}
 
 describe("read-only command center", () => {
+  it("opens the safe command palette by keyboard and restores focus on escape", async () => {
+    render(<TestedApp drafts={drafts()} transport={management()} research={research()} />);
+    fireEvent.keyDown(window, { key: "k", ctrlKey: true });
+    const dialog = screen.getByRole("dialog", { name: "Recherche et navigation" });
+    const search = within(dialog).getByRole("searchbox");
+    expect(document.activeElement).toBe(search);
+    fireEvent.change(search, { target: { value: "Réglages" } });
+    expect(within(dialog).getByRole("option", { name: /Réglages/ })).toBeTruthy();
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: /Rechercher/ }));
+  });
   it("reports loading without claiming operational readiness", () => {
     const pending = new Promise<Awaited<ReturnType<ManagementTransport["runtimeStatus"]>>>(() => {});
     const transport = management({ runtimeStatus: vi.fn(() => pending) });
-    render(<App drafts={drafts()} transport={transport} research={research()} />);
-    expect(screen.getByText("Connexion en cours")).toBeTruthy();
+    render(<TestedApp drafts={drafts()} transport={transport} research={research()} />);
+    expect(screen.getByText("Aucun flux d’activité Project-scopé n’est fourni. Aucun événement n’est inventé.")).toBeTruthy();
     expect(transport.projects).not.toHaveBeenCalled();
-    expect(screen.getByText("Lecture Project")).toBeTruthy();
+    expect(screen.queryByText("Mission en cours")).toBeNull();
   });
   it("keeps disconnected state truthful and does not fetch downstream data", async () => {
     const transport = management({ status: vi.fn(async () => { throw new Error("secret failure text"); }) });
-    render(<App drafts={drafts()} transport={transport} research={research()} />);
-    expect(await screen.findByText("Gestion locale indisponible")).toBeTruthy();
+    render(<TestedApp drafts={drafts()} transport={transport} research={research()} />);
+    expect(await screen.findByText(/Les données du backend restent indisponibles/)).toBeTruthy();
     expect(transport.projects).not.toHaveBeenCalled();
     expect(screen.queryByText("secret failure text")).toBeNull();
   });
   it("shows configuration count separately from missions and model residency", async () => {
-    render(<App drafts={drafts()} transport={management()} research={research()} />);
-    expect(await screen.findByText("Gestion locale accessible")).toBeTruthy();
-    expect(await screen.findByText("2")).toBeTruthy();
-    expect(screen.getByText("Lecture Project")).toBeTruthy();
-    expect(screen.getByText("Modèles Ollama résidents").nextElementSibling?.textContent).toBe("Non lus ou indisponibles");
+    render(<TestedApp drafts={drafts()} transport={management()} research={research()} />);
+    expect(await screen.findByRole("option", { name: "alpha · alpha" })).toBeTruthy();
+    nav("Projets"); expect(await screen.findByRole("button", { name: /alpha · crypto/ })).toBeTruthy();
+    expect(screen.queryByText("Mission en cours")).toBeNull();
+    nav("Modèles"); expect(screen.getByText("Lecture non demandée. Aucun appel d’inférence n’est effectué pour renseigner cette vue.")).toBeTruthy();
   });
   it("never exposes create, initialize, start, stop, select-profile or inference actions", async () => {
     const transport = management(); const engine = research();
-    render(<App drafts={drafts()} transport={transport} research={engine} />);
-    await screen.findByText("Gestion locale accessible");
+    render(<TestedApp drafts={drafts()} transport={transport} research={engine} />);
+    await waitFor(() => expect(screen.getByRole("option", { name: "alpha · alpha" })).toBeTruthy());
     for (const view of ["Missions", "Capacités", "Modèles", "Sécurité", "Projets"]) nav(view);
     expect(screen.queryByRole("button", { name: /Créer|Initialiser|Démarrer|Arrêter|Sélectionner codex|Approuver|Inférence/ })).toBeNull();
     expect(transport.validation).not.toHaveBeenCalled();
     expect(engine.status).toHaveBeenCalled();
   });
   it("shows an empty catalogue as empty, not disconnected", async () => {
-    render(<App drafts={drafts()} transport={management({ projects: vi.fn(async () => ({ projects: [], configuration_valid: true, runtime_checked: false })) })} research={research()} />);
+    render(<TestedApp drafts={drafts()} transport={management({ projects: vi.fn(async () => ({ projects: [], configuration_valid: true, runtime_checked: false })) })} research={research()} />);
     nav("Projets");
     expect(await screen.findByText("Aucun Project configuré")).toBeTruthy();
   });
   it("keeps Project detail within the selected catalog identity", async () => {
     const transport = management();
-    render(<App drafts={drafts()} transport={transport} research={research()} />);
+    render(<TestedApp drafts={drafts()} transport={transport} research={research()} />);
     nav("Projets");
     fireEvent.click(await screen.findByRole("button", { name: /alpha · crypto/ }));
     expect(await screen.findByText("Identifiant")).toBeTruthy();
@@ -122,7 +144,7 @@ describe("read-only command center", () => {
   });
   it("hides a Project detail after its read fails on refresh", async () => {
     const detail = vi.fn().mockResolvedValueOnce(project("alpha")).mockRejectedValueOnce(new Error("private detail"));
-    render(<App drafts={drafts()} transport={management({ project: detail })} research={research()} />);
+    render(<TestedApp drafts={drafts()} transport={management({ project: detail })} research={research()} />);
     nav("Projets");
     fireEvent.click(await screen.findByRole("button", { name: /alpha · crypto/ }));
     expect(await screen.findByRole("heading", { name: "alpha" })).toBeTruthy();
@@ -134,7 +156,7 @@ describe("read-only command center", () => {
   });
   it("rejects a detail response for a different Project", async () => {
     const transport = management({ project: vi.fn(async () => project("beta")) });
-    render(<App drafts={drafts()} transport={transport} research={research()} />);
+    render(<TestedApp drafts={drafts()} transport={transport} research={research()} />);
     nav("Projets");
     fireEvent.click(await screen.findByRole("button", { name: /alpha · crypto/ }));
     await waitFor(() => expect(transport.project).toHaveBeenCalledWith("alpha"));
@@ -142,7 +164,7 @@ describe("read-only command center", () => {
   });
   it("rejects malformed catalog data and does not show a fabricated count", async () => {
     const transport = management({ projects: vi.fn(async () => ({ projects: "secret" } as never)) });
-    render(<App drafts={drafts()} transport={transport} research={research()} />);
+    render(<TestedApp drafts={drafts()} transport={transport} research={research()} />);
     nav("Projets");
     expect(await screen.findByRole("alert", { name: "" })).toBeTruthy();
     expect(screen.getByText("Catalogue indisponible ou invalide.")).toBeTruthy();
@@ -153,7 +175,7 @@ describe("read-only command center", () => {
         initialized: true, awakening_ready: false, research_state: "PAUSED", autonomous_task_alive: false,
         profile: "codex", profile_status: "BLOCKED" } };
     const engine = research({ status: vi.fn(async () => engineStatus) });
-    render(<App drafts={drafts()} transport={management()} research={engine} />);
+    render(<TestedApp drafts={drafts()} transport={management()} research={engine} />);
     nav("Modèles");
     expect(await screen.findByText("Workloads bloqués")).toBeTruthy();
     expect(screen.getByText("Lecture non demandée. Aucun appel d’inférence n’est effectué pour renseigner cette vue.")).toBeTruthy();
@@ -163,7 +185,7 @@ describe("read-only command center", () => {
   });
   it("separates other-Project engine state from selected Project", async () => {
     const engine = research({ status: vi.fn(async () => ({ ...stopped, state: "PAUSED" as const, project_id: "alpha" })) });
-    render(<App drafts={drafts()} transport={management()} research={engine} />);
+    render(<TestedApp drafts={drafts()} transport={management()} research={engine} />);
     nav("Projets");
     fireEvent.click(await screen.findByRole("button", { name: /beta · crypto/ }));
     const detail = screen.getByText("Détail du Project").closest("section")!;
@@ -171,19 +193,19 @@ describe("read-only command center", () => {
   });
   it("does not retry a failed backend call without user action", async () => {
     const status = vi.fn(async () => { throw new Error("offline"); });
-    render(<App drafts={drafts()} transport={management({ status })} research={research()} />);
-    await screen.findByText("Gestion locale indisponible");
+    render(<TestedApp drafts={drafts()} transport={management({ status })} research={research()} />);
+    await screen.findByText(/Les données du backend restent indisponibles/);
     expect(status).toHaveBeenCalledTimes(1);
   });
   it("hides previously observed data after a failed refresh", async () => {
     const status = vi.fn().mockResolvedValueOnce({ api_version: "1", management_available: true })
       .mockRejectedValueOnce(new Error("private upstream detail"));
-    render(<App drafts={drafts()} transport={management({ status })} research={research()} />);
+    render(<TestedApp drafts={drafts()} transport={management({ status })} research={research()} />);
     nav("Projets");
     expect(await screen.findByRole("button", { name: /alpha · crypto/ })).toBeTruthy();
     await waitFor(() => expect(screen.getByRole("button", { name: "Actualiser" }).hasAttribute("disabled")).toBe(false));
     fireEvent.click(screen.getByRole("button", { name: "Actualiser" }));
-    expect(await screen.findByText("Gestion locale indisponible")).toBeTruthy();
+    expect(await screen.findByText(/Les données du backend restent indisponibles/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: /alpha · crypto/ })).toBeNull();
     expect(screen.queryByText("private upstream detail")).toBeNull();
     expect(status).toHaveBeenCalledTimes(2);
@@ -200,7 +222,7 @@ describe("read-only command center", () => {
         version: "1", documentation_digest: "a".repeat(64), state: "PENDING_APPROVAL", validation_state: "PASSED",
         approval_kind: "NONE_RECORDED" as const, source_identity: "fixture:local", updated_at: "2026-10-21T00:00:00Z",
         source: "DISPOSABLE_POSTGRESQL" as const }] : [], next_offset: null, source: "DISPOSABLE_POSTGRESQL" as const })) });
-    render(<App drafts={drafts()} transport={transport} research={research()} />);
+    render(<TestedApp drafts={drafts()} transport={transport} research={research()} />);
     nav("Projets");
     fireEvent.click(await screen.findByRole("button", { name: /alpha · crypto/ }));
     nav("Missions");
@@ -219,7 +241,7 @@ describe("read-only command center", () => {
   });
   it("treats missing Project read service as unavailable, not empty", async () => {
     const transport = management({ missions: vi.fn(async () => { throw new Error("private SQL detail"); }) });
-    render(<App drafts={drafts()} transport={transport} research={research()} />);
+    render(<TestedApp drafts={drafts()} transport={transport} research={research()} />);
     nav("Projets");
     fireEvent.click(await screen.findByRole("button", { name: /alpha · crypto/ }));
     nav("Missions");
@@ -234,7 +256,7 @@ describe("read-only command center", () => {
       receipt_count: 0, created_at: "2026-10-21T00:00:00Z", updated_at: "2026-10-21T00:00:00Z",
       evidence_kind: "HISTORICAL_CHECKPOINT" as const }], next_offset: null, source: "DISPOSABLE_POSTGRESQL" as const };
     const missions = vi.fn().mockResolvedValueOnce(first).mockRejectedValueOnce(new Error("private backend"));
-    render(<App drafts={drafts()} transport={management({ missions })} research={research()} />);
+    render(<TestedApp drafts={drafts()} transport={management({ missions })} research={research()} />);
     nav("Projets");
     fireEvent.click(await screen.findByRole("button", { name: /alpha · crypto/ }));
     nav("Missions");
@@ -247,7 +269,7 @@ describe("read-only command center", () => {
   });
   it("reads local model status only after manual action and treats unloaded as healthy", async () => {
     const models = local();
-    render(<App drafts={drafts()} transport={management()} research={research()} ollama={models} />);
+    render(<TestedApp drafts={drafts()} transport={management()} research={research()} ollama={models} />);
     nav("Modèles");
     expect(models.status).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Lire l’état local" }));
@@ -260,7 +282,7 @@ describe("read-only command center", () => {
     const status = vi.fn(async () => ({ ...localStatus, service_state: "UNAVAILABLE" as const,
       installed_state: "UNAVAILABLE" as const, loaded_state: "UNAVAILABLE" as const,
       installed: [], loaded: [], failure_class: "CONNECT" as const }));
-    render(<App drafts={drafts()} transport={management()} research={research()} ollama={local({ status })} />);
+    render(<TestedApp drafts={drafts()} transport={management()} research={research()} ollama={local({ status })} />);
     nav("Modèles");
     fireEvent.click(screen.getByRole("button", { name: "Lire l’état local" }));
     expect(await screen.findByText("Liste indisponible.")).toBeTruthy();
@@ -269,7 +291,7 @@ describe("read-only command center", () => {
   });
   it("hides a previous local model result after a failed manual refresh", async () => {
     const status = vi.fn().mockResolvedValueOnce(localStatus).mockRejectedValueOnce(new Error("private model metadata"));
-    render(<App drafts={drafts()} transport={management()} research={research()} ollama={local({ status })} />);
+    render(<TestedApp drafts={drafts()} transport={management()} research={research()} ollama={local({ status })} />);
     nav("Modèles");
     fireEvent.click(screen.getByRole("button", { name: "Lire l’état local" }));
     expect(await screen.findByText("model:1")).toBeTruthy();
@@ -282,9 +304,9 @@ describe("read-only command center", () => {
   });
   it("creates, reopens, edits, duplicates and deletes a local brief across window restarts", async () => {
     const store = memoryDrafts(); const backend = management();
-    const first = render(<App drafts={store} transport={backend} research={research()} />);
+    const first = render(<TestedApp drafts={store} transport={backend} research={research()} />);
     await screen.findByRole("option", { name: "alpha · alpha" });
-    fireEvent.change(screen.getByLabelText("Project courant"), { target: { value: "alpha" } });
+    fireEvent.change(screen.getByLabelText("Espace actuel"), { target: { value: "alpha" } });
     await waitFor(() => expect(store.setPreferred).toHaveBeenCalledWith("alpha"));
     nav("Missions");
     fireEvent.click(await screen.findByRole("button", { name: "Nouveau brouillon" }));
@@ -295,8 +317,8 @@ describe("read-only command center", () => {
     await waitFor(() => expect(store.create).toHaveBeenCalledTimes(1));
     expect(await screen.findByRole("button", { name: /Mon brief Local/ })).toBeTruthy();
     first.unmount();
-    render(<App drafts={store} transport={backend} research={research()} />);
-    await waitFor(() => expect((screen.getByLabelText("Project courant") as HTMLSelectElement).value).toBe("alpha"));
+    render(<TestedApp drafts={store} transport={backend} research={research()} />);
+    await waitFor(() => expect((screen.getByLabelText("Espace actuel") as HTMLSelectElement).value).toBe("alpha"));
     nav("Missions");
     fireEvent.click(await screen.findByRole("button", { name: /Mon brief Local/ }));
     expect((await screen.findByLabelText(/Objectif ·/) as HTMLTextAreaElement).value).toBe("Identifier la source");
@@ -314,21 +336,21 @@ describe("read-only command center", () => {
   });
   it("guards unsaved text and isolates drafts when changing Projects", async () => {
     const store = memoryDrafts();
-    render(<App drafts={store} transport={management()} research={research()} />);
+    render(<TestedApp drafts={store} transport={management()} research={research()} />);
     await screen.findByRole("option", { name: "alpha · alpha" });
-    fireEvent.change(screen.getByLabelText("Project courant"), { target: { value: "alpha" } });
+    fireEvent.change(screen.getByLabelText("Espace actuel"), { target: { value: "alpha" } });
     nav("Missions");
     fireEvent.click(await screen.findByRole("button", { name: "Nouveau brouillon" }));
     fireEvent.change(screen.getByLabelText(/Titre ·/), { target: { value: "Non enregistré" } });
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
     nav("Projets");
     expect(screen.getByRole("heading", { name: "Nouveau brief" })).toBeTruthy();
-    fireEvent.change(screen.getByLabelText("Project courant"), { target: { value: "beta" } });
-    expect((screen.getByLabelText("Project courant") as HTMLSelectElement).value).toBe("alpha");
+    fireEvent.change(screen.getByLabelText("Espace actuel"), { target: { value: "beta" } });
+    expect((screen.getByLabelText("Espace actuel") as HTMLSelectElement).value).toBe("alpha");
     expect(store.setPreferred).toHaveBeenCalledTimes(1);
     confirm.mockReturnValue(true);
-    fireEvent.change(screen.getByLabelText("Project courant"), { target: { value: "beta" } });
-    await waitFor(() => expect((screen.getByLabelText("Project courant") as HTMLSelectElement).value).toBe("beta"));
+    fireEvent.change(screen.getByLabelText("Espace actuel"), { target: { value: "beta" } });
+    await waitFor(() => expect((screen.getByLabelText("Espace actuel") as HTMLSelectElement).value).toBe("beta"));
     expect(screen.queryByDisplayValue("Non enregistré")).toBeNull();
     confirm.mockRestore();
   });
@@ -336,7 +358,7 @@ describe("read-only command center", () => {
     const store = memoryDrafts();
     await store.setPreferred("alpha");
     await store.create({ project_id: "alpha", title: "Hors ligne", objective: "Préparer un objectif", verification_criteria: "Vérifier plus tard" });
-    render(<App drafts={store} transport={management({ runtimeStatus: vi.fn(async () => ({ state: "STOPPED" as const, diagnostic: null })) })} research={research()} />);
+    render(<TestedApp drafts={store} transport={management({ runtimeStatus: vi.fn(async () => ({ state: "STOPPED" as const, diagnostic: null })) })} research={research()} />);
     nav("Missions");
     expect(await screen.findByRole("button", { name: /Hors ligne Local/ })).toBeTruthy();
     expect(screen.getByText(/Identité du Project mémorisée localement/)).toBeTruthy();

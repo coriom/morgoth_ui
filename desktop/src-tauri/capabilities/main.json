@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "main",
-  "description": "D4 fixed backend reads and Project-scoped local mission brief storage in the main window",
+  "description": "D5 fixed backend reads and Project-scoped local briefs and human notes in the main window",
   "windows": ["main"],
-  "permissions": ["allow-management-runtime-status", "allow-management-status", "allow-list-domains", "allow-list-projects", "allow-get-project", "allow-validate-project", "allow-list-mission-reads", "allow-get-mission-read", "allow-list-capability-reads", "allow-research-engine-status", "allow-research-profiles", "allow-ollama-status-read", "allow-preferred-project-read", "allow-preferred-project-set", "allow-local-drafts-list", "allow-local-draft-get", "allow-local-draft-create", "allow-local-draft-update", "allow-local-draft-delete"]
+  "permissions": ["allow-management-runtime-status", "allow-management-status", "allow-list-domains", "allow-list-projects", "allow-get-project", "allow-validate-project", "allow-list-mission-reads", "allow-get-mission-read", "allow-list-capability-reads", "allow-research-engine-status", "allow-research-profiles", "allow-ollama-status-read", "allow-preferred-project-read", "allow-preferred-project-set", "allow-local-drafts-list", "allow-local-draft-get", "allow-local-draft-create", "allow-local-draft-update", "allow-local-draft-delete", "allow-local-notes-list", "allow-local-note-get", "allow-local-note-create", "allow-local-note-update", "allow-local-note-delete"]
 }

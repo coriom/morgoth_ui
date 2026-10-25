@@ -9,9 +9,10 @@ const stamp = (value: number) => new Date(value).toLocaleString("fr-FR");
 const clean = (value: string, limit: number) => value.trim().length > 0 && [...value].length <= limit && !value.includes("\0");
 
 /** Local briefs and historical backend checkpoints remain separate evidence classes. */
-export function MissionWorkspace({ projectId, verified, connected, transport, drafts, onDirtyChange, refreshSignal }:
+export function MissionWorkspace({ projectId, verified, connected, transport, drafts, onDirtyChange, refreshSignal, request }:
   { projectId: string | null; verified: boolean; connected: boolean; transport: ManagementTransport;
-    drafts: DraftTransport; onDirtyChange: (dirty: boolean) => void; refreshSignal: number }) {
+    drafts: DraftTransport; onDirtyChange: (dirty: boolean) => void; refreshSignal: number;
+    request?: { kind: "create" | "open"; id?: string; seq: number } | null }) {
   const cache = useQueryClient();
   const [offset, setOffset] = useState(0);
   const [selectedMission, setSelectedMission] = useState<string | null>(null);
@@ -26,6 +27,7 @@ export function MissionWorkspace({ projectId, verified, connected, transport, dr
   const [error, setError] = useState<string | null>(null);
   const titleRef = useRef<HTMLInputElement>(null);
   const lastRefresh = useRef(refreshSignal);
+  const seenRequest = useRef(0);
   const list = useQuery({ queryKey: ["d4", "drafts", projectId],
     queryFn: async () => readDraftList(await drafts.list(projectId!), projectId!), enabled: projectId !== null,
     retry: false, refetchOnWindowFocus: false });
@@ -101,6 +103,14 @@ export function MissionWorkspace({ projectId, verified, connected, transport, dr
     } catch { setError("Suppression refusée ou conflit de révision. Le brouillon reste affiché."); }
     finally { setBusy(false); }
   };
+  useEffect(() => {
+    if (!request || request.seq === seenRequest.current) return;
+    seenRequest.current = request.seq;
+    if (request.kind === "create") newDraft();
+    else if (request.id) void openDraft(request.id);
+    // A foreground Home/palette request is consumed once per mounted workspace.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [request?.seq]);
   const shownDrafts = list.isSuccess ? list.data.filter((item) =>
     `${item.title} ${item.objective}`.toLocaleLowerCase().includes(search.toLocaleLowerCase())) : [];
   const shownHistory = history.isSuccess ? history.data.missions.filter((item) =>

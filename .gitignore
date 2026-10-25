@@ -6,3 +6,6 @@ AGENTS.md
 PROGRESS.md
 tsconfig.tsbuildinfo
 *.tsbuildinfo
+
+# Development worktrees may use a symlink to an existing dependency tree.
+/desktop/node_modules

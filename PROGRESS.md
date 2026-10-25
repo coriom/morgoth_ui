@@ -1,3 +1,15 @@
+## 2026-10-25 — Desktop D5 functional personal workspace candidate
+
+Branch `feat/morgoth-desktop-d5-production-workspace-v1` derives from exact D4 commit
+`4a3474312724f2028d61b88f3d02188dbef66d37`. It implements five primary
+areas, a local command palette, Project-scoped human Markdown notes, internal
+links/backlinks and a graph generated from stored relationships. Existing D4
+mission briefs and D2/D3 read-only observability retain their native contracts;
+notes use a separate bounded application-local Rust store and five fixed IPC
+commands. No inference, backend mutation, autonomous execution or dependency
+was added. See `docs/DESKTOP-D5-WORKSPACE.md` and
+`docs/DESKTOP-D5-ACCEPTANCE.md` for exact verification and remaining limits.
+
 ## 2026-10-25 — Desktop D4 Mission Workspace
 
 Branch `feat/morgoth-desktop-d4-mission-workspace-v1` adds fixed native local-draft
