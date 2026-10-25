@@ -1,3 +1,13 @@
+## 2026-10-25 — Desktop D5 design candidate (prototype only)
+
+An isolated design branch from the exact accepted D4 SHA contains a dark-first
+minimal workspace specification and a static, explicitly fictional prototype
+for Home, Missions, Knowledge Notes and Graph, with lightweight Projects and
+Settings navigation. Headless Chromium screenshots at two desktop sizes and
+an interaction smoke were inspected. No Tauri production code, native IPC,
+backend contract, draft storage or autonomous authority changed. D5 product
+implementation and native acceptance remain future work; see `docs/design/d5/`.
+
 ## 2026-10-25 — Desktop D4 Mission Workspace
 
 Branch `feat/morgoth-desktop-d4-mission-workspace-v1` adds fixed native local-draft
