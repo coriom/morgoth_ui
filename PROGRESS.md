@@ -1,3 +1,15 @@
+## 2026-10-25 — Desktop D4 Mission Workspace
+
+Branch `feat/morgoth-desktop-d4-mission-workspace-v1` adds fixed native local-draft
+IPC, Project preference, a distinct editable local brief area and historical
+checkpoint panel. The original D3 branch is unchanged. Frontend checks and
+26 Rust tests passed; the actual WSLg window verified navigation, Project
+isolation and preference restoration. AT-SPI text entry did not verify native
+draft create/edit; this visual acceptance remains pending. No new backend
+endpoint, model inference or workload authority was added. The existing
+`uuid` crate is now a direct Rust dependency for draft IDs. See
+`docs/DESKTOP-D4-MISSION-WORKSPACE.md` and `docs/DESKTOP-D4-ACCEPTANCE.md`.
+
 ## 2026-10-21 — Desktop D3 native acceptance and local model observation candidate
 
 The D2 connected WSLg window was exercised through native AT-SPI controls:
