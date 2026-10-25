@@ -59,9 +59,9 @@ export function MissionWorkspace({ projectId, verified, connected, transport, dr
     setTitle(draft?.title ?? ""); setObjective(draft?.objective ?? "");
     setCriteria(draft?.verification_criteria ?? ""); setDirty(false); setError(null);
   };
-  const newDraft = () => { if (!guard()) return; reset(null); window.setTimeout(() => titleRef.current?.focus(), 0); };
-  const openDraft = async (draftId: string) => {
-    if (!projectId || !guard()) return;
+  const newDraft = (approved = false) => { if (!approved && !guard()) return; reset(null); window.setTimeout(() => titleRef.current?.focus(), 0); };
+  const openDraft = async (draftId: string, approved = false) => {
+    if (!projectId || (!approved && !guard())) return;
     setBusy(true); setError(null);
     try { reset(readDraft(await drafts.get(projectId, draftId), projectId)); }
     catch { setError("Brouillon indisponible ou incompatible. Aucune modification appliquée."); }
@@ -106,8 +106,8 @@ export function MissionWorkspace({ projectId, verified, connected, transport, dr
   useEffect(() => {
     if (!request || request.seq === seenRequest.current) return;
     seenRequest.current = request.seq;
-    if (request.kind === "create") newDraft();
-    else if (request.id) void openDraft(request.id);
+    if (request.kind === "create") newDraft(true);
+    else if (request.id) void openDraft(request.id, true);
     // A foreground Home/palette request is consumed once per mounted workspace.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [request?.seq]);
@@ -118,12 +118,11 @@ export function MissionWorkspace({ projectId, verified, connected, transport, dr
 
   if (!projectId) return <section className="panel"><h2>Aucun Project sélectionné</h2>
     <p>Choisissez un Project dans le sélecteur global pour retrouver vos briefs locaux.</p></section>;
-  return <div className="content-stack">
-    <p className="section-intro">Briefs locaux non soumis et checkpoints historiques : deux sources séparées.
-      {!verified && " Identité du Project mémorisée localement, non vérifiée par Management."}</p>
+  return <div className="mission-page">
     <div className="mission-workspace">
       <aside className="panel mission-index" aria-label="Liste des missions et brouillons">
-        <div className="panel-heading"><h2>Project · {projectId}</h2><button type="button" onClick={newDraft}>Nouveau brouillon</button></div>
+        <div className="panel-heading"><h2>Vos briefs</h2><button type="button" onClick={() => newDraft()}>＋ Nouveau brief</button></div>
+        {!verified && <p className="read-stamp">Identité du Project mémorisée localement, non vérifiée par Management.</p>}
         <label htmlFor="mission-search">Rechercher dans les éléments chargés</label>
         <input id="mission-search" type="search" value={search} onChange={(event) => setSearch(event.target.value)} />
         <h3>Brouillons locaux · non soumis</h3>

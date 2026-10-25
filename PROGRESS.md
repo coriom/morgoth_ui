@@ -9,6 +9,10 @@ notes use a separate bounded application-local Rust store and five fixed IPC
 commands. No inference, backend mutation, autonomous execution or dependency
 was added. See `docs/DESKTOP-D5-WORKSPACE.md` and
 `docs/DESKTOP-D5-ACCEPTANCE.md` for exact verification and remaining limits.
+The disposable WSLg Tauri fixture opened two windows and verified Project
+selection and historical-record isolation after restart. Native text entry
+remains unverified through AT-SPI; implemented React screenshots use clearly
+synthetic read-only data and are not native-window screenshots.
 
 ## 2026-10-25 — Desktop D4 Mission Workspace
 

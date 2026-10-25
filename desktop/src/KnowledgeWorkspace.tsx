@@ -7,9 +7,9 @@ import { backlinksTo, filterNotes, linksFrom, readNote, readNoteList, type Local
 const stamp = (value: number) => new Date(value).toLocaleString("fr-FR");
 
 /** Human-authored local notes only. Historical wiki and agent memory are not connected. */
-export function KnowledgeWorkspace({ projectId, verified, transport, onDirtyChange, createSignal, openNoteId, refreshSignal }: {
+export function KnowledgeWorkspace({ projectId, verified, transport, onDirtyChange, createSignal, openNoteRequest, refreshSignal }: {
   projectId: string | null; verified: boolean; transport: NoteTransport; onDirtyChange: (value: boolean) => void;
-  createSignal: number; openNoteId: string | null; refreshSignal: number;
+  createSignal: number; openNoteRequest: {id:string;seq:number} | null; refreshSignal: number;
 }) {
   const cache = useQueryClient();
   const [mode, setMode] = useState<"notes" | "graph">("notes");
@@ -27,6 +27,7 @@ export function KnowledgeWorkspace({ projectId, verified, transport, onDirtyChan
   const [error, setError] = useState<string | null>(null);
   const titleRef = useRef<HTMLInputElement>(null);
   const seenCreate = useRef(0);
+  const seenOpen = useRef(0);
   const seenRefresh = useRef(refreshSignal);
   const list = useQuery({ queryKey: ["d5", "notes", projectId],
     queryFn: async () => readNoteList(await transport.list(projectId!), projectId!),
@@ -44,16 +45,18 @@ export function KnowledgeWorkspace({ projectId, verified, transport, onDirtyChan
     setDirty(false); setError(null); setMode("notes");
   };
   const create = () => { if (!projectId || !guard()) return; reset(null); window.setTimeout(() => titleRef.current?.focus(), 0); };
-  useEffect(() => { if (createSignal === seenCreate.current) return; seenCreate.current = createSignal; create();
-    // Called by a foreground command-palette action, never on a fetch.
+  useEffect(() => { if (createSignal === seenCreate.current) return; seenCreate.current = createSignal;
+    reset(null); window.setTimeout(() => titleRef.current?.focus(), 0);
+    // The application shell has already confirmed leaving unsaved work.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [createSignal]);
-  useEffect(() => { if (!openNoteId || !notes.some(note => note.note_id === openNoteId)) return;
-    if (selectedId === openNoteId) return; if (!guard()) return;
-    const note = notes.find(item => item.note_id === openNoteId)!; reset(note);
+  useEffect(() => { if (!openNoteRequest || openNoteRequest.seq === seenOpen.current) return;
+    const note = notes.find(item => item.note_id === openNoteRequest.id);
+    if (!note) return;
+    seenOpen.current = openNoteRequest.seq; reset(note);
     // Selection is guarded at the application boundary as well.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [openNoteId, list.dataUpdatedAt]);
+  }, [openNoteRequest?.seq, list.dataUpdatedAt]);
   const open = async (id: string) => {
     if (!projectId || !guard()) return;
     setBusy(true); setError(null);

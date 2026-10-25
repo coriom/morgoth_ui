@@ -45,7 +45,7 @@ export function CommandCenter({ transport, research, ollama, drafts, notes }: { 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [missionRequest, setMissionRequest] = useState<{kind:"create"|"open";id?:string;seq:number}|null>(null);
   const [noteCreateSignal, setNoteCreateSignal] = useState(0);
-  const [openNoteId, setOpenNoteId] = useState<string|null>(null);
+  const [noteOpenRequest, setNoteOpenRequest] = useState<{id:string;seq:number}|null>(null);
   const [requestSeq, setRequestSeq] = useState(0);
   const [refreshSignal, setRefreshSignal] = useState(0);
   const [capabilityOffset, setCapabilityOffset] = useState(0);
@@ -89,14 +89,14 @@ export function CommandCenter({ transport, research, ollama, drafts, notes }: { 
   const chooseProject = async (id: string | null) => {
     if (id === selectedId || !leaveEditor()) return;
     setSelectionError(false);
-    try { await drafts.setPreferred(id); setSelectedId(id); setMissionDirty(false); setNoteDirty(false); setCapabilityOffset(0); setMissionRequest(null); setOpenNoteId(null); }
+    try { await drafts.setPreferred(id); setSelectedId(id); setMissionDirty(false); setNoteDirty(false); setCapabilityOffset(0); setMissionRequest(null); setNoteOpenRequest(null); }
     catch { setSelectionError(true); }
   };
-  const navigate = (next: View) => { if (next !== view && leaveEditor()) { setView(next); setMissionDirty(false); setNoteDirty(false); setMissionRequest(null); setOpenNoteId(null); } };
+  const navigate = (next: View) => { if (next !== view && leaveEditor()) { setView(next); setMissionDirty(false); setNoteDirty(false); setMissionRequest(null); setNoteOpenRequest(null); } };
   const newDraft = () => { if (!selectedId || !leaveEditor()) return; const seq=requestSeq+1; setRequestSeq(seq);setMissionRequest({kind:"create",seq});setView("missions");setMissionDirty(false);setNoteDirty(false); };
   const openDraft = (id: string) => { if (!leaveEditor()) return; const seq=requestSeq+1;setRequestSeq(seq);setMissionRequest({kind:"open",id,seq});setView("missions");setMissionDirty(false);setNoteDirty(false); };
-  const newNote = () => { if (!selectedId || !leaveEditor()) return;setOpenNoteId(null);setNoteCreateSignal(value=>value+1);setView("knowledge");setMissionDirty(false);setNoteDirty(false); };
-  const openNote = (id: string) => { if (!leaveEditor()) return;setOpenNoteId(id);setView("knowledge");setMissionDirty(false);setNoteDirty(false); };
+  const newNote = () => { if (!selectedId || !leaveEditor()) return;setNoteOpenRequest(null);setNoteCreateSignal(value=>value+1);setView("knowledge");setMissionDirty(false);setNoteDirty(false); };
+  const openNote = (id: string) => { if (!leaveEditor()) return;const seq=requestSeq+1;setRequestSeq(seq);setNoteOpenRequest({id,seq});setView("knowledge");setMissionDirty(false);setNoteDirty(false); };
   const selectedProject = projectData?.projects.find((item) => item.id === selectedId);
 
   return <div className={sidebarCollapsed ? "command-layout sidebar-collapsed" : "command-layout"}>
@@ -130,14 +130,14 @@ export function CommandCenter({ transport, research, ollama, drafts, notes }: { 
             if (profiles.isSuccess) void profiles.refetch(); } }}>Actualiser</button>
       </section>}
       {selectionError && <p className="notice warn" role="alert">Préférence Project indisponible. La sélection précédente est conservée.</p>}
-      {selectedId && <p className="source-stamp">Project : <strong>{selectedProject?.name ?? selectedId}</strong> · {selectedInCatalog ? "catalogue Management vérifié" : "identité locale mémorisée, non vérifiée"}.
+      {selectedId && view!=="home" && view!=="knowledge" && view!=="missions" && <p className="source-stamp">Project : <strong>{selectedProject?.name ?? selectedId}</strong> · {selectedInCatalog ? "catalogue Management vérifié" : "identité locale mémorisée, non vérifiée"}.
         {connected && management.isSuccess && ` Dernière lecture Management réussie : ${new Date(management.dataUpdatedAt).toLocaleString("fr-FR")}.`}</p>}
-      {managerError && <p className="notice warn" role="alert">Les données du backend restent indisponibles. Aucune activité n’est présumée.</p>}
+      {managerError && view!=="home" && view!=="knowledge" && view!=="missions" && <p className="notice warn" role="alert">Les données du backend restent indisponibles. Aucune activité n’est présumée.</p>}
 
       {view === "home" && <Home projectId={selectedId} projectName={selectedProject?.name ?? null} verified={selectedInCatalog}
         drafts={drafts} notes={notes} onOpenDraft={openDraft} onNewDraft={newDraft} onOpenNote={openNote} onNewNote={newNote} onProjects={()=>navigate("projects")} />}
       {view === "knowledge" && <KnowledgeWorkspace key={selectedId ?? "none"} projectId={selectedId} verified={selectedInCatalog}
-        transport={notes} onDirtyChange={onNoteDirtyChange} createSignal={noteCreateSignal} openNoteId={openNoteId} refreshSignal={refreshSignal} />}
+        transport={notes} onDirtyChange={onNoteDirtyChange} createSignal={noteCreateSignal} openNoteRequest={noteOpenRequest} refreshSignal={refreshSignal} />}
       {view === "settings" && <div className="settings-index"><h2>Votre espace, à votre rythme.</h2><p>Les observations techniques restent disponibles ici, sans commande d’exécution.</p>
         <div className="settings-links"><button onClick={()=>navigate("runtime")}>Vue générale et diagnostics <span>→</span></button>
           <button onClick={()=>navigate("models")}>Modèles et runtime <span>→</span></button>

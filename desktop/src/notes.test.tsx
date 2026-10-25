@@ -24,7 +24,7 @@ function memoryNotes(): NoteTransport {
 function mount(store: NoteTransport, project="alpha") {
   const client=new QueryClient({defaultOptions:{queries:{retry:false,refetchOnWindowFocus:false}}});
   return render(<QueryClientProvider client={client}><KnowledgeWorkspace projectId={project} verified={false} transport={store}
-    onDirtyChange={()=>{}} createSignal={0} openNoteId={null} refreshSignal={0}/></QueryClientProvider>);
+    onDirtyChange={()=>{}} createSignal={0} openNoteRequest={null} refreshSignal={0}/></QueryClientProvider>);
 }
 describe("local note contract and workspace", () => {
   it("rejects foreign, oversized, duplicate and malformed native records", () => {

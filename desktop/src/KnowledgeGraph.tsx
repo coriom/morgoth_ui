@@ -11,14 +11,19 @@ function layout(notes: readonly LocalNote[], focus: string | null, local: boolea
   const visible = notes.filter(note => !local || !focus || neighbours.has(note.note_id)).slice(0, 160);
   const sorted = [...visible].sort((a, b) => a.collection.localeCompare(b.collection) || a.note_id.localeCompare(b.note_id));
   const positions = new Map<string, { x: number; y: number }>();
-  const columns = 7;
-  sorted.forEach((note, index) => positions.set(note.note_id, { x: 90 + (index % columns) * 112, y: 88 + Math.floor(index / columns) * 100 }));
+  const columns = sorted.length <= 4 ? Math.min(3, sorted.length) : 4;
+  const spacing = sorted.length <= 4 ? 245 : 185;
+  const firstX = 380 - (columns - 1) * spacing / 2;
+  sorted.forEach((note, index) => positions.set(note.note_id, {
+    x: firstX + (index % columns) * spacing,
+    y: sorted.length <= 4 ? 250 + Math.floor(index / columns) * 130 : 90 + Math.floor(index / columns) * 120,
+  }));
   const edges: { source: string; target: string }[] = [];
   for (const note of sorted) for (const link of linksFrom(note.markdown)) {
     if (positions.has(link.target)) edges.push({ source: note.note_id, target: link.target });
   }
   return { nodes: sorted, positions, edges, indexed, neighbours,
-    height: Math.max(520, Math.ceil(sorted.length / columns) * 100 + 120), truncated: visible.length < notes.filter(note => !local || !focus || neighbours.has(note.note_id)).length };
+    truncated: visible.length < notes.filter(note => !local || !focus || neighbours.has(note.note_id)).length };
 }
 
 /** Stable bounded SVG layout, with an equivalent keyboard-accessible note list. */
@@ -41,13 +46,13 @@ export function KnowledgeGraph({ notes, selectedId, onSelect, onOpen }: {
   const zoom = (delta: number) => setScale(value => Math.min(2, Math.max(.55, value + delta)));
   if (!notes.length) return <div className="empty-evidence"><h2>Aucune note à relier</h2><p>Créez une note personnelle dans ce Project. Le graphe reflétera ses liens enregistrés.</p></div>;
   return <div className="knowledge-graph">
-    <div className="graph-toolbar"><label htmlFor="graph-search">Rechercher un nœud</label><input id="graph-search" type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Titre de note…" />
+    <div className="graph-toolbar"><label htmlFor="graph-search" className="sr-only">Rechercher un nœud</label><input id="graph-search" type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Rechercher une note…" />
       <label htmlFor="graph-collection">Collection</label><select id="graph-collection" value={collection} onChange={event => setCollection(event.target.value)}><option value="all">Toutes</option>{collections.map(value => <option key={value} value={value}>{value}</option>)}</select>
       <button type="button" aria-pressed={local} onClick={() => setLocal(value => !value)}>{local ? "Graphe local" : "Graphe global"}</button>
       <button type="button" onClick={() => { setPan({x:0,y:0}); setScale(1); setQuery(""); }}>Réinitialiser la vue</button></div>
     {graph.truncated && <p className="source-stamp">Le dessin est limité à 160 notes. La liste et la recherche restent disponibles dans Notes.</p>}
     <div className="graph-layout"><div className="graph-canvas">
-      <svg viewBox={`0 0 870 ${graph.height}`} role="group" aria-label="Graphe des liens enregistrés entre notes du Project"
+      <svg viewBox="0 0 760 520" role="group" aria-label="Graphe des liens enregistrés entre notes du Project"
         onWheel={event => { event.preventDefault(); zoom(event.deltaY < 0 ? .08 : -.08); }}
         onPointerDown={event => { if ((event.target as Element).closest(".graph-node")) return; drag.current = {x:event.clientX,y:event.clientY}; event.currentTarget.setPointerCapture(event.pointerId); }}
         onPointerMove={event => { if (!drag.current) return; setPan(value => ({x:value.x+(event.clientX-drag.current!.x),y:value.y+(event.clientY-drag.current!.y)})); drag.current={x:event.clientX,y:event.clientY}; }}
@@ -61,7 +66,7 @@ export function KnowledgeGraph({ notes, selectedId, onSelect, onOpen }: {
             return <g key={note.note_id} className={`graph-node${note.note_id === selectedId ? " selected" : ""}`} transform={`translate(${pos.x} ${pos.y})`}
               role="button" tabIndex={0} aria-label={`Sélectionner ${note.title}`} onClick={() => onSelect(note.note_id)}
               onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelect(note.note_id); } }}>
-              <circle r={note.note_id === selectedId ? 12 : 9} /><text y="30">{note.title.length > 24 ? `${note.title.slice(0,24)}…` : note.title}</text></g>; })}
+              <circle r={note.note_id === selectedId ? 12 : 9} /><text y="34">{note.title.length > 18 ? `${note.title.slice(0,18)}…` : note.title}</text></g>; })}
         </g></svg><div className="graph-zoom"><button aria-label="Dézoomer" onClick={() => zoom(-.15)}>−</button><button aria-label="Zoomer" onClick={() => zoom(.15)}>＋</button></div>
       </div><aside className="graph-inspector" aria-label="Navigation textuelle dans le graphe">
         <h2>{selected?.title ?? "Sélectionnez une note"}</h2><p>{selected ? `${selected.collection} · note personnelle locale` : "Les relations proviennent des liens Markdown enregistrés."}</p>

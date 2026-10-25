@@ -106,6 +106,7 @@ describe("read-only command center", () => {
   it("keeps disconnected state truthful and does not fetch downstream data", async () => {
     const transport = management({ status: vi.fn(async () => { throw new Error("secret failure text"); }) });
     render(<TestedApp drafts={drafts()} transport={transport} research={research()} />);
+    nav("Projets");
     expect(await screen.findByText(/Les données du backend restent indisponibles/)).toBeTruthy();
     expect(transport.projects).not.toHaveBeenCalled();
     expect(screen.queryByText("secret failure text")).toBeNull();
@@ -194,6 +195,7 @@ describe("read-only command center", () => {
   it("does not retry a failed backend call without user action", async () => {
     const status = vi.fn(async () => { throw new Error("offline"); });
     render(<TestedApp drafts={drafts()} transport={management({ status })} research={research()} />);
+    nav("Projets");
     await screen.findByText(/Les données du backend restent indisponibles/);
     expect(status).toHaveBeenCalledTimes(1);
   });
@@ -309,7 +311,7 @@ describe("read-only command center", () => {
     fireEvent.change(screen.getByLabelText("Espace actuel"), { target: { value: "alpha" } });
     await waitFor(() => expect(store.setPreferred).toHaveBeenCalledWith("alpha"));
     nav("Missions");
-    fireEvent.click(await screen.findByRole("button", { name: "Nouveau brouillon" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Nouveau brief/ }));
     fireEvent.change(screen.getByLabelText(/Titre ·/), { target: { value: "Mon brief" } });
     fireEvent.change(screen.getByLabelText(/Objectif ·/), { target: { value: "Identifier la source" } });
     fireEvent.change(screen.getByLabelText(/Critères de vérification ·/), { target: { value: "Une source vérifiée" } });
@@ -340,7 +342,7 @@ describe("read-only command center", () => {
     await screen.findByRole("option", { name: "alpha · alpha" });
     fireEvent.change(screen.getByLabelText("Espace actuel"), { target: { value: "alpha" } });
     nav("Missions");
-    fireEvent.click(await screen.findByRole("button", { name: "Nouveau brouillon" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Nouveau brief/ }));
     fireEvent.change(screen.getByLabelText(/Titre ·/), { target: { value: "Non enregistré" } });
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
     nav("Projets");
@@ -352,6 +354,19 @@ describe("read-only command center", () => {
     fireEvent.change(screen.getByLabelText("Espace actuel"), { target: { value: "beta" } });
     await waitFor(() => expect((screen.getByLabelText("Espace actuel") as HTMLSelectElement).value).toBe("beta"));
     expect(screen.queryByDisplayValue("Non enregistré")).toBeNull();
+    confirm.mockRestore();
+  });
+  it("asks once before replacing an unsaved brief from the command palette", async () => {
+    render(<TestedApp drafts={memoryDrafts()} transport={management()} research={research()} />);
+    await screen.findByRole("option", { name: "alpha · alpha" });
+    fireEvent.change(screen.getByLabelText("Espace actuel"), { target: { value: "alpha" } });
+    nav("Missions");
+    fireEvent.click(await screen.findByRole("button", { name: /Nouveau brief/ }));
+    fireEvent.change(screen.getByLabelText(/Titre ·/), { target: { value: "Texte non sauvé" } });
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    fireEvent.keyDown(window, { key: "k", ctrlKey: true });
+    fireEvent.click(await screen.findByRole("option", { name: /Nouveau brief local/ }));
+    expect(confirm).toHaveBeenCalledTimes(1);
     confirm.mockRestore();
   });
   it("shows remembered local drafts while Management is unavailable", async () => {
