@@ -62,8 +62,8 @@ def main() -> int:
     root = ui.parent
     backend = root / "dev-desktop-d2-backend"
     branch = subprocess.check_output(["git", "-C", str(ui), "branch", "--show-current"], text=True).strip()
-    if branch != "feat/morgoth-desktop-d3-model-observability-v1":
-        raise SystemExit("D3_UI_BRANCH_MISMATCH")
+    if branch not in {"feat/morgoth-desktop-d3-model-observability-v1", "feat/morgoth-desktop-d4-mission-workspace-v1"}:
+        raise SystemExit("DESKTOP_UI_BRANCH_MISMATCH")
     if subprocess.check_output(["git", "-C", str(ui), "status", "--porcelain", "--untracked-files=all"], text=True).strip():
         raise SystemExit("D2_UI_DIRTY")
     sha = "5fc01cc6f465ff021cac7735d44245ca6e79e87b"
@@ -129,6 +129,10 @@ def main() -> int:
                 print("D2_WINDOW_PREVIEW=OPEN Select project_a for one synthetic mission; project_b must remain empty.", flush=True)
                 subprocess.run([str(desktop / "src-tauri/target/debug/morgoth-desktop")], env=gui_env,
                                cwd=ui, check=True)
+                if branch == "feat/morgoth-desktop-d4-mission-workspace-v1":
+                    print("D4_WINDOW_RESTART=OPEN Same disposable app-data HOME; verify saved local brief persists.", flush=True)
+                    subprocess.run([str(desktop / "src-tauri/target/debug/morgoth-desktop")], env=gui_env,
+                                   cwd=ui, check=True)
         finally:
             if vite is not None:
                 vite.terminate()

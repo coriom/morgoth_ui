@@ -27,6 +27,13 @@ h3{font-size:.95rem;margin:0 0 8px}
 
 .workspace{width:100%;max-width:1540px;margin:0 auto;min-width:0;padding:30px clamp(20px,3vw,52px)}
 .topbar{display:flex;justify-content:space-between;align-items:end;gap:12px;border-bottom:1px solid #2c3b46;padding-bottom:24px}
+.project-context{display:grid;gap:5px;min-width:220px;max-width:330px}
+.project-context label{font:700 .68rem ui-monospace,monospace;color:#ceb787;text-transform:uppercase;letter-spacing:.08em}
+.project-context small,.source-stamp,.read-stamp{color:#95aab5;font-size:.72rem}
+.project-context select,.mission-index input,.mission-editor input,.mission-editor textarea{width:100%;background:#101b24;color:#e9edf0;border:1px solid #52626e;border-radius:4px;padding:9px 11px;font:inherit}
+.project-context select:disabled{opacity:.55}
+.source-stamp{margin:-12px 0 16px}
+.source-stamp strong{color:#e9edf0}
 .eyebrow{margin:0 0 10px}
 .read-only-tag,.tag{font:700 .65rem ui-monospace,monospace;letter-spacing:.08em;color:#ddc49c;background:#302b23;border:1px solid #705e40;padding:7px 9px;border-radius:4px;white-space:nowrap}
 .tag{background:#26343e;color:#b2c0c8;border-color:#445562}
@@ -103,3 +110,23 @@ td small{display:block;color:#91a4ae;font:.68rem ui-monospace,monospace;overflow
 .workspace-footer span{display:block;margin-top:6px}
 }
 .connection-strip button:disabled{opacity:.55;cursor:not-allowed}
+.mission-workspace{display:grid;grid-template-columns:minmax(250px,35%) minmax(0,1fr);gap:18px;align-items:start}
+.mission-index{max-height:calc(100vh - 240px);overflow:auto}
+.mission-index .panel-heading{align-items:center}
+.mission-index .panel-heading h2{margin:0}
+.mission-index h3{padding-top:14px;border-top:1px solid #34444f;margin-top:20px}
+.mission-index label,.mission-editor label{display:block;color:#bfccd3;font-size:.78rem;margin:13px 0 6px}
+.mission-list{list-style:none;padding:0;margin:8px 0 0;display:grid;gap:6px}
+.mission-list button{width:100%;text-align:left;background:#1c2b35;border:1px solid #40515d;color:#e9edf0;border-radius:4px;padding:11px;display:grid;gap:4px}
+.mission-list button:hover,.mission-list button[aria-current="true"]{border-color:#d8bb85;background:#293b45}
+.mission-list strong{overflow-wrap:anywhere;font-size:.84rem}
+.mission-list small{color:#a9bbc4;font-size:.7rem}
+.mission-editor textarea{resize:vertical;line-height:1.55;min-height:90px}
+.mission-editor form{display:grid}
+.editor-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:18px}
+.mission-index .panel-heading button,.editor-actions button{background:#293a45;color:#f3ead8;border:1px solid #6a6b5d;border-radius:4px;padding:8px 11px}
+.editor-actions button:first-child{background:#a98858;color:#111a21;font-weight:700}
+.editor-actions button:disabled{opacity:.5;cursor:not-allowed}
+.editor-actions span{font-size:.74rem;color:#e2c48d}
+@media(max-width:1000px){.mission-workspace{grid-template-columns:1fr}.mission-index{max-height:none}}
+@media(max-width:600px){.topbar{align-items:stretch;flex-direction:column}.project-context{max-width:none}.mission-index .panel-heading{flex-wrap:wrap}}

@@ -1,7 +1,9 @@
-import { useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { nativeManagement, nativeResearch, nativeOllama, type ManagementTransport, type ResearchTransport, type OllamaTransport } from "./transport";
-import { readCapabilityPage, readManagementStatus, readMission, readMissionPage, readOllamaStatus, readProject, readProjectList, readResearchProfiles, readResearchStatus, readRuntimeStatus } from "./readModels";
+import { readCapabilityPage, readManagementStatus, readOllamaStatus, readProject, readProjectList, readResearchProfiles, readResearchStatus, readRuntimeStatus } from "./readModels";
+import { nativeDrafts, readPreferred, type DraftTransport } from "./drafts";
+import { MissionWorkspace } from "./MissionWorkspace";
 
 type View = "overview" | "missions" | "capabilities" | "models" | "security" | "projects";
 const views: ReadonlyArray<{ id: View; label: string; code: string }> = [
@@ -23,16 +25,25 @@ function EmptyEvidence({ title, children }: { title: string; children: ReactNode
   return <div className="empty-evidence"><span aria-hidden="true">—</span><h3>{title}</h3><p>{children}</p></div>;
 }
 
-/** D2 calls only fixed native read commands; it never mounts Project or research mutations. */
+/** Backend calls remain fixed reads; D4 writes only local, Project-scoped briefs. */
 const mib = (value: number | null): string => value === null ? "Inconnu"
   : value < 1_048_576 ? `${value} octets` : `${(value / 1_048_576).toFixed(1)} MiB`;
 
-export function CommandCenter({ transport, research, ollama }: { transport: ManagementTransport; research: ResearchTransport; ollama: OllamaTransport }) {
+export function CommandCenter({ transport, research, ollama, drafts }: { transport: ManagementTransport; research: ResearchTransport; ollama: OllamaTransport; drafts: DraftTransport }) {
   const [view, setView] = useState<View>("overview");
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [missionOffset, setMissionOffset] = useState(0);
+  const [preferenceLoaded, setPreferenceLoaded] = useState(false);
+  const [selectionError, setSelectionError] = useState(false);
+  const [missionDirty, setMissionDirty] = useState(false);
+  const [refreshSignal, setRefreshSignal] = useState(0);
   const [capabilityOffset, setCapabilityOffset] = useState(0);
-  const [selectedMissionId, setSelectedMissionId] = useState<string | null>(null);
+  useEffect(() => {
+    let active = true;
+    void drafts.preferred().then((value) => { if (active) setSelectedId(readPreferred(value)); })
+      .catch(() => { if (active) setSelectionError(true); })
+      .finally(() => { if (active) setPreferenceLoaded(true); });
+    return () => { active = false; };
+  }, [drafts]);
   const runtime = useQuery({ queryKey: ["d1", "management-runtime"], queryFn: async () => readRuntimeStatus(await transport.runtimeStatus()) });
   const ready = runtime.isSuccess && runtime.data.state === "READY";
   const management = useQuery({ queryKey: ["d1", "management-status"], queryFn: async () => readManagementStatus(await transport.status()), enabled: ready });
@@ -41,12 +52,6 @@ export function CommandCenter({ transport, research, ollama }: { transport: Mana
   const selectedInCatalog = connected && projects.isSuccess && projects.data.projects.some((item) => item.id === selectedId);
   const project = useQuery({ queryKey: ["d1", "project", selectedId], queryFn: async () => readProject(await transport.project(selectedId!)),
     enabled: connected && selectedId !== null && selectedInCatalog });
-  const missions = useQuery({ queryKey: ["d2", "missions", selectedId, missionOffset],
-    queryFn: async () => readMissionPage(await transport.missions(selectedId!, missionOffset), selectedId!),
-    enabled: connected && selectedInCatalog && view === "missions" });
-  const mission = useQuery({ queryKey: ["d2", "mission", selectedId, selectedMissionId],
-    queryFn: async () => readMission(await transport.mission(selectedId!, selectedMissionId!), selectedId!),
-    enabled: connected && selectedInCatalog && view === "missions" && selectedMissionId !== null });
   const capabilities = useQuery({ queryKey: ["d2", "capabilities", selectedId, capabilityOffset],
     queryFn: async () => readCapabilityPage(await transport.capabilities(selectedId!, capabilityOffset), selectedId!),
     enabled: connected && selectedInCatalog && (view === "capabilities" || view === "security") });
@@ -57,8 +62,6 @@ export function CommandCenter({ transport, research, ollama }: { transport: Mana
   const localModels = useQuery({ queryKey: ["d3", "ollama-status"],
     queryFn: async () => readOllamaStatus(await ollama.status()), enabled: false });
   const projectData = connected && projects.isSuccess ? projects.data : undefined;
-  const missionData = connected && selectedInCatalog && missions.isSuccess && missions.data.project_id === selectedId ? missions.data : undefined;
-  const detailData = connected && selectedInCatalog && mission.isSuccess && mission.data.project_id === selectedId && mission.data.mission_id === selectedMissionId ? mission.data : undefined;
   const capabilityData = connected && selectedInCatalog && capabilities.isSuccess && capabilities.data.project_id === selectedId ? capabilities.data : undefined;
   const engineData = connected && engine.isSuccess ? engine.data : undefined;
   const profileData = connected && engine.isSuccess && profiles.isSuccess ? profiles.data : undefined;
@@ -67,33 +70,52 @@ export function CommandCenter({ transport, research, ollama }: { transport: Mana
   const managerError = runtime.isError || management.isError || (!managerLoading && !connected);
   const projectCount = connected && projectData ? String(projectData.projects.length) : "Indisponible";
   const refreshBusy = runtime.isFetching || management.isFetching || projects.isFetching || project.isFetching
-    || engine.isFetching || profiles.isFetching || missions.isFetching || mission.isFetching || capabilities.isFetching || localModels.isFetching;
-  const chooseProject = (id: string) => { setSelectedId(id); setSelectedMissionId(null); setMissionOffset(0); setCapabilityOffset(0); };
+    || engine.isFetching || profiles.isFetching || capabilities.isFetching || localModels.isFetching;
+  const onDirtyChange = useCallback((value: boolean) => setMissionDirty(value), []);
+  const leaveEditor = () => !missionDirty || window.confirm("Modifications non enregistrées. Les abandonner ?");
+  const chooseProject = async (id: string | null) => {
+    if (id === selectedId || !leaveEditor()) return;
+    setSelectionError(false);
+    try { await drafts.setPreferred(id); setSelectedId(id); setMissionDirty(false); setCapabilityOffset(0); }
+    catch { setSelectionError(true); }
+  };
+  const navigate = (next: View) => { if (next !== view && leaveEditor()) { setView(next); setMissionDirty(false); } };
+  const selectedProject = projectData?.projects.find((item) => item.id === selectedId);
 
   return <div className="command-layout">
     <aside className="sidebar" aria-label="Navigation principale">
-      <div className="brand"><span className="brand-glyph" aria-hidden="true">M</span><div><strong>MORGOTH</strong><small>LOCAL COMMAND / D2</small></div></div>
+      <div className="brand"><span className="brand-glyph" aria-hidden="true">M</span><div><strong>MORGOTH</strong><small>DESKTOP / MISSION WORKSPACE</small></div></div>
       <div className="nav-caption">ESPACES</div>
       <nav aria-label="Espaces de supervision" className="nav-list">{views.map((item) =>
         <button key={item.id} type="button" aria-current={view === item.id ? "page" : undefined}
-          className={view === item.id ? "nav-link active" : "nav-link"} onClick={() => setView(item.id)}>
+          className={view === item.id ? "nav-link active" : "nav-link"} onClick={() => navigate(item.id)}>
           <span className="nav-code">{item.code}</span>{item.label}</button>)}</nav>
-      <div className="sidebar-foot"><span className="status-dot" aria-hidden="true" /><span>Supervision locale<br /><strong>Lecture seule</strong></span></div>
+      <div className="sidebar-foot"><span className="status-dot" aria-hidden="true" /><span>Briefs locaux<br /><strong>Aucune exécution</strong></span></div>
     </aside>
     <main className="workspace">
-      <header className="topbar"><div><p className="eyebrow">MORGOTH / SUPERVISION</p><h1>{views.find((item) => item.id === view)?.label}</h1></div>
-        <span className="read-only-tag">AUCUNE ACTION D’EXÉCUTION</span></header>
+      <header className="topbar"><div><p className="eyebrow">MORGOTH / ESPACE LOCAL</p><h1>{views.find((item) => item.id === view)?.label}</h1></div>
+        <div className="project-context"><label htmlFor="global-project">Project courant</label>
+          <select id="global-project" value={selectedId ?? ""} disabled={!preferenceLoaded}
+            onChange={(event) => void chooseProject(event.target.value || null)}>
+            <option value="">Aucun Project sélectionné</option>
+            {selectedId && !selectedInCatalog && <option value={selectedId}>{selectedId} · mémorisé, non vérifié</option>}
+            {projectData?.projects.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.id}</option>)}
+          </select><small>{selectedId ? selectedInCatalog ? "Vérifié dans le catalogue courant" : "Identité locale non vérifiée" : "Aucun périmètre actif"}</small>
+        </div></header>
       <section className="connection-strip" aria-label="État de connexion">
         <span className={`connection-indicator ${connected ? "online" : ""}`} aria-hidden="true" />
         <div><strong>{managerLoading ? "Connexion en cours" : refreshBusy && connected ? "Vérification en cours" : connected ? "Gestion locale accessible" : "Gestion locale indisponible"}</strong>
-          <span>{managerLoading ? "Lecture du superviseur natif" : connected ? "API de gestion authentifiée par le processus natif" : "Aucune activité déduite de l’interface"}</span></div>
-        <button type="button" disabled={refreshBusy} onClick={() => { void runtime.refetch(); if (ready) void management.refetch();
+          <span>{managerLoading ? "Lecture du superviseur natif" : connected ? "API de gestion authentifiée par le processus natif" : "Aucune activité déduite de l’interface"}</span>
+          {management.dataUpdatedAt > 0 && <small>{connected ? "Dernière lecture Management réussie" : "Ancienne lecture Management, non actuelle"} : {new Date(management.dataUpdatedAt).toLocaleString("fr-FR")}</small>}</div>
+        <button type="button" disabled={refreshBusy} onClick={() => { setRefreshSignal((value) => value + 1); void runtime.refetch(); if (ready) void management.refetch();
           if (view === "models") void localModels.refetch();
           if (connected) { void projects.refetch(); void engine.refetch(); if (selectedInCatalog) { void project.refetch();
-            if (view === "missions") { void missions.refetch(); if (selectedMissionId) void mission.refetch(); }
             if (view === "capabilities" || view === "security") void capabilities.refetch(); }
             if (profiles.isSuccess) void profiles.refetch(); } }}>Actualiser</button>
       </section>
+      {selectionError && <p className="notice warn" role="alert">Préférence Project indisponible. La sélection précédente est conservée.</p>}
+      {selectedId && <p className="source-stamp">Project : <strong>{selectedProject?.name ?? selectedId}</strong> · {selectedInCatalog ? "catalogue Management vérifié" : "identité locale mémorisée, non vérifiée"}.
+        {connected && management.isSuccess && ` Dernière lecture Management réussie : ${new Date(management.dataUpdatedAt).toLocaleString("fr-FR")}.`}</p>}
       {managerError && <p className="notice warn" role="alert">Les données du backend restent indisponibles. Aucune activité n’est présumée.</p>}
 
       {view === "overview" && <div className="content-stack">
@@ -121,31 +143,9 @@ export function CommandCenter({ transport, research, ollama }: { transport: Mana
           <EmptyEvidence title="Flux non connecté">Aucun flux d’événements Project-scopé n’est publié au transport Desktop. Aucun événement fictif n’est affiché.</EmptyEvidence></section>
       </div>}
 
-      {view === "missions" && <div className="content-stack"><p className="section-intro">Checkpoints historiques du Project sélectionné, issus uniquement du registre expérimental `morgoth_test`.</p>
-        {!selectedInCatalog && <EmptyEvidence title="Sélectionnez un Project">Choisissez un Project dans l’espace Projets. Le Project historique ne possède pas ce registre.</EmptyEvidence>}
-        {selectedInCatalog && <section className="panel"><div className="panel-heading"><div><p className="eyebrow">MISSION WORKSPACE</p><h2>Missions · {selectedId}</h2></div><span className="tag">HISTORIQUE · LECTURE SEULE</span></div>
-          {missions.isPending && <p className="skeleton">Lecture des checkpoints…</p>}
-          {missions.isError && <p role="alert">Registre indisponible ou incompatible pour ce Project. Aucune absence de mission n’est déduite.</p>}
-          {missionData?.missions.length === 0 && <EmptyEvidence title="Aucune mission enregistrée">Le registre de test du Project est accessible et vide pour cette page.</EmptyEvidence>}
-          {missionData && missionData.missions.length > 0 && <div className="table-wrap"><table><thead><tr><th>Mission</th><th>État du checkpoint</th><th>Mis à jour</th><th>Preuves</th></tr></thead><tbody>{missionData.missions.map((item) =>
-            <tr key={item.mission_id}><td><button type="button" className="table-link" onClick={() => setSelectedMissionId(item.mission_id)}>{item.objective}</button><small>{item.mission_id}</small></td>
-              <td>{item.state}</td><td>{new Date(item.updated_at).toLocaleString("fr-FR")}</td><td>{item.receipt_count} reçu(s) local(aux)</td></tr>)}</tbody></table></div>}
-          {missionData && <div className="pager"><button type="button" disabled={missionOffset === 0} onClick={() => { setMissionOffset(Math.max(0, missionOffset - 10)); setSelectedMissionId(null); }}>Précédent</button>
-            <span>Page {Math.floor(missionOffset / 10) + 1}</span><button type="button" disabled={missionData.next_offset === null} onClick={() => { setMissionOffset(missionData.next_offset!); setSelectedMissionId(null); }}>Suivant</button></div>}
-        </section>}
-        {selectedMissionId && selectedInCatalog && <section className="panel"><h2>Détail du checkpoint</h2>
-          {mission.isPending && <p className="skeleton">Lecture du détail…</p>}
-          {mission.isError && <p role="alert">Détail supprimé, hors Project ou indisponible.</p>}
-          {detailData && <dl className="fact-list"><Fact label="Objectif" value={detailData.objective} source="Enregistrement historique" />
-            <Fact label="État enregistré" value={detailData.state} source="Dernier checkpoint, pas statut live" />
-            <Fact label="Étapes enregistrées" value={detailData.stages.join(" → ")} source="Historique borné" />
-            <Fact label="Gaps de capacité" value={detailData.capability_gaps.join(", ") || "Aucun enregistré"} />
-            <Fact label="Échecs / refus" value={detailData.failure_codes.join(", ") || "Aucun enregistré"} />
-            <Fact label="Reprise éligible" value={detailData.resume_eligible ? "Oui selon le checkpoint" : "Non"} source="Aucune commande de reprise" />
-            <Fact label="Reçus locaux" value={String(detailData.receipt_count)} source="Nombre; résultat brut masqué" />
-            <Fact label="Créé / mis à jour" value={`${new Date(detailData.created_at).toLocaleString("fr-FR")} / ${new Date(detailData.updated_at).toLocaleString("fr-FR")}`} />
-          </dl>}</section>}
-      </div>}
+      {view === "missions" && <MissionWorkspace key={selectedId ?? "none"} projectId={selectedId}
+        verified={selectedInCatalog} connected={connected} transport={transport} drafts={drafts}
+        onDirtyChange={onDirtyChange} refreshSignal={refreshSignal} />}
 
       {view === "capabilities" && <div className="content-stack"><p className="section-intro">Inventaire expérimental du Project; validation, autorisation et exécution sont des faits distincts.</p>
         {!selectedInCatalog && <EmptyEvidence title="Sélectionnez un Project">Choisissez un Project dans l’espace Projets.</EmptyEvidence>}
@@ -206,7 +206,7 @@ export function CommandCenter({ transport, research, ollama }: { transport: Mana
 
       {view === "security" && <div className="content-stack"><p className="section-intro">Les indicateurs séparent les constats du superviseur, la politique revue dans le code et ce que Desktop ne peut pas vérifier.</p>
         <div className="two-column"><section className="panel"><p className="eyebrow">AUTORITÉ</p><h2>Actions et approbations</h2><dl className="fact-list">
-          <Fact label="Commandes d’exécution dans D2" value="Aucune" source="Interface D2" tone="good" />
+          <Fact label="Commandes d’exécution dans Desktop" value="Aucune" source="Interface D4" tone="good" />
           <Fact label="Human Gate 3" value="Humain uniquement" source="Règle de gouvernance" />
           <Fact label="Capacités en attente de revue" value={capabilityData ? String(capabilityData.capabilities.filter((item) => item.state === "PENDING_APPROVAL").length) : "Indisponible"} source="Page de registre test, pas file humaine" />
           <Fact label="Tentatives bloquées" value="Non exposées" source="Indisponible" />
@@ -227,7 +227,7 @@ export function CommandCenter({ transport, research, ollama }: { transport: Mana
           {!connected && <EmptyEvidence title="Catalogue indisponible">Le service de gestion n’est pas confirmé.</EmptyEvidence>}
           {projectData?.projects.length === 0 && <EmptyEvidence title="Aucun Project configuré">Le catalogue de configuration est vide.</EmptyEvidence>}
           <ul className="project-list">{projectData?.projects.map((item) => <li key={item.id}><button type="button" className={selectedId === item.id ? "selected" : ""}
-            onClick={() => chooseProject(item.id)} aria-current={selectedId === item.id ? "true" : undefined}><strong>{item.name}</strong><span>{item.id} · {item.domain}{item.legacy ? " · historique" : ""}</span></button></li>)}</ul>
+            onClick={() => void chooseProject(item.id)} aria-current={selectedId === item.id ? "true" : undefined}><strong>{item.name}</strong><span>{item.id} · {item.domain}{item.legacy ? " · historique" : ""}</span></button></li>)}</ul>
         </section><section className="panel"><p className="eyebrow">PORTÉE SÉLECTIONNÉE</p><h2>Détail du Project</h2>
           {!selectedId && <EmptyEvidence title="Sélectionnez un Project">Le choix change seulement le périmètre affiché.</EmptyEvidence>}
           {selectedId && !selectedInCatalog && <p role="alert">Project absent du catalogue courant. Aucun détail n’est affiché.</p>}
@@ -241,14 +241,14 @@ export function CommandCenter({ transport, research, ollama }: { transport: Mana
             <Fact label="Moteur du Project" value={engineData?.project_id === selectedId ? engineData.state : "Aucun moteur attribué observé"} source="Superviseur natif" />
           </dl></>}
         </section></div></div>}
-      <footer className="workspace-footer"><span>DESKTOP D2 · LECTURE SEULE</span><span>Un état absent reste inconnu.</span></footer>
+      <footer className="workspace-footer"><span>DESKTOP D4 · BRIEFS LOCAUX / LECTURE HISTORIQUE</span><span>Un état absent reste inconnu.</span></footer>
     </main>
   </div>;
 }
 
 /** Own one query cache for this native window; no retries or background polling. */
-export function App({ transport = nativeManagement, research = nativeResearch, ollama = nativeOllama }:
-  { transport?: ManagementTransport; research?: ResearchTransport; ollama?: OllamaTransport }) {
+export function App({ transport = nativeManagement, research = nativeResearch, ollama = nativeOllama, drafts = nativeDrafts }:
+  { transport?: ManagementTransport; research?: ResearchTransport; ollama?: OllamaTransport; drafts?: DraftTransport }) {
   const [queryClient] = useState(() => new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 10_000, refetchOnWindowFocus: false } } }));
-  return <QueryClientProvider client={queryClient}><CommandCenter transport={transport} research={research} ollama={ollama} /></QueryClientProvider>;
+  return <QueryClientProvider client={queryClient}><CommandCenter transport={transport} research={research} ollama={ollama} drafts={drafts} /></QueryClientProvider>;
 }

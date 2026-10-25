@@ -1,4 +1,17 @@
-# Morgoth Projects Desktop V1
+# Morgoth Command Center — native Desktop
+
+The current D4 candidate uses Tauri 2, Rust, React, TypeScript and Vite.
+It provides six workspaces, a globally selected Project, local unsent mission
+briefs and read-only historical mission evidence. Briefs never start a backend
+mission. See `../docs/DESKTOP-D4-MISSION-WORKSPACE.md` for the storage and
+authority contract. Use `npm run typecheck`, `npm test`, `npm run contract:check`
+and `npm run build` for frontend checks; Rust checks run in `src-tauri/`.
+
+The sections below describe earlier D1/V1 behavior and are retained as
+historical documentation. Repository-level Next.js guidance applies to the
+legacy web application, not this Tauri tree.
+
+## Historical D1 and V1 notes
 
 ## D1 read-only command center candidate — 2026-10-21
 

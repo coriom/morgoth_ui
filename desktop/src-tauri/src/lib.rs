@@ -5,6 +5,7 @@ use reqwest::{header, Method};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{io::Read, path::Path, time::Duration};
 
+pub mod drafts;
 pub mod ollama_read;
 #[cfg(target_os = "linux")]
 pub mod research;
@@ -661,9 +662,10 @@ fn safe_uuid(value: &str) -> bool {
 #[cfg(feature = "desktop")]
 mod desktop {
     use super::*;
+    use crate::drafts::{Draft, DraftInput, DraftStore, DraftUpdate};
     use crate::research::{ProfilesResponse, ResearchEngineStatus, ResearchEngineSupervisor};
     use crate::supervisor::{ManagementRuntimeStatus, ManagementSupervisor, SupervisorConfig};
-    use tauri::{State, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+    use tauri::{Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
     fn main_only(window: &WebviewWindow) -> Result<(), NativeError> {
         if window.label() == "main" {
             Ok(())
@@ -797,6 +799,92 @@ mod desktop {
         })?;
         Ok(reader.read().await)
     }
+    fn draft_store(app: &tauri::AppHandle) -> Result<DraftStore, NativeError> {
+        let path = app
+            .path()
+            .app_local_data_dir()
+            .map_err(|_| NativeError::new("LOCAL_DRAFT_STORAGE", "Stockage local indisponible."))?;
+        Ok(DraftStore::new(path.join("mission-workspace-v1")))
+    }
+    async fn draft_job<T: Send + 'static>(
+        job: impl FnOnce() -> Result<T, NativeError> + Send + 'static,
+    ) -> Result<T, NativeError> {
+        tauri::async_runtime::spawn_blocking(job)
+            .await
+            .map_err(|_| NativeError::new("LOCAL_DRAFT_STORAGE", "Stockage local indisponible."))?
+    }
+    #[tauri::command]
+    pub async fn preferred_project_read(
+        window: WebviewWindow,
+        app: tauri::AppHandle,
+    ) -> Result<Option<String>, NativeError> {
+        main_only(&window)?;
+        let store = draft_store(&app)?;
+        draft_job(move || store.preferred()).await
+    }
+    #[tauri::command]
+    pub async fn preferred_project_set(
+        window: WebviewWindow,
+        app: tauri::AppHandle,
+        project_id: Option<String>,
+    ) -> Result<(), NativeError> {
+        main_only(&window)?;
+        let store = draft_store(&app)?;
+        draft_job(move || store.set_preferred(project_id)).await
+    }
+    #[tauri::command]
+    pub async fn local_drafts_list(
+        window: WebviewWindow,
+        app: tauri::AppHandle,
+        project_id: String,
+    ) -> Result<Vec<Draft>, NativeError> {
+        main_only(&window)?;
+        let store = draft_store(&app)?;
+        draft_job(move || store.list(&project_id)).await
+    }
+    #[tauri::command]
+    pub async fn local_draft_get(
+        window: WebviewWindow,
+        app: tauri::AppHandle,
+        project_id: String,
+        draft_id: String,
+    ) -> Result<Draft, NativeError> {
+        main_only(&window)?;
+        let store = draft_store(&app)?;
+        draft_job(move || store.get(&project_id, &draft_id)).await
+    }
+    #[tauri::command]
+    pub async fn local_draft_create(
+        window: WebviewWindow,
+        app: tauri::AppHandle,
+        input: DraftInput,
+    ) -> Result<Draft, NativeError> {
+        main_only(&window)?;
+        let store = draft_store(&app)?;
+        draft_job(move || store.create(input)).await
+    }
+    #[tauri::command]
+    pub async fn local_draft_update(
+        window: WebviewWindow,
+        app: tauri::AppHandle,
+        input: DraftUpdate,
+    ) -> Result<Draft, NativeError> {
+        main_only(&window)?;
+        let store = draft_store(&app)?;
+        draft_job(move || store.update(input)).await
+    }
+    #[tauri::command]
+    pub async fn local_draft_delete(
+        window: WebviewWindow,
+        app: tauri::AppHandle,
+        project_id: String,
+        draft_id: String,
+        expected_revision: u64,
+    ) -> Result<(), NativeError> {
+        main_only(&window)?;
+        let store = draft_store(&app)?;
+        draft_job(move || store.delete(&project_id, &draft_id, expected_revision)).await
+    }
     pub fn run() {
         let config = SupervisorConfig::from_environment();
         let supervisor = ManagementSupervisor::start(config.clone());
@@ -836,6 +924,13 @@ mod desktop {
                 research_engine_status,
                 research_profiles,
                 ollama_status_read,
+                preferred_project_read,
+                preferred_project_set,
+                local_drafts_list,
+                local_draft_get,
+                local_draft_create,
+                local_draft_update,
+                local_draft_delete,
             ])
             .build(tauri::generate_context!())
             .expect("Morgoth desktop runtime failed");

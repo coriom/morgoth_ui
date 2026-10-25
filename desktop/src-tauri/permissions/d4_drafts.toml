@@ -1,0 +1,35 @@
+# Local application-data briefs only. No backend mission or arbitrary file access.
+[[permission]]
+identifier = "allow-preferred-project-read"
+description = "Read the locally remembered Project identity."
+commands.allow = ["preferred_project_read"]
+
+[[permission]]
+identifier = "allow-preferred-project-set"
+description = "Remember or clear the local Project preference."
+commands.allow = ["preferred_project_set"]
+
+[[permission]]
+identifier = "allow-local-drafts-list"
+description = "List bounded Project-scoped local briefs."
+commands.allow = ["local_drafts_list"]
+
+[[permission]]
+identifier = "allow-local-draft-get"
+description = "Read one Project-scoped local brief."
+commands.allow = ["local_draft_get"]
+
+[[permission]]
+identifier = "allow-local-draft-create"
+description = "Create one local unsent brief."
+commands.allow = ["local_draft_create"]
+
+[[permission]]
+identifier = "allow-local-draft-update"
+description = "Update one local brief with revision checking."
+commands.allow = ["local_draft_update"]
+
+[[permission]]
+identifier = "allow-local-draft-delete"
+description = "Delete one local brief with revision checking."
+commands.allow = ["local_draft_delete"]
