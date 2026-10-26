@@ -64,16 +64,22 @@ Tauri D5 existantes et le même identifiant d’application
 
 ## Vérification et limites
 
-- Backend : 4 tests hermétiques passent (authentification, Project A/B,
+- Backend : 4 nouveaux tests hermétiques passent (authentification, Project A/B,
   recherche, pagination, liens, répertoire substitué, symlink, fichier trop
-  grand, UTF-8 invalide, source vide/absente).
+  grand, UTF-8 invalide, source vide/absente). Avec les régressions Management,
+  `python -m pytest -q tests/test_management_api.py tests/test_desktop_knowledge_read.py`
+  passe **16/16** dans l’environnement autorisant le transport local de test.
 - Frontend : typecheck et contrat épinglé passent ; 47 tests Vitest passent ;
   build Vite passe. Les tests D6 couvrent refus de DTO, corpus borné,
   distinction vide/indisponible, document et graphe.
 - Rust : 30 tests de bibliothèque passent ; Clippy strict et binaire Tauri
   Linux passent. Le smoke natif jetable prouve Project A, détail, lien, recherche,
   Project B vide et 404 inter-Project par l’API authentifiée réelle.
-- La fenêtre WSLg/XWayland a été ouverte et inspectée avec Project A et B.
+- La fenêtre WSLg/XWayland de 1120×780 a été ouverte et inspectée avec Project
+  A et B. AT-SPI a sélectionné A, ouvert Connaissances Morgoth, le document,
+  le graphe, puis B ; l’état « Coffre vide » de B a été observé sans document
+  A. Le smoke sans fenêtre s’est terminé avec le code 0 ; la session visuelle
+  a été interrompue par Ctrl+C après les captures, donc sa sortie est 1.
   Les captures finales D6 sont dans `docs/screenshots/d6-native/` ; elles
   montrent des données synthétiques. L’entrée libre de texte par AT-SPI reste
   une limite du contrôle automatisé WebKitGTK, pas une preuve d’échec de l’UI.
