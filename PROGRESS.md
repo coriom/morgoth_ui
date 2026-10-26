@@ -1,3 +1,15 @@
+## 2026-10-26 — Desktop D6 managed Project knowledge reader
+
+Branch `feat/morgoth-desktop-d6-knowledge-v1` connects the D5.1 Knowledge
+workspace to a token-protected, read-only projection of actual Markdown files
+from one canonical managed Project vault. Personal notes stay separate and
+editable. Fixed native IPC, Project-scoped search, exact detail, explicit
+Wikilinks and bounded graph add no inference or backend write authority.
+The backend pairing is explicitly pinned to
+`acf967b850c9ec2bc8492fd7e8ceef7d1d3176ed`; historical D2 mission
+records remain disposable. See `docs/DESKTOP-D6-KNOWLEDGE.md` for verification
+and limits. No dependency was added.
+
 ## 2026-10-25 — Desktop D5 functional personal workspace candidate
 
 Branch `feat/morgoth-desktop-d5-production-workspace-v1` derives from exact D4 commit

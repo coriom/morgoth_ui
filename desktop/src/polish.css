@@ -149,13 +149,18 @@ button:focus-visible, select:focus-visible { outline-offset: 2px; }
   .recent-row, .settings-links button { transition: none; }
 }
 /* D6 keeps the two knowledge authorities visually distinct without status chrome. */
-.knowledge-source-switch { display:flex; gap:1.2rem; align-items:center; padding:0 0 1rem; border-bottom:1px solid var(--line, #393b3b); margin-bottom:1rem; }
+.knowledge-source-switch { display:flex; gap:1.2rem; align-items:center; padding:0 clamp(25px,4vw,60px) 1rem; border-bottom:1px solid var(--line, #393b3b); margin-bottom:1rem; }
 .knowledge-source-switch button { background:transparent; border:0; border-radius:0; padding:.5rem 0; color:var(--muted, #a5a9a6); cursor:pointer; }
 .knowledge-source-switch button[aria-pressed="true"] { color:var(--text, #ecedeb); box-shadow:inset 0 -2px var(--accent, #a6b99f); }
 .knowledge-source-switch button:focus-visible { outline:2px solid var(--accent, #a6b99f); outline-offset:3px; }
 .backend-knowledge .knowledge-columns { margin-top:1rem; }
+.backend-knowledge > .document-meta { padding-inline:clamp(25px,4vw,60px); margin-block:1rem 1.1rem; }
+.backend-knowledge > .segmented { display:inline-flex; width:auto; margin-left:clamp(25px,4vw,60px); }
+.backend-knowledge > .quiet-empty { padding:2.5rem clamp(25px,4vw,60px); }
 .backend-knowledge .knowledge-list form { display:flex; flex-wrap:wrap; align-items:center; gap:.4rem; padding:.5rem 0 1rem; }
 .backend-knowledge .knowledge-list form label { flex-basis:100%; }
 .backend-knowledge .knowledge-list form input { min-width:0; flex:1 1 10rem; }
-.backend-knowledge .graph-inspector button { display:block; width:100%; text-align:left; margin:.25rem 0; }
+.backend-knowledge .knowledge-list form button { border:0; background:transparent; color:var(--accent); padding:.2rem .4rem; font-size:12px; }
+.backend-knowledge .graph-inspector button { display:block; width:100%; text-align:left; margin:.25rem 0; border:0; background:transparent; color:var(--ink); padding:.35rem 0; }
+.backend-knowledge .graph-inspector button:hover { color:var(--accent); }
 @media (max-width: 1100px) { .knowledge-source-switch { gap:.8rem; } }

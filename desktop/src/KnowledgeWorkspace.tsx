@@ -100,7 +100,7 @@ export function KnowledgeWorkspace({ projectId, verified, transport, management,
   const backlinks = current ? backlinksTo(notes, current.note_id) : [];
   if (!projectId) return <section className="quiet-empty"><h2>Aucun Project sélectionné</h2><p>Choisissez un Project pour ouvrir vos notes locales.</p></section>;
   return <div className="knowledge-page">
-    <header className="page-heading"><div><p className="breadcrumb">{verified ? "Project vérifié" : "Project mémorisé · non vérifié"} / Connaissances</p><h1>Connaissances</h1><p>Des notes personnelles, des liens explicites.</p></div>
+    <header className="page-heading"><div><p className="breadcrumb">{verified ? "Project vérifié" : "Project mémorisé · non vérifié"} / Connaissances</p><h1>Connaissances</h1><p>{source === "personal" ? "Des notes personnelles, des liens explicites." : "Documents du Project, lus sans inférence et sans modification."}</p></div>
       {source === "personal" && <div className="segmented" role="group" aria-label="Mode des connaissances"><button type="button" aria-pressed={mode === "notes"} onClick={() => setMode("notes")}>Notes</button>
         <button type="button" aria-pressed={mode === "graph"} onClick={() => { if (guard()) setMode("graph"); }}>Graphe</button></div>}</header>
     <div className="knowledge-source-switch" role="group" aria-label="Source de connaissance"><button type="button" aria-pressed={source === "personal"} onClick={()=>setSource("personal")}>Notes personnelles</button><button type="button" aria-pressed={source === "morgoth"} onClick={()=>{if(guard()){discardForBackend();setSource("morgoth");}}}>Connaissances Morgoth</button></div>

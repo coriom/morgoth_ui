@@ -10,7 +10,7 @@ import tempfile
 import time
 from urllib.request import ProxyHandler, build_opener
 
-BACKEND_SHA = "9cbb946c02f1d53af666db1a4cd6bd37df2b67cf"
+BACKEND_SHA = "acf967b850c9ec2bc8492fd7e8ceef7d1d3176ed"
 BRANCH = "feat/morgoth-desktop-d6-knowledge-v1"
 
 
