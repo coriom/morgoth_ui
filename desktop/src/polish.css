@@ -97,6 +97,7 @@ select option { background: var(--control); color: var(--ink); }
 .nav-list { flex: none; }
 .workspace, .content-stack, .knowledge-page, .mission-page { min-width: 0; }
 .knowledge-list { overflow-y: auto; max-height: calc(100vh - 170px); }
+.knowledge-page > .empty-evidence { padding: 48px clamp(25px, 4vw, 60px); min-height: 320px; }
 .mission-index { overflow-x: hidden; }
 .graph-inspector, .palette-results { overscroll-behavior: contain; }
 .graph-toolbar { flex-wrap: wrap; }

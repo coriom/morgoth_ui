@@ -10,7 +10,7 @@ Source Sans 3 est embarquée en WOFF2 variable, droit et italique, sans requête
 
 Les barres de défilement restent natives, fines et neutres ; la poignée se renforce au survol. La barre latérale et la liste des notes défilent dans les petites fenêtres. L'éditeur, les listes de missions, le graphe et les réglages conservent le défilement standard au clavier, à la molette et au pavé tactile. Aucun mécanisme JavaScript ne remplace le défilement natif.
 
-Les sélecteurs de Project et de lien interne restent des éléments HTML `select`. Seul leur habillage CSS change : chevron discret, hauteur compacte, alignement et focus visible. La liste déroulante elle-même reste celle de WebKitGTK ; son apparence interne dépend de la plateforme. Aucun listbox personnalisé n'est introduit.
+Les sélecteurs de Project et de lien interne restent des éléments HTML `select`. Seul leur habillage CSS change : chevron discret, hauteur compacte, alignement et focus visible. La liste déroulante elle-même reste celle de WebKitGTK ; son apparence interne dépend de la plateforme. Aucun listbox personnalisé n'est introduit. L'inspection native a révélé que WebKitGTK conservait parfois l'ancien libellé graphique du Project après un changement par AT-SPI, alors que l'option sélectionnée et le contenu React avaient changé. Le sélecteur est donc recréé lorsque l'identité sélectionnée change ; le focus clavier est restauré. Deux commutations A/B/A et un test React de valeur, remplacement de nœud et focus couvrent cette correction.
 
 ## Portée et sécurité
 
@@ -30,10 +30,20 @@ Depuis le worktree D5.1 propre et construit :
 /home/corio/Morgoth/morgoth/.venv/bin/python desktop/scripts/d2_read_fixture.py --window
 ```
 
+Ajouter `--x11` seulement pour une inspection XWayland ciblée avec `xwininfo` et `ffmpeg -window_id`. La fixture ferme les deux fenêtres avant de retirer son HOME et son PostgreSQL temporaires.
+
 Pour l'installation locale personnelle, le lancement natif normal conserve l'ancien identifiant et les données D4/D5 ; utiliser `cd desktop && npm run tauri dev` uniquement dans l'environnement local configuré. La fixture jetable est recommandée pour l'inspection sans toucher aux notes personnelles.
 
 ## Résultats d'acceptation
 
-Sur le code D5.1 avant capture native : TypeScript PASS ; contrat API épinglé PASS ; React/Vitest 42/42 PASS ; Vite PASS (avertissements préexistants `use client` de React Query) ; `cargo fmt --check` PASS ; tests Rust 29/29 PASS ; Clippy strict PASS ; deux binaires Linux Tauri PASS. `fc-scan` a identifié les axes de poids de la fonte variable. Le contrôle final après les derniers ajustements CSS est exécuté séparément. Ces vérifications ne démontrent pas à elles seules le rendu de WebKitGTK.
+Sur le code D5.1 final : TypeScript PASS ; contrat API épinglé PASS ; React/Vitest **43/43 PASS** ; Vite PASS (avertissements préexistants `use client` de React Query) ; `cargo fmt --check` PASS ; tests Rust **29/29 PASS** ; Clippy strict PASS ; deux binaires Linux Tauri PASS. `fc-scan` a identifié les axes de poids de la fonte variable. Aucun code Rust n'a été modifié.
 
-Inspection native WSLg, captures et limites : à compléter avec l'exécution réelle de la fixture jetable, une fois la branche propre.
+### Fenêtre native WSLg
+
+La fixture `--window` a passé la lecture native PostgreSQL jetable et sa vérification dans un second processus, puis a ouvert et fermé deux fenêtres Tauri avec app-data temporaire ; sortie **0**. Une seconde exécution `--window --x11` a également passé les lectures et ouvert deux fenêtres XWayland ; sortie **0**. Les avertissements Mesa/EGL n'ont pas empêché le rendu. XWayland a permis des captures `ffmpeg -window_id` limitées à la fenêtre Morgoth, sans capturer le bureau entier. Les tailles ont été confirmées par `xwininfo` : 1100×750 et 1440×900. L'interface affichée est le React D5.1 réel dans WebKitGTK, avec `project_a` et `project_b` synthétiques et historiques jetables. Les captures ne proviennent pas du prototype D5.
+
+Captures relues : `docs/screenshots/d51-native/home-1100x750.png`, `home-1440x900.png`, `missions-1100x750.png`, `knowledge-1100x750.png`, `note-editor-1440x900.png`, `graph-1440x900.png`, `settings-1440x900.png`. La comparaison antérieure D5 se trouve dans `docs/screenshots/d5-app/`, mais ces images D5 avaient été générées dans Chromium avec pont synthétique : elles ne constituent pas un avant/après natif pixel à pixel.
+
+AT-SPI a exposé les cinq destinations, le sélecteur natif, les champs de nouvelle note et le bouton d'enregistrement. La navigation Accueil → Missions → Connaissances → Réglages, la sélection des Projects synthétiques et l'absence d'action d'inférence ont été observées. Les captures ont conduit à corriger l'espacement de l'état vide du graphe et le libellé visuel du sélecteur Project. Le contrôle du focus du sélecteur après changement a été exercé via AT-SPI et par le test React.
+
+**Limites honnêtes :** dans cette session, WebKitGTK n'expose toujours pas `EditableText` pour le champ Titre, et l'injection XTest dans la fenêtre WSLg n'a pas réussi à saisir un titre synthétique. La création, l'enregistrement, la réouverture native d'une note, le menu « insérer un lien » conditionné par deux notes, un long document Markdown et un graphe peuplé restent donc à vérifier manuellement dans une fenêtre native. Les tests React et Rust couvrent le stockage, les liens et les révisions, mais ne remplacent pas cette acceptation visuelle. La fixture ne touche aucune donnée personnelle.

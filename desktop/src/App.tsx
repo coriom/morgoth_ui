@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { nativeManagement, nativeResearch, nativeOllama, type ManagementTransport, type ResearchTransport, type OllamaTransport } from "./transport";
 import { readCapabilityPage, readManagementStatus, readOllamaStatus, readProject, readProjectList, readResearchProfiles, readResearchStatus, readRuntimeStatus } from "./readModels";
@@ -54,6 +54,8 @@ export function CommandCenter({ transport, research, ollama, drafts, notes }: { 
   const [missionDirty, setMissionDirty] = useState(false);
   const [noteDirty, setNoteDirty] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const projectSelector = useRef<HTMLSelectElement>(null);
+  const restoreSelectorFocus = useRef(false);
   const [missionRequest, setMissionRequest] = useState<{kind:"create"|"open";id?:string;seq:number}|null>(null);
   const [noteCreateSignal, setNoteCreateSignal] = useState(0);
   const [noteOpenRequest, setNoteOpenRequest] = useState<{id:string;seq:number}|null>(null);
@@ -67,6 +69,12 @@ export function CommandCenter({ transport, research, ollama, drafts, notes }: { 
       .finally(() => { if (active) setPreferenceLoaded(true); });
     return () => { active = false; };
   }, [drafts]);
+  useEffect(() => {
+    if (restoreSelectorFocus.current) {
+      projectSelector.current?.focus();
+      restoreSelectorFocus.current = false;
+    }
+  }, [selectedId]);
   const runtime = useQuery({ queryKey: ["d1", "management-runtime"], queryFn: async () => readRuntimeStatus(await transport.runtimeStatus()) });
   const ready = runtime.isSuccess && runtime.data.state === "READY";
   const management = useQuery({ queryKey: ["d1", "management-status"], queryFn: async () => readManagementStatus(await transport.status()), enabled: ready });
@@ -98,10 +106,10 @@ export function CommandCenter({ transport, research, ollama, drafts, notes }: { 
   const onNoteDirtyChange = useCallback((value: boolean) => setNoteDirty(value), []);
   const leaveEditor = () => (!missionDirty && !noteDirty) || window.confirm("Modifications non enregistrées. Les abandonner ?");
   const chooseProject = async (id: string | null) => {
-    if (id === selectedId || !leaveEditor()) return;
+    if (id === selectedId || !leaveEditor()) { restoreSelectorFocus.current = false; return; }
     setSelectionError(false);
     try { await drafts.setPreferred(id); setSelectedId(id); setMissionDirty(false); setNoteDirty(false); setCapabilityOffset(0); setMissionRequest(null); setNoteOpenRequest(null); }
-    catch { setSelectionError(true); }
+    catch { restoreSelectorFocus.current = false; setSelectionError(true); }
   };
   const navigate = (next: View) => { if (next !== view && leaveEditor()) { setView(next); setMissionDirty(false); setNoteDirty(false); setMissionRequest(null); setNoteOpenRequest(null); } };
   const newDraft = () => { if (!selectedId || !leaveEditor()) return; const seq=requestSeq+1; setRequestSeq(seq);setMissionRequest({kind:"create",seq});setView("missions");setMissionDirty(false);setNoteDirty(false); };
@@ -113,7 +121,7 @@ export function CommandCenter({ transport, research, ollama, drafts, notes }: { 
   return <div className={sidebarCollapsed ? "command-layout sidebar-collapsed" : "command-layout"}>
     <aside className="sidebar" aria-label="Navigation principale">
       <div className="brand"><span className="brand-glyph" aria-hidden="true">m</span><strong>morgoth</strong><button type="button" className="sidebar-toggle" aria-label={sidebarCollapsed ? "Déployer la barre latérale" : "Réduire la barre latérale"} onClick={() => setSidebarCollapsed(value=>!value)}>{sidebarCollapsed ? "›" : "‹"}</button></div>
-      <div className="sidebar-project"><label htmlFor="global-project">Espace actuel</label><select id="global-project" value={selectedId ?? ""} disabled={!preferenceLoaded} onChange={event => void chooseProject(event.target.value || null)}>
+      <div className="sidebar-project"><label htmlFor="global-project">Espace actuel</label><select key={selectedId ?? "none"} ref={projectSelector} id="global-project" value={selectedId ?? ""} disabled={!preferenceLoaded} onChange={event => { restoreSelectorFocus.current = true; void chooseProject(event.target.value || null); }}>
         <option value="">Aucun Project</option>{selectedId && !selectedInCatalog && <option value={selectedId}>{selectedId} · mémorisé</option>}
         {projectData?.projects.map(item => <option key={item.id} value={item.id}>{item.name} · {item.id}</option>)}
       </select><small>{selectedId ? selectedInCatalog ? "Project vérifié" : "Identité locale non vérifiée" : "Aucun périmètre"}</small></div>

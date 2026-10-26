@@ -356,6 +356,25 @@ describe("read-only command center", () => {
     expect(screen.queryByDisplayValue("Non enregistré")).toBeNull();
     confirm.mockRestore();
   });
+  it("keeps the native Project selector synchronized and keyboard focused after a switch", async () => {
+    render(<TestedApp drafts={memoryDrafts()} transport={management()} research={research()} />);
+    await screen.findByRole("option", { name: "alpha · alpha" });
+    const initial = screen.getByLabelText("Espace actuel") as HTMLSelectElement;
+    initial.focus();
+    fireEvent.change(initial, { target: { value: "alpha" } });
+    await waitFor(() => {
+      const current = screen.getByLabelText("Espace actuel") as HTMLSelectElement;
+      expect(current.value).toBe("alpha");
+      expect(current).not.toBe(initial);
+      expect(document.activeElement).toBe(current);
+    });
+    fireEvent.change(screen.getByLabelText("Espace actuel"), { target: { value: "beta" } });
+    await waitFor(() => {
+      const current = screen.getByLabelText("Espace actuel") as HTMLSelectElement;
+      expect(current.value).toBe("beta");
+      expect(document.activeElement).toBe(current);
+    });
+  });
   it("asks once before replacing an unsaved brief from the command palette", async () => {
     render(<TestedApp drafts={memoryDrafts()} transport={management()} research={research()} />);
     await screen.findByRole("option", { name: "alpha · alpha" });
