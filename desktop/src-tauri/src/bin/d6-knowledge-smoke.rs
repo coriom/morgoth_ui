@@ -13,7 +13,12 @@ fn main() {
     while supervisor.status().state == ManagementPhase::Starting && Instant::now() < deadline {
         thread::sleep(Duration::from_millis(100));
     }
-    assert_eq!(supervisor.status().state, ManagementPhase::Ready);
+    assert_eq!(
+        supervisor.status().state,
+        ManagementPhase::Ready,
+        "{:?}",
+        supervisor.status().diagnostic
+    );
     let client = supervisor.client().expect("native token authority");
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
