@@ -5,7 +5,7 @@
 Le Desktop D6 garde les notes personnelles D5 dans leur stockage natif et
 ajoute un second espace, « Connaissances Morgoth », exclusivement en lecture.
 Sa source intégrée est le **coffre Markdown réellement persisté** des Projects
-gérés. Le backend épinglé est `acf967b850c9ec2bc8492fd7e8ceef7d1d3176ed`
+gérés. Le backend épinglé est `3f18a375453af0c8efe2586440b3e8612707c6f2`
 sur `desktop-d6-knowledge-read-v1`. La projection backend est documentée dans
 `docs/DESKTOP-D6-KNOWLEDGE-CONTRACT.md` de cette branche backend.
 

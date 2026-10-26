@@ -13,7 +13,7 @@ export function readKnowledgePage(raw: KnowledgePage, projectId: string, offset:
 }
 
 export function readKnowledgeDocument(raw: KnowledgeDocument, projectId: string, detail = true): KnowledgeDocument {
-  if (raw.project_id !== projectId || raw.source !== "PROJECT_MARKDOWN_VAULT" || !digest.test(raw.document_id)
+  if (raw.schema_version !== 1 || raw.project_id !== projectId || raw.source !== "PROJECT_MARKDOWN_VAULT" || !digest.test(raw.document_id)
       || typeof raw.title !== "string" || !raw.title.trim() || raw.title.length > 160
       || typeof raw.recorded_at !== "string" || Number.isNaN(Date.parse(raw.recorded_at))
       || !Array.isArray(raw.links) || raw.links.length > 32

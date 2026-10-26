@@ -199,6 +199,7 @@ pub struct KnowledgeLinkRead {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct KnowledgeDocumentRead {
+    pub schema_version: u8,
     pub document_id: String,
     pub project_id: String,
     pub title: String,
@@ -225,7 +226,8 @@ fn safe_document_id(id: &str) -> bool {
             .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
 }
 fn valid_knowledge_document(item: &KnowledgeDocumentRead, project_id: &str, detail: bool) -> bool {
-    item.project_id == project_id
+    item.schema_version == 1
+        && item.project_id == project_id
         && item.source == "PROJECT_MARKDOWN_VAULT"
         && safe_document_id(&item.document_id)
         && !item.title.is_empty()
@@ -1183,7 +1185,7 @@ mod tests {
         let id = "a".repeat(64);
         assert!(safe_document_id(&id));
         assert!(!safe_document_id("../secret.md"));
-        let payload = serde_json::json!({"document_id":id,"project_id":"alpha","title":"Index",
+        let payload = serde_json::json!({"schema_version":1,"document_id":id,"project_id":"alpha","title":"Index",
             "recorded_at":"2026-10-26T00:00:00+00:00","links":[{"label":"Lien","target_id":null}],
             "source":"PROJECT_MARKDOWN_VAULT","content":"# Index"});
         let doc: KnowledgeDocumentRead = serde_json::from_value(payload.clone()).unwrap();

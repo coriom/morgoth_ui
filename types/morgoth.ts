@@ -533,6 +533,7 @@ export interface DesktopCapabilityPageV1 {
 
 /** Authenticated, read-only projection of a managed Project Markdown vault. */
 export interface DesktopKnowledgeDocumentV1 {
+  schema_version: 1;
   document_id: string;
   project_id: string;
   title: string;

@@ -7,7 +7,7 @@ import type { KnowledgeDocument, KnowledgePage, ManagementTransport } from "./tr
 
 afterEach(cleanup);
 const ids = ["a".repeat(64),"b".repeat(64)];
-const item = (id:number, project="alpha"): KnowledgeDocument => ({document_id:ids[id], project_id:project,
+const item = (id:number, project="alpha"): KnowledgeDocument => ({schema_version:1,document_id:ids[id], project_id:project,
   title:id===0?"Index":"Sujet", recorded_at:"2026-10-26T00:00:00+00:00",
   links:id===0?[{label:"Sujet",target_id:ids[1]},{label:"Absent",target_id:null}]:[],
   source:"PROJECT_MARKDOWN_VAULT",content:null});

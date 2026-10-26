@@ -6,7 +6,7 @@ from one canonical managed Project vault. Personal notes stay separate and
 editable. Fixed native IPC, Project-scoped search, exact detail, explicit
 Wikilinks and bounded graph add no inference or backend write authority.
 The backend pairing is explicitly pinned to
-`acf967b850c9ec2bc8492fd7e8ceef7d1d3176ed`; historical D2 mission
+`3f18a375453af0c8efe2586440b3e8612707c6f2`; historical D2 mission
 records remain disposable. See `docs/DESKTOP-D6-KNOWLEDGE.md` for verification
 and limits. No dependency was added.
 
