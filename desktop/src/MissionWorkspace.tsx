@@ -176,7 +176,7 @@ export function MissionWorkspace({ projectId, verified, connected, transport, dr
             </div>
           </form>
         </> : selectedMission ? <>
-          <p className="eyebrow">CHECKPOINT HISTORIQUE · MORGOTH_TEST</p><h2>Détail enregistré</h2>
+          <p className="eyebrow">Checkpoint historique · morgoth_test</p><h2>Détail enregistré</h2>
           {detail.isPending && <p className="skeleton">Lecture du détail…</p>}
           {detail.isError && <p role="alert">Détail supprimé, hors Project ou indisponible.</p>}
           {detail.isSuccess && detail.data.project_id === projectId && <dl className="fact-list">

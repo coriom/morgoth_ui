@@ -464,3 +464,6 @@ Python remains the engine and desktop does not require a Next.js server.
 | 2026-04-16 | Codex | Phase 2b Step 7 complete: removed the market UI and updated the sidebar, metadata, and provider bootstrap to the new consciousness viewer flow |
 | 2026-04-16 | Codex | Phase 2b Step 8 complete: fixed the stale deleted-route `.next` type artifact, passed `tsc --noEmit`, and verified the six target pages return `200` under `next dev` |
 | 2026-04-25 | Codex | Phase 3 War Room integration complete: mirrored new backend DTOs in TypeScript and routed `agent_update` WebSocket events into realtime agent logs and task state |
+# Desktop D5.1 — finition visuelle (branche Tauri dédiée)
+
+La branche `feat/morgoth-desktop-d5-visual-polish-v1` issue de `caef12c1c7a9a2a38c8c28709c626b6ae822ba40` affine la typographie Source Sans 3 embarquée, les barres de défilement et les sélecteurs natifs. Les contrats backend, la persistance locale et l'autorité Tauri restent inchangés. Voir `docs/DESKTOP-D51-VISUAL-POLISH.md` pour les vérifications et les limites ; cette section concerne le Desktop Tauri et non l'ancien Next.js de `main`.

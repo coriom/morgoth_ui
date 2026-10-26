@@ -10,13 +10,24 @@ import { CommandPalette } from "./CommandPalette";
 import { nativeNotes, type NoteTransport } from "./notes";
 
 type View = "home" | "missions" | "knowledge" | "projects" | "settings" | "runtime" | "capabilities" | "models" | "security";
-const primaryViews: ReadonlyArray<{ id: View; label: string; icon: string }> = [
-  { id: "home", label: "Accueil", icon: "⌂" },
-  { id: "missions", label: "Missions", icon: "≡" },
-  { id: "knowledge", label: "Connaissances", icon: "▤" },
-  { id: "projects", label: "Projets", icon: "▦" },
-  { id: "settings", label: "Réglages", icon: "⚙" },
+type NavIconName = "home" | "missions" | "knowledge" | "projects" | "settings";
+const primaryViews: ReadonlyArray<{ id: View; label: string; icon: NavIconName }> = [
+  { id: "home", label: "Accueil", icon: "home" },
+  { id: "missions", label: "Missions", icon: "missions" },
+  { id: "knowledge", label: "Connaissances", icon: "knowledge" },
+  { id: "projects", label: "Projets", icon: "projects" },
+  { id: "settings", label: "Réglages", icon: "settings" },
 ];
+const iconPaths: Record<NavIconName, ReactNode> = {
+  home: <><path d="m3 10 9-7 9 7v10H3z" /><path d="M9 20v-7h6v7" /></>,
+  missions: <><path d="M5 4h14v16H5z" /><path d="M9 9h6M9 13h6M9 17h4" /></>,
+  knowledge: <><path d="M4 5.5C7 4 9.5 4 12 6c2.5-2 5-2 8-.5V19c-3-1.5-5.5-1.5-8 .5-2.5-2-5-2-8-.5z" /><path d="M12 6v13.5" /></>,
+  projects: <><rect x="3" y="5" width="8" height="14" rx="1" /><rect x="13" y="5" width="8" height="14" rx="1" /></>,
+  settings: <><circle cx="12" cy="12" r="3" /><path d="M12 2v3m0 14v3M2 12h3m14 0h3M4.9 4.9 7 7m10 10 2.1 2.1m0-14.2L17 7M7 17l-2.1 2.1" /></>,
+};
+function NavIcon({ name }: { name: NavIconName }) {
+  return <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">{iconPaths[name]}</svg>;
+}
 const sectionName: Record<View, string> = { home: "Accueil", missions: "Missions", knowledge: "Connaissances",
   projects: "Projets", settings: "Réglages", runtime: "Runtime", capabilities: "Capacités",
   models: "Modèles & runtime", security: "Sécurité" };
@@ -110,8 +121,8 @@ export function CommandCenter({ transport, research, ollama, drafts, notes }: { 
         aria-label={`Choisir un Project ; actuel : ${selectedProject?.name ?? selectedId ?? "aucun"}`}
         title={selectedProject?.name ?? selectedId ?? "Choisir un Project"}>P</button>
       <nav aria-label="Espaces" className="nav-list">{primaryViews.filter(item=>item.id!=="settings").map(item =>
-        <button key={item.id} type="button" aria-current={view===item.id ? "page" : undefined} className={view===item.id ? "nav-link active" : "nav-link"} onClick={()=>navigate(item.id)}><span aria-hidden="true">{item.icon}</span><span>{item.label}</span></button>)}</nav>
-      <div className="sidebar-bottom"><button type="button" className={view==="settings" || ["runtime","models","capabilities","security"].includes(view) ? "nav-link active" : "nav-link"} aria-current={view==="settings" ? "page" : undefined} onClick={()=>navigate("settings")}><span aria-hidden="true">⚙</span><span>Réglages</span></button>
+        <button key={item.id} type="button" aria-current={view===item.id ? "page" : undefined} className={view===item.id ? "nav-link active" : "nav-link"} onClick={()=>navigate(item.id)}><span aria-hidden="true"><NavIcon name={item.icon} /></span><span>{item.label}</span></button>)}</nav>
+      <div className="sidebar-bottom"><button type="button" className={view==="settings" || ["runtime","models","capabilities","security"].includes(view) ? "nav-link active" : "nav-link"} aria-current={view==="settings" ? "page" : undefined} onClick={()=>navigate("settings")}><span aria-hidden="true"><NavIcon name="settings" /></span><span>Réglages</span></button>
         <CommandPalette projectId={selectedId} projects={projectData?.projects ?? []} drafts={drafts} notes={notes}
           navigate={next=>navigate(next)} chooseProject={id=>void chooseProject(id)} openDraft={openDraft} openNote={openNote} newDraft={newDraft} newNote={newNote} /></div>
     </aside>
@@ -170,12 +181,12 @@ export function CommandCenter({ transport, research, ollama, drafts, notes }: { 
         <section className="panel"><h2>Procédures navigateur</h2><p>Un enregistrement synthétique, même validé, ne confère aucun droit sur un site réel.</p></section></div>}
 
       {view === "models" && <div className="content-stack"><p className="section-intro">Lecture locale non générative, sur demande. Un modèle installé, résident ou déclaré n’est pas qualifié pour une mission.</p>
-        <div className="two-column"><section className="panel"><p className="eyebrow">RUNTIME</p><h2>Recherche supervisée</h2><dl className="fact-list">
+        <div className="two-column"><section className="panel"><p className="eyebrow">Runtime</p><h2>Recherche supervisée</h2><dl className="fact-list">
           <Fact label="État" value={engineData?.state ?? "Indisponible"} source="Superviseur natif" />
           <Fact label="Project associé" value={engineData?.project_id ?? "Aucun confirmé"} source="Superviseur natif" />
           <Fact label="Profil configuré" value={engineData?.runtime?.profile ?? "Indisponible"} source="Runtime si initialisé" />
           <Fact label="Profil prêt" value={engineData?.runtime?.profile_status ?? "Indisponible"} source="Runtime si initialisé" />
-        </dl></section><section className="panel"><div className="panel-heading"><div><p className="eyebrow">MODÈLES LOCAUX</p><h2>Ollama</h2></div>
+        </dl></section><section className="panel"><div className="panel-heading"><div><p className="eyebrow">Modèles locaux</p><h2>Ollama</h2></div>
           <button type="button" disabled={localModels.isFetching} onClick={() => void localModels.refetch()}>Lire l’état local</button></div>
           {!localModels.isFetched && <p>Lecture non demandée. Aucun appel d’inférence n’est effectué pour renseigner cette vue.</p>}
           {localModels.isFetching && <p className="skeleton">Lecture locale bornée…</p>}
@@ -204,7 +215,7 @@ export function CommandCenter({ transport, research, ollama, drafts, notes }: { 
           <Fact label="Placement CPU / GPU" value="Inconnu" source="Aucune mesure de placement" />
           <Fact label="Utilisation GPU réelle" value="Inconnue" source="VRAM Ollama ≠ utilisation GPU mesurée" />
         </dl></section>}
-        <section className="panel"><p className="eyebrow">PROFILS</p><h2>Qualification disponible</h2>
+        <section className="panel"><p className="eyebrow">Profils</p><h2>Qualification disponible</h2>
           {profiles.isPending && profiles.fetchStatus === "fetching" && <p className="skeleton">Lecture des profils…</p>}
           {profiles.isError && <p role="alert">Profils indisponibles ou invalides.</p>}
           {profileData ? <><p>Profil courant : <strong>{profileData.current}</strong> · recommandation : {profileData.recommended ?? "aucune"}</p>
@@ -213,13 +224,13 @@ export function CommandCenter({ transport, research, ollama, drafts, notes }: { 
         </section></div>}
 
       {view === "security" && <div className="content-stack"><p className="section-intro">Les indicateurs séparent les constats du superviseur, la politique revue dans le code et ce que Desktop ne peut pas vérifier.</p>
-        <div className="two-column"><section className="panel"><p className="eyebrow">AUTORITÉ</p><h2>Actions et approbations</h2><dl className="fact-list">
+        <div className="two-column"><section className="panel"><p className="eyebrow">Autorité</p><h2>Actions et approbations</h2><dl className="fact-list">
           <Fact label="Commandes d’exécution dans Desktop" value="Aucune" source="Interface D4" tone="good" />
           <Fact label="Human Gate 3" value="Humain uniquement" source="Règle de gouvernance" />
           <Fact label="Capacités en attente de revue" value={capabilityData ? String(capabilityData.capabilities.filter((item) => item.state === "PENDING_APPROVAL").length) : "Indisponible"} source="Page de registre test, pas file humaine" />
           <Fact label="Tentatives bloquées" value="Non exposées" source="Indisponible" />
           <Fact label="SAFE_FOR_WORKLOADS" value="Non exposé en temps réel" source="Indisponible; baseline revue = false" />
-        </dl></section><section className="panel"><p className="eyebrow">CONFINEMENT</p><h2>Exécution séparée</h2><dl className="fact-list">
+        </dl></section><section className="panel"><p className="eyebrow">Confinement</p><h2>Exécution séparée</h2><dl className="fact-list">
           <Fact label="Codex installé" value={profileData ? profileData.codex.installed ? "Oui" : "Non" : "Indisponible"} source="Profil si disponible" />
           <Fact label="Sandbox disponible" value={profileData ? profileData.codex.sandbox_available ? "Oui" : "Non" : "Indisponible"} source="Profil si disponible" />
           <Fact label="Sandbox qualifié" value={profileData ? profileData.codex.sandbox_qualified ? "Oui" : "Non" : "Indisponible"} source="Profil si disponible" />
@@ -229,14 +240,14 @@ export function CommandCenter({ transport, research, ollama, drafts, notes }: { 
         <section className="panel"><h2>Contrat d’approbation</h2><p>Un enregistrement validé ou une procédure mémorisée n’est pas un grant. Les grants, leurs portées et leur provenance ne sont pas publiés par D2; Desktop n’émet aucune autorisation.</p></section></div>}
 
       {view === "projects" && <div className="content-stack"><p className="section-intro">Catalogue de configuration. Ni stockage, ni recherche, ni mission ne sont démarrés par cette vue.</p>
-        <div className="two-column projects-grid"><section className="panel"><div className="panel-heading"><div><p className="eyebrow">CATALOGUE</p><h2>Projects</h2></div><span className="tag">{projectCount}</span></div>
+        <div className="two-column projects-grid"><section className="panel"><div className="panel-heading"><div><p className="eyebrow">Catalogue</p><h2>Projects</h2></div><span className="tag">{projectCount}</span></div>
           {projects.isPending && connected && <p className="skeleton">Lecture du catalogue…</p>}
           {projects.isError && <p role="alert">Catalogue indisponible ou invalide.</p>}
           {!connected && <EmptyEvidence title="Catalogue indisponible">Le service de gestion n’est pas confirmé.</EmptyEvidence>}
           {projectData?.projects.length === 0 && <EmptyEvidence title="Aucun Project configuré">Le catalogue de configuration est vide.</EmptyEvidence>}
           <ul className="project-list">{projectData?.projects.map((item) => <li key={item.id}><button type="button" className={selectedId === item.id ? "selected" : ""}
             onClick={() => void chooseProject(item.id)} aria-current={selectedId === item.id ? "true" : undefined}><strong>{item.name}</strong><span>{item.id} · {item.domain}{item.legacy ? " · historique" : ""}</span></button></li>)}</ul>
-        </section><section className="panel"><p className="eyebrow">PORTÉE SÉLECTIONNÉE</p><h2>Détail du Project</h2>
+        </section><section className="panel"><p className="eyebrow">Portée sélectionnée</p><h2>Détail du Project</h2>
           {!selectedId && <EmptyEvidence title="Sélectionnez un Project">Le choix change seulement le périmètre affiché.</EmptyEvidence>}
           {selectedId && !selectedInCatalog && <p role="alert">Project absent du catalogue courant. Aucun détail n’est affiché.</p>}
           {selectedInCatalog && project.isPending && <p className="skeleton">Lecture du Project…</p>}
