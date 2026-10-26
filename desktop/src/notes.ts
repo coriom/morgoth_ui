@@ -13,6 +13,7 @@ export interface NoteTransport {
   create(input: NoteInput): Promise<unknown>;
   update(input: NoteUpdate): Promise<unknown>;
   delete(projectId: string, noteId: string, expectedRevision: number): Promise<void>;
+  exportMarkdown(projectId: string, noteId: string): Promise<string>;
 }
 export const nativeNotes: NoteTransport = {
   list: projectId => invoke("local_notes_list", { projectId }),
@@ -20,6 +21,7 @@ export const nativeNotes: NoteTransport = {
   create: input => invoke("local_note_create", { input }),
   update: input => invoke("local_note_update", { input }),
   delete: (projectId, noteId, expectedRevision) => invoke("local_note_delete", { projectId, noteId, expectedRevision }),
+  exportMarkdown: (projectId, noteId) => invoke<string>("local_note_export", { projectId, noteId }),
 };
 const uuid = (value: unknown): value is string => typeof value === "string" &&
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(value);

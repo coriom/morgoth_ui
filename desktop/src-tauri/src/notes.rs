@@ -285,6 +285,43 @@ impl NoteStore {
         let dir = self.dir(project)?;
         self.locked(&dir, || Self::get_locked(&dir, project, id))
     }
+    /// Copy one verified human note to a fixed app-owned Markdown export folder.
+    pub fn export_markdown(
+        &self,
+        project: &str,
+        id: &str,
+        export_root: &Path,
+    ) -> Result<PathBuf, NativeError> {
+        let note = self.get(project, id)?;
+        prepare_root(export_root)?;
+        let dir = export_root.join(project);
+        private_dir(&dir)?;
+        let destination = dir.join(format!("{}-r{}.md", note.note_id, note.revision));
+        if present(&destination)? {
+            return Err(refusal("EXPORT_EXISTS"));
+        }
+        let temporary = dir.join(format!(".{}.tmp", Uuid::new_v4()));
+        let outcome = (|| {
+            let mut file = OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .mode(0o600)
+                .custom_flags(NOFOLLOW)
+                .open(&temporary)
+                .map_err(|_| io_error())?;
+            file.write_all(note.markdown.as_bytes())
+                .map_err(|_| io_error())?;
+            file.sync_all().map_err(|_| io_error())?;
+            fs::hard_link(&temporary, &destination)
+                .map_err(|_| refusal("EXPORT_EXISTS_OR_UNAVAILABLE"))?;
+            File::open(&dir)
+                .and_then(|directory| directory.sync_all())
+                .map_err(|_| io_error())?;
+            Ok(destination)
+        })();
+        let _ = fs::remove_file(&temporary);
+        outcome
+    }
     pub fn create(&self, input: NoteInput) -> Result<Note, NativeError> {
         if !valid_text(&input.title, &input.markdown, &input.collection) {
             return Err(refusal("INVALID_NOTE"));
@@ -396,6 +433,44 @@ mod tests {
     }
     fn code<T>(r: Result<T, NativeError>) -> String {
         r.err().unwrap().code.unwrap()
+    }
+    #[test]
+    fn markdown_export_is_private_exact_and_never_overwrites() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = NoteStore::new(dir.path().join("notes-home"));
+        let note = store.create(input("alpha")).unwrap();
+        let root = dir.path().join("exports");
+        assert_eq!(
+            code(store.export_markdown("beta", &note.note_id, &root)),
+            "STORAGE_UNAVAILABLE"
+        );
+        let path = store
+            .export_markdown("alpha", &note.note_id, &root)
+            .unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), note.markdown);
+        assert_eq!(
+            fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        assert_eq!(
+            fs::metadata(path.parent().unwrap())
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o700
+        );
+        assert_eq!(
+            code(store.export_markdown("alpha", &note.note_id, &root)),
+            "EXPORT_EXISTS"
+        );
+        assert_eq!(fs::read_to_string(&path).unwrap(), note.markdown);
+        let bad = dir.path().join("bad-exports");
+        symlink(&root, &bad).unwrap();
+        assert_eq!(
+            code(store.export_markdown("alpha", &note.note_id, &bad)),
+            "UNTRUSTED_PATH"
+        );
     }
     #[test]
     fn round_trip_revision_and_project_scope() {

@@ -1,11 +1,12 @@
 # Morgoth Command Center — native Desktop
 
-The current D6 candidate uses Tauri 2, Rust, React, TypeScript and Vite.
-Its five main areas include local unsent mission briefs, editable human notes,
-and a separate read-only view of managed Project Markdown vaults. The backend
-knowledge source is authenticated and pinned; no mission or model is started
-by a knowledge read. See `../docs/DESKTOP-D6-KNOWLEDGE.md` for the current
-contract and disposable native preview. Use `npm run typecheck`, `npm test`,
+The current D7 candidate uses Tauri 2, Rust, React, TypeScript and Vite.
+It adds explicit managed Project creation and a one-command Linux/WSL launcher
+to the D6 local mission and knowledge workspace. Personal Markdown export is
+limited to an app-owned private folder. No Project creation starts an engine or
+agent. See `../docs/DESKTOP-D7-PERSONAL-WORKSPACE.md` for launch commands,
+storage, authority and acceptance limits; the D6 vault contract remains in
+`../docs/DESKTOP-D6-KNOWLEDGE.md`. Use `npm run typecheck`, `npm test`,
 `npm run contract:check` and `npm run build` for frontend checks; Rust checks
 run in `src-tauri/`.
 

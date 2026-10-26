@@ -1,0 +1,5 @@
+# One explicit user-initiated Management mutation. No engine or storage startup.
+[[permission]]
+identifier = "allow-create-project"
+description = "Create one validated managed Project configuration through authenticated Management."
+commands.allow = ["create_project"]

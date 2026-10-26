@@ -29,6 +29,7 @@ export function KnowledgeWorkspace({ projectId, verified, transport, management,
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [exportPath, setExportPath] = useState<string | null>(null);
   const titleRef = useRef<HTMLInputElement>(null);
   const seenCreate = useRef(0);
   const seenOpen = useRef(0);
@@ -49,7 +50,7 @@ export function KnowledgeWorkspace({ projectId, verified, transport, management,
   const reset = (note: LocalNote | null) => {
     setCurrent(note); setSelectedId(note?.note_id ?? null); setCreating(note === null); setEditing(note === null);
     setTitle(note?.title ?? ""); setMarkdown(note?.markdown ?? ""); setCollection(note?.collection ?? "Général");
-    setDirty(false); setError(null); setMode("notes");
+    setDirty(false); setError(null); setExportPath(null); setMode("notes");
   };
   const create = () => { if (!projectId || !guard()) return; reset(null); window.setTimeout(() => titleRef.current?.focus(), 0); };
   useEffect(() => { if (createSignal === seenCreate.current) return; seenCreate.current = createSignal;
@@ -94,6 +95,16 @@ export function KnowledgeWorkspace({ projectId, verified, transport, management,
     catch { setError("Suppression refusée ou conflit de révision. La note reste affichée."); }
     finally { setBusy(false); }
   };
+  const exportNote = async () => {
+    if (!current || !projectId || dirty) return;
+    setBusy(true); setError(null); setExportPath(null);
+    try {
+      const path = await transport.exportMarkdown(projectId, current.note_id);
+      if (typeof path !== "string" || !path.startsWith("/") || path.length > 4096 || !path.endsWith(".md") || /[\r\n\0]/.test(path)) throw new Error("INVALID_EXPORT");
+      setExportPath(path);
+    } catch { setError("Export non confirmé ou déjà présent. Vérifiez le dossier indiqué dans la documentation ; la note originale reste intacte."); }
+    finally { setBusy(false); }
+  };
   const shown = filterNotes(notes, filter, collectionFilter);
   const collections = [...new Set(notes.map(note => note.collection))].sort((a,b) => a.localeCompare(b));
   const outgoing = current ? linksFrom(current.markdown) : [];
@@ -135,7 +146,8 @@ export function KnowledgeWorkspace({ projectId, verified, transport, management,
             }}>Annuler</button>{dirty && <span role="status">Modifications non enregistrées</span>}</div>
           </form> : <><h2>{current!.title}</h2><p className="source-stamp">Collection : {current!.collection} · créée {stamp(current!.created_at_ms)} · révision {current!.revision}</p>
             <MarkdownPreview markdown={current!.markdown} notes={notes} onOpen={id => void open(id)} />
-            <div className="editor-actions"><button type="button" onClick={() => setEditing(true)}>Modifier</button><button type="button" onClick={() => void remove()}>Supprimer…</button></div></>}
+            <div className="editor-actions"><button type="button" onClick={() => setEditing(true)}>Modifier</button><button type="button" disabled={busy} onClick={() => void exportNote()}>Exporter Markdown</button><button type="button" onClick={() => void remove()}>Supprimer…</button></div>
+            {exportPath && <p role="status" className="source-stamp">Copie Markdown privée créée : <code>{exportPath}</code></p>}</>}
         </> : <div className="quiet-empty"><h2>Une page pour vos idées</h2><p>Créez une note locale ou choisissez-en une. Aucun contenu n’est généré par un modèle.</p></div>}
       </article><aside className="note-relations" aria-label="Relations de la note">
         <h3>Liens sortants</h3>{outgoing.length ? outgoing.map(link => {

@@ -1,0 +1,5 @@
+# One exact existing personal note to an app-owned, private export folder.
+[[permission]]
+identifier = "allow-local-note-export"
+description = "Export one Project-scoped personal Markdown note without caller-supplied paths."
+commands.allow = ["local_note_export"]

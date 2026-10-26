@@ -20,6 +20,7 @@ function memoryNotes(): NoteTransport {
     update: vi.fn(async input => { const old=await get(input.project_id,input.note_id);if(old.revision!==input.expected_revision)throw new Error("CONFLICT");
       const note={...old,title:input.title,collection:input.collection,markdown:input.markdown,revision:old.revision+1,updated_at_ms:old.updated_at_ms+1};records.set(note.note_id,note);return note; }),
     delete: vi.fn(async (project,noteId,revision) => {const old=await get(project,noteId);if(old.revision!==revision)throw new Error("CONFLICT");records.delete(noteId);}),
+    exportMarkdown: vi.fn(async (project,noteId) => { await get(project,noteId); return "/tmp/synthetic-export.md"; }),
   };
 }
 function mount(store: NoteTransport, project="alpha") {
@@ -93,6 +94,18 @@ describe("local note contract and workspace", () => {
     mount(store,"beta");
     expect(await screen.findByText("Aucune note personnelle dans ce Project.")).toBeTruthy();
     expect(screen.queryByText("Seconde note")).toBeNull();
+  });
+  it("exports only a saved note through the fixed native note operation", async () => {
+    const store=memoryNotes();
+    mount(store);
+    fireEvent.click(screen.getByRole("button",{name:/Nouvelle note/}));
+    fireEvent.change(screen.getByLabelText("Titre"),{target:{value:"Export personnel"}});
+    fireEvent.change(screen.getByLabelText(/Markdown ·/),{target:{value:"# Synthétique"}});
+    fireEvent.click(screen.getByRole("button",{name:"Enregistrer la note"}));
+    expect(await screen.findByRole("heading",{name:"Export personnel"})).toBeTruthy();
+    fireEvent.click(screen.getByRole("button",{name:"Exporter Markdown"}));
+    await waitFor(()=>expect(store.exportMarkdown).toHaveBeenCalledWith("alpha",id(1)));
+    expect(screen.getByText(/Copie Markdown privée créée/)).toBeTruthy();
   });
   it("requires confirmation and revision for deletion", async () => {
     const store=memoryNotes(); const note=await store.create({project_id:"alpha",title:"À supprimer",collection:"Général",markdown:"Texte"}) as LocalNote;

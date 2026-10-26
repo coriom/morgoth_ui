@@ -24,7 +24,11 @@ describe("D2 fixed native read transport", () => {
     ]);
     expect(invoke.mock.calls[4]?.[1]).toEqual({ projectId: "research_a" });
     expect(invoke.mock.calls[5]?.[1]).toEqual({ projectId: "research_a" });
-    expect(Object.keys(nativeManagement)).toEqual(["runtimeStatus", "status", "domains", "projects", "project", "validation", "missions", "mission", "capabilities", "knowledge", "knowledgeDocument"]);
+    expect(Object.keys(nativeManagement)).toEqual(["runtimeStatus", "status", "domains", "projects", "createProject", "project", "validation", "missions", "mission", "capabilities", "knowledge", "knowledgeDocument"]);
+  });
+  it("uses one fixed creation IPC with only three allowlisted fields", async () => {
+    await nativeManagement.createProject({ id: "personal", name: "Personnel", domain: "crypto" });
+    expect(invoke.mock.calls).toEqual([["create_project", { input: { id: "personal", name: "Personnel", domain: "crypto" } }]]);
   });
   it("uses only two research reads", async () => {
     await nativeResearch.status();

@@ -142,6 +142,15 @@ pub struct ProjectCreation {
     pub engine_started: bool,
     pub storage_initialized: bool,
 }
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PublicProjectCreation {
+    pub project: PublicProjectView,
+    pub created: bool,
+    pub durability_confirmed: bool,
+    pub engine_started: bool,
+    pub storage_initialized: bool,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -249,6 +258,25 @@ pub struct CreateProjectRequest {
     pub id: String,
     pub name: String,
     pub domain: String,
+}
+fn valid_project_create_input(input: &CreateProjectRequest) -> bool {
+    safe_project_id(&input.id)
+        && input.id != "default"
+        && safe_project_id(&input.domain)
+        && !input.name.trim().is_empty()
+        && input.name.len() <= 128
+        && !input.name.chars().any(char::is_control)
+}
+
+fn verified_project_creation(result: &ProjectCreation, input: &CreateProjectRequest) -> bool {
+    result.project.id == input.id
+        && result.project.domain == input.domain
+        && result.project.name == input.name.trim()
+        && !result.project.legacy
+        && result.created
+        && result.durability_confirmed
+        && !result.engine_started
+        && !result.storage_initialized
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -833,6 +861,46 @@ mod desktop {
         })
     }
     #[tauri::command]
+    pub async fn create_project(
+        window: WebviewWindow,
+        supervisor: State<'_, ManagementSupervisor>,
+        input: CreateProjectRequest,
+    ) -> Result<PublicProjectCreation, NativeError> {
+        main_only(&window)?;
+        if !valid_project_create_input(&input) {
+            return Err(NativeError::new(
+                "INVALID_REQUEST",
+                "Paramètres de Project invalides.",
+            ));
+        }
+        let client = supervisor.client()?;
+        let domains = client.list_domains().await?;
+        if !domains
+            .domains
+            .iter()
+            .any(|item| item.id == input.domain && item.configuration_valid)
+        {
+            return Err(NativeError::new(
+                "UNKNOWN_DOMAIN",
+                "Domaine installé indisponible.",
+            ));
+        }
+        let result = client.create_project(&input).await?;
+        if !verified_project_creation(&result, &input) {
+            return Err(NativeError::new(
+                "UNCERTAIN_CREATE",
+                "Résultat de création incertain ; consultez le catalogue.",
+            ));
+        }
+        Ok(PublicProjectCreation {
+            project: result.project.into(),
+            created: result.created,
+            durability_confirmed: result.durability_confirmed,
+            engine_started: result.engine_started,
+            storage_initialized: result.storage_initialized,
+        })
+    }
+    #[tauri::command]
     pub async fn get_project(
         window: WebviewWindow,
         supervisor: State<'_, ManagementSupervisor>,
@@ -1093,6 +1161,27 @@ mod desktop {
         let store = note_store(&app)?;
         draft_job(move || store.delete(&project_id, &note_id, expected_revision)).await
     }
+    #[tauri::command]
+    pub async fn local_note_export(
+        window: WebviewWindow,
+        app: tauri::AppHandle,
+        project_id: String,
+        note_id: String,
+    ) -> Result<String, NativeError> {
+        main_only(&window)?;
+        let store = note_store(&app)?;
+        let root = app
+            .path()
+            .app_local_data_dir()
+            .map_err(|_| NativeError::new("LOCAL_NOTE_STORAGE", "Stockage local indisponible."))?
+            .join("note-exports-v1");
+        draft_job(move || {
+            store
+                .export_markdown(&project_id, &note_id, &root)
+                .map(|path| path.to_string_lossy().into_owned())
+        })
+        .await
+    }
     pub fn run() {
         let config = SupervisorConfig::from_environment();
         let supervisor = ManagementSupervisor::start(config.clone());
@@ -1124,6 +1213,7 @@ mod desktop {
                 management_status,
                 list_domains,
                 list_projects,
+                create_project,
                 get_project,
                 validate_project,
                 list_mission_reads,
@@ -1146,6 +1236,7 @@ mod desktop {
                 local_note_create,
                 local_note_update,
                 local_note_delete,
+                local_note_export,
             ])
             .build(tauri::generate_context!())
             .expect("Morgoth desktop runtime failed");
@@ -1163,6 +1254,70 @@ pub use desktop::run;
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn project_creation_requires_safe_identity_and_non_operational_receipt() {
+        let input = CreateProjectRequest {
+            id: "personal".into(),
+            name: "Personnel".into(),
+            domain: "crypto".into(),
+        };
+        assert!(valid_project_create_input(&input));
+        for id in ["default", "../other", "A", ""] {
+            assert!(!valid_project_create_input(&CreateProjectRequest {
+                id: id.into(),
+                ..input.clone()
+            }));
+        }
+        assert!(!valid_project_create_input(&CreateProjectRequest {
+            name: "bad\nname".into(),
+            ..input.clone()
+        }));
+        let project = ProjectView {
+            id: input.id.clone(),
+            name: input.name.clone(),
+            domain: input.domain.clone(),
+            legacy: false,
+            manifest_path: None,
+            workspace_root: None,
+            postgres_schema: "p_test".into(),
+            chroma_prefix: "p_test_".into(),
+            vault_dir: "internal".into(),
+            runtime_dir: "internal".into(),
+            configuration_valid: true,
+            runtime_checked: false,
+        };
+        let mut result = ProjectCreation {
+            project,
+            created: true,
+            durability_confirmed: true,
+            engine_started: false,
+            storage_initialized: false,
+        };
+        assert!(verified_project_creation(&result, &input));
+        let public = PublicProjectCreation {
+            project: result.project.clone().into(),
+            created: true,
+            durability_confirmed: true,
+            engine_started: false,
+            storage_initialized: false,
+        };
+        let serialized = serde_json::to_string(&public).unwrap();
+        for forbidden in [
+            "manifest_path",
+            "workspace_root",
+            "postgres_schema",
+            "vault_dir",
+            "runtime_dir",
+            "internal",
+        ] {
+            assert!(!serialized.contains(forbidden));
+        }
+        result.engine_started = true;
+        assert!(!verified_project_creation(&result, &input));
+        result.engine_started = false;
+        result.project.id = "other".into();
+        assert!(!verified_project_creation(&result, &input));
+    }
     #[test]
     fn project_id_cannot_inject_a_path() {
         assert!(safe_project_id("research_a"));

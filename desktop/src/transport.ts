@@ -7,6 +7,8 @@ export type DomainList = components["schemas"]["DomainList"];
 export type Project = Pick<components["schemas"]["ProjectView"], "id" | "name" | "domain" | "legacy" | "configuration_valid" | "runtime_checked">;
 export type ProjectList = { projects: Project[]; configuration_valid: boolean; runtime_checked: boolean };
 export type Validation = { project: Project; configuration_valid: boolean; runtime_checked: boolean };
+export type CreateProjectInput = Pick<components["schemas"]["CreateProjectRequest"], "id" | "name" | "domain">;
+export type ProjectCreation = { project: Project; created: boolean; durability_confirmed: boolean; engine_started: boolean; storage_initialized: boolean };
 export type MissionPage = DesktopMissionPageV1;
 export type Mission = DesktopMissionReadV1;
 export type CapabilityPage = DesktopCapabilityPageV1;
@@ -19,6 +21,7 @@ export interface ManagementTransport {
   status(): Promise<Status>;
   domains(): Promise<DomainList>;
   projects(): Promise<ProjectList>;
+  createProject(input: CreateProjectInput): Promise<ProjectCreation>;
   project(id: string): Promise<Project>;
   validation(id: string): Promise<Validation>;
   missions(id: string, offset: number): Promise<MissionPage>;
@@ -34,6 +37,7 @@ export const nativeManagement: ManagementTransport = {
   status: () => invoke<Status>("management_status"),
   domains: () => invoke<DomainList>("list_domains"),
   projects: () => invoke<ProjectList>("list_projects"),
+  createProject: (input) => invoke<ProjectCreation>("create_project", { input }),
   project: (id) => invoke<Project>("get_project", { projectId: id }),
   validation: (id) => invoke<Validation>("validate_project", { projectId: id }),
   missions: (id, offset) => invoke<MissionPage>("list_mission_reads", { projectId: id, offset }),

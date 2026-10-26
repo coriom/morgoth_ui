@@ -6,7 +6,7 @@ import type { NoteTransport } from "./notes";
 import type { DraftInput, DraftTransport, LocalDraft } from "./drafts";
 import type { ManagementTransport, Project, ResearchEngineStatus, ResearchTransport, OllamaTransport, OllamaStatus } from "./transport";
 
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 const project = (id: string): Project => ({ id, name: id, domain: "crypto", legacy: false,
   configuration_valid: true, runtime_checked: false });
 const stopped: ResearchEngineStatus = { state: "STOPPED", project_id: null, domain: null, diagnostic: null, runtime: null };
@@ -14,6 +14,7 @@ function management(overrides: Partial<ManagementTransport> = {}): ManagementTra
   return { runtimeStatus: vi.fn(async () => ({ state: "READY" as const, diagnostic: null })),
     status: vi.fn(async () => ({ api_version: "1", management_available: true })),
     domains: vi.fn(async () => ({ domains: [], runtime_checked: false })),
+    createProject: vi.fn(async (input) => ({ project: project(input.id), created: true, durability_confirmed: true, engine_started: false, storage_initialized: false })),
     projects: vi.fn(async () => ({ projects: [project("alpha"), project("beta")], configuration_valid: true, runtime_checked: false })),
     project: vi.fn(async (id) => project(id)), validation: vi.fn(async (id) => ({ project: project(id), configuration_valid: true, runtime_checked: false })),
     missions: vi.fn(async (id) => ({ project_id: id, missions: [], next_offset: null, source: "DISPOSABLE_POSTGRESQL" as const })),
@@ -75,7 +76,8 @@ function memoryDrafts(): DraftTransport {
     }) };
 }
 const emptyNotes = (): NoteTransport => ({ list: vi.fn(async () => []), get: vi.fn(async () => { throw new Error("missing"); }),
-  create: vi.fn(async () => { throw new Error("missing"); }), update: vi.fn(async () => { throw new Error("missing"); }), delete: vi.fn(async () => undefined) });
+  create: vi.fn(async () => { throw new Error("missing"); }), update: vi.fn(async () => { throw new Error("missing"); }), delete: vi.fn(async () => undefined),
+  exportMarkdown: vi.fn(async () => "/tmp/synthetic-export.md") });
 function TestedApp(props: ComponentProps<typeof App>) { return <App notes={emptyNotes()} {...props} />; }
 function nav(label: string) {
   const technical: Record<string,string> = { "Capacités": "Outils et capacités", "Modèles": "Modèles et runtime", "Sécurité": "Sécurité et permissions" };
@@ -125,7 +127,7 @@ describe("read-only command center", () => {
     render(<TestedApp drafts={drafts()} transport={transport} research={engine} />);
     await waitFor(() => expect(screen.getByRole("option", { name: "alpha · alpha" })).toBeTruthy());
     for (const view of ["Missions", "Capacités", "Modèles", "Sécurité", "Projets"]) nav(view);
-    expect(screen.queryByRole("button", { name: /Créer|Initialiser|Démarrer|Arrêter|Sélectionner codex|Approuver|Inférence/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Initialiser|Démarrer|Arrêter|Sélectionner codex|Approuver|Inférence/ })).toBeNull();
     expect(transport.validation).not.toHaveBeenCalled();
     expect(engine.status).toHaveBeenCalled();
   });
@@ -133,6 +135,54 @@ describe("read-only command center", () => {
     render(<TestedApp drafts={drafts()} transport={management({ projects: vi.fn(async () => ({ projects: [], configuration_valid: true, runtime_checked: false })) })} research={research()} />);
     nav("Projets");
     expect(await screen.findByText("Aucun Project configuré")).toBeTruthy();
+  });
+  it("creates a Project only after confirmation and verifies the fresh catalog", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    let catalog: Project[] = [];
+    const createProject = vi.fn(async (input: {id:string;name:string;domain:string}) => {
+      catalog = [{ ...project(input.id), name: input.name, domain: input.domain }];
+      return { project: catalog[0], created: true, durability_confirmed: true, engine_started: false, storage_initialized: false };
+    });
+    const transport = management({
+      domains: vi.fn(async () => ({ domains: [{ id: "crypto", tagline: null, diagnostic: null, configuration_valid: true }], runtime_checked: false })),
+      projects: vi.fn(async () => ({ projects: catalog, configuration_valid: true, runtime_checked: false })),
+      createProject,
+    });
+    const store = drafts();
+    render(<TestedApp drafts={store} transport={transport} research={research()} />);
+    nav("Projets");
+    expect(await screen.findByText("Aucun Project configuré")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Identifiant"), { target: { value: "personal" } });
+    fireEvent.change(screen.getByLabelText("Nom affiché"), { target: { value: "Personnel" } });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Créer le Project" }).hasAttribute("disabled")).toBe(false));
+    fireEvent.click(screen.getByRole("button", { name: "Créer le Project" }));
+    expect(createProject).not.toHaveBeenCalled();
+    confirm.mockReturnValue(true);
+    fireEvent.click(screen.getByRole("button", { name: "Créer le Project" }));
+    await waitFor(() => expect(createProject).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByText(/Project créé et confirmé dans le catalogue/)).toBeTruthy());
+    expect(createProject).toHaveBeenCalledWith({ id: "personal", name: "Personnel", domain: "crypto" });
+    expect(store.setPreferred).not.toHaveBeenCalledWith("personal");
+    expect(screen.getByText(/aucun moteur ni stockage agent démarré/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Créer le Project" }).hasAttribute("disabled")).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: /Personnel personal · crypto/ }));
+    await waitFor(() => expect(store.setPreferred).toHaveBeenCalledWith("personal"));
+  });
+  it("keeps an uncertain Project POST from being sent twice", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const createProject = vi.fn(async () => { throw { kind: "UNCERTAIN_CREATE" }; });
+    render(<TestedApp drafts={drafts()} transport={management({
+      domains: vi.fn(async () => ({ domains: [{ id: "crypto", tagline: null, diagnostic: null, configuration_valid: true }], runtime_checked: false })),
+      createProject,
+    })} research={research()} />);
+    nav("Projets");
+    fireEvent.change(screen.getByLabelText("Identifiant"), { target: { value: "personal" } });
+    fireEvent.change(screen.getByLabelText("Nom affiché"), { target: { value: "Personnel" } });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Créer le Project" }).hasAttribute("disabled")).toBe(false));
+    fireEvent.click(screen.getByRole("button", { name: "Créer le Project" }));
+    await waitFor(() => expect(screen.getByText(/Résultat de création incertain/)).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Créer le Project" }));
+    expect(createProject).toHaveBeenCalledTimes(1);
   });
   it("keeps Project detail within the selected catalog identity", async () => {
     const transport = management();
@@ -154,7 +204,7 @@ describe("read-only command center", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Actualiser" }).hasAttribute("disabled")).toBe(false));
     fireEvent.click(screen.getByRole("button", { name: "Actualiser" }));
     expect(await screen.findByText("Détail indisponible ou invalide.")).toBeTruthy();
-    expect(screen.queryByRole("heading", { name: "alpha" })).toBeNull();
+    expect(document.querySelector(".projects-grid .panel:last-child dl")).toBeNull();
     expect(screen.queryByText("private detail")).toBeNull();
   });
   it("rejects a detail response for a different Project", async () => {
@@ -163,7 +213,7 @@ describe("read-only command center", () => {
     nav("Projets");
     fireEvent.click(await screen.findByRole("button", { name: /alpha · crypto/ }));
     await waitFor(() => expect(transport.project).toHaveBeenCalledWith("alpha"));
-    expect(screen.queryByText("Identifiant")).toBeNull();
+    expect(document.querySelector(".projects-grid .panel:last-child dl")).toBeNull();
   });
   it("rejects malformed catalog data and does not show a fabricated count", async () => {
     const transport = management({ projects: vi.fn(async () => ({ projects: "secret" } as never)) });
@@ -191,7 +241,7 @@ describe("read-only command center", () => {
     render(<TestedApp drafts={drafts()} transport={management()} research={engine} />);
     nav("Projets");
     fireEvent.click(await screen.findByRole("button", { name: /beta · crypto/ }));
-    const detail = screen.getByText("Détail du Project").closest("section")!;
+    const detail = (await screen.findByText("Détail du Project")).closest("section")!;
     await waitFor(() => expect(within(detail).getByText("Aucun moteur attribué observé")).toBeTruthy());
   });
   it("does not retry a failed backend call without user action", async () => {

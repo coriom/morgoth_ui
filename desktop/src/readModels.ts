@@ -1,4 +1,5 @@
-import type { Project, ProjectList, ResearchEngineStatus, ResearchProfiles, RuntimeStatus, Status, MissionPage, Mission, CapabilityPage, OllamaStatus } from "./transport";
+import type { Project, ProjectList, ProjectCreation, ResearchEngineStatus, ResearchProfiles, RuntimeStatus, Status, MissionPage, Mission, CapabilityPage, OllamaStatus } from "./transport";
+import type { components } from "./api.generated";
 
 function record(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -82,6 +83,22 @@ export function readProjectList(value: unknown): ProjectList {
   const projects = value.projects.map(readProject);
   if (new Set(projects.map((project) => project.id)).size !== projects.length) invalid();
   return value as ProjectList;
+}
+export function readDomainList(value: unknown): components["schemas"]["DomainList"] {
+  if (!record(value) || !Array.isArray(value.domains) || value.domains.length > 32 || value.runtime_checked !== false
+    || value.domains.some((item: unknown) => !record(item) || !bounded(item.id, 63)
+      || !/^[a-z][a-z0-9_]{0,62}$/.test(item.id) || typeof item.configuration_valid !== "boolean"
+      || !(item.tagline === null || bounded(item.tagline, 256))
+      || !(item.diagnostic === null || bounded(item.diagnostic, 128)))) invalid();
+  return value as components["schemas"]["DomainList"];
+}
+
+export function readProjectCreation(value: unknown, input: {id: string; name: string; domain: string}): ProjectCreation {
+  if (!record(value) || value.created !== true || value.durability_confirmed !== true
+    || value.engine_started !== false || value.storage_initialized !== false) invalid();
+  const project = readProject(value.project);
+  if (project.id !== input.id || project.name !== input.name.trim() || project.domain !== input.domain || project.legacy) invalid();
+  return value as ProjectCreation;
 }
 
 /** Research status is scoped to its reported Project, not the selected UI Project. */

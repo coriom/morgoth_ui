@@ -1,3 +1,14 @@
+## 2026-10-26 — Desktop D7 personal Project onboarding
+
+Branch `feat/morgoth-desktop-d7-personal-onboarding-v1` adds one explicit,
+authenticated native Project-creation command, installed-Domain selection,
+first-run guidance, fixed private Markdown note export, and one-command Linux/WSL launch with explicit persistent
+Management home or disposable preview. D4/D5 local stores and D6 vault reads
+are unchanged. Native Project creation and reopened local records were tested
+against disposable directories; full text entry in WebKitGTK awaits manual
+acceptance. No backend change, inference, engine initialization or new
+dependency. See `docs/DESKTOP-D7-PERSONAL-WORKSPACE.md`.
+
 ## 2026-10-26 — Desktop D6 managed Project knowledge reader
 
 Branch `feat/morgoth-desktop-d6-knowledge-v1` connects the D5.1 Knowledge

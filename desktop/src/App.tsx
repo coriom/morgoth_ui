@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
 import { nativeManagement, nativeResearch, nativeOllama, type ManagementTransport, type ResearchTransport, type OllamaTransport } from "./transport";
 import { readCapabilityPage, readManagementStatus, readOllamaStatus, readProject, readProjectList, readResearchProfiles, readResearchStatus, readRuntimeStatus } from "./readModels";
 import { nativeDrafts, readPreferred, type DraftTransport } from "./drafts";
@@ -8,6 +8,7 @@ import { KnowledgeWorkspace } from "./KnowledgeWorkspace";
 import { Home } from "./Home";
 import { CommandPalette } from "./CommandPalette";
 import { nativeNotes, type NoteTransport } from "./notes";
+import { ProjectCreationForm } from "./ProjectCreation";
 
 type View = "home" | "missions" | "knowledge" | "projects" | "settings" | "runtime" | "capabilities" | "models" | "security";
 type NavIconName = "home" | "missions" | "knowledge" | "projects" | "settings";
@@ -47,6 +48,7 @@ const mib = (value: number | null): string => value === null ? "Inconnu"
   : value < 1_048_576 ? `${value} octets` : `${(value / 1_048_576).toFixed(1)} MiB`;
 
 export function CommandCenter({ transport, research, ollama, drafts, notes }: { transport: ManagementTransport; research: ResearchTransport; ollama: OllamaTransport; drafts: DraftTransport; notes: NoteTransport }) {
+  const queryClient = useQueryClient();
   const [view, setView] = useState<View>("home");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [preferenceLoaded, setPreferenceLoaded] = useState(false);
@@ -119,6 +121,15 @@ export function CommandCenter({ transport, research, ollama, drafts, notes }: { 
   const openNote = (id: string) => { if (!leaveEditor()) return;const seq=requestSeq+1;setRequestSeq(seq);setNoteOpenRequest({id,seq});setView("knowledge");setMissionDirty(false);setNoteDirty(false); };
   const openBackendKnowledge = (id: string) => { if (!selectedInCatalog || !leaveEditor()) return; const seq=requestSeq+1;setRequestSeq(seq);setBackendOpenRequest({id,seq});setView("knowledge");setMissionDirty(false);setNoteDirty(false); };
   const selectedProject = projectData?.projects.find((item) => item.id === selectedId);
+  const createdProject = async (result: import("./transport").ProjectCreation): Promise<boolean> => {
+    try {
+      const fresh = readProjectList(await transport.projects());
+      const found = fresh.projects.find(item => item.id === result.project.id);
+      if (!found || found.domain !== result.project.domain || found.name !== result.project.name) return false;
+      queryClient.setQueryData(["d1", "projects"], fresh);
+      return true;
+    } catch { return false; }
+  };
 
   return <div className={sidebarCollapsed ? "command-layout sidebar-collapsed" : "command-layout"}>
     <aside className="sidebar" aria-label="Navigation principale">
@@ -155,6 +166,9 @@ export function CommandCenter({ transport, research, ollama, drafts, notes }: { 
         {connected && management.isSuccess && ` Dernière lecture Management réussie : ${new Date(management.dataUpdatedAt).toLocaleString("fr-FR")}.`}</p>}
       {managerError && view!=="home" && view!=="knowledge" && view!=="missions" && <p className="notice warn" role="alert">Les données du backend restent indisponibles. Aucune activité n’est présumée.</p>}
 
+      {view === "home" && connected && projectData && !projectData.projects.some(item => !item.legacy) &&
+        <div className="onboarding-callout" role="status"><span>Créez un Project pour organiser vos briefs et vos notes.</span>
+          <button type="button" onClick={() => navigate("projects")}>Créer un Project <span aria-hidden="true">→</span></button></div>}
       {view === "home" && <Home projectId={selectedId} projectName={selectedProject?.name ?? null} verified={selectedInCatalog}
         drafts={drafts} notes={notes} onOpenDraft={openDraft} onNewDraft={newDraft} onOpenNote={openNote} onNewNote={newNote} onProjects={()=>navigate("projects")} />}
       {view === "knowledge" && <KnowledgeWorkspace key={selectedId ?? "none"} projectId={selectedId} verified={selectedInCatalog}
@@ -254,11 +268,12 @@ export function CommandCenter({ transport, research, ollama, drafts, notes }: { 
           {projects.isPending && connected && <p className="skeleton">Lecture du catalogue…</p>}
           {projects.isError && <p role="alert">Catalogue indisponible ou invalide.</p>}
           {!connected && <EmptyEvidence title="Catalogue indisponible">Le service de gestion n’est pas confirmé.</EmptyEvidence>}
-          {projectData?.projects.length === 0 && <EmptyEvidence title="Aucun Project configuré">Le catalogue de configuration est vide.</EmptyEvidence>}
+          {projectData?.projects.length === 0 && <EmptyEvidence title="Aucun Project configuré">Créez un Project personnel ci-dessous. Le catalogue est actuellement vide.</EmptyEvidence>}
+          {projectData?.projects.length === 1 && projectData.projects[0].legacy && <p className="notice">Seul le Project historique default existe. Le lecteur de coffre D6 nécessite un Project géré.</p>}
           <ul className="project-list">{projectData?.projects.map((item) => <li key={item.id}><button type="button" className={selectedId === item.id ? "selected" : ""}
             onClick={() => void chooseProject(item.id)} aria-current={selectedId === item.id ? "true" : undefined}><strong>{item.name}</strong><span>{item.id} · {item.domain}{item.legacy ? " · historique" : ""}</span></button></li>)}</ul>
-        </section><section className="panel"><p className="eyebrow">Portée sélectionnée</p><h2>Détail du Project</h2>
-          {!selectedId && <EmptyEvidence title="Sélectionnez un Project">Le choix change seulement le périmètre affiché.</EmptyEvidence>}
+        </section><section className="panel"><p className="eyebrow">{selectedId ? "Portée sélectionnée" : "Premier espace"}</p>
+          {selectedId ? <h2>Détail du Project</h2> : <ProjectCreationForm transport={transport} connected={connected} onCreated={createdProject} />}
           {selectedId && !selectedInCatalog && <p role="alert">Project absent du catalogue courant. Aucun détail n’est affiché.</p>}
           {selectedInCatalog && project.isPending && <p className="skeleton">Lecture du Project…</p>}
           {project.isError && <p role="alert">Détail indisponible ou invalide.</p>}
