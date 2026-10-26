@@ -531,6 +531,25 @@ export interface DesktopCapabilityPageV1 {
   source: "DISPOSABLE_POSTGRESQL";
 }
 
+/** Authenticated, read-only projection of a managed Project Markdown vault. */
+export interface DesktopKnowledgeDocumentV1 {
+  document_id: string;
+  project_id: string;
+  title: string;
+  recorded_at: string; // filesystem modification time, not verification
+  links: Array<{label: string; target_id: string | null}>;
+  source: "PROJECT_MARKDOWN_VAULT";
+  content: string | null;
+}
+export interface DesktopKnowledgePageV1 {
+  schema_version: 1;
+  project_id: string;
+  source: "PROJECT_MARKDOWN_VAULT";
+  read_at: string;
+  documents: DesktopKnowledgeDocumentV1[];
+  next_offset: number | null;
+}
+
 /** Native-only, manual, non-generative Ollama observation. Never implies inference qualification. */
 export interface DesktopOllamaStatusV1 {
   source: "OLLAMA_LOOPBACK_GET_V1";

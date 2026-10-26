@@ -192,6 +192,57 @@ pub struct CapabilityReadPage {
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct KnowledgeLinkRead {
+    pub label: String,
+    pub target_id: Option<String>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct KnowledgeDocumentRead {
+    pub document_id: String,
+    pub project_id: String,
+    pub title: String,
+    pub recorded_at: String,
+    pub links: Vec<KnowledgeLinkRead>,
+    pub source: String,
+    pub content: Option<String>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct KnowledgeReadPage {
+    pub schema_version: u8,
+    pub project_id: String,
+    pub source: String,
+    pub read_at: String,
+    pub documents: Vec<KnowledgeDocumentRead>,
+    pub next_offset: Option<u32>,
+}
+
+fn safe_document_id(id: &str) -> bool {
+    id.len() == 64
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+}
+fn valid_knowledge_document(item: &KnowledgeDocumentRead, project_id: &str, detail: bool) -> bool {
+    item.project_id == project_id
+        && item.source == "PROJECT_MARKDOWN_VAULT"
+        && safe_document_id(&item.document_id)
+        && !item.title.is_empty()
+        && item.title.len() <= 640
+        && item.recorded_at.len() <= 48
+        && item.links.len() <= 32
+        && item.links.iter().all(|link| {
+            link.label.len() <= 640 && link.target_id.as_deref().is_none_or(safe_document_id)
+        })
+        && if detail {
+            item.content.as_ref().is_some_and(|s| s.len() <= 16_384)
+        } else {
+            item.content.is_none()
+        }
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CreateProjectRequest {
     pub id: String,
     pub name: String,
@@ -358,7 +409,7 @@ impl ManagementClient {
         Self::new(port, path)
     }
     fn url(&self, path: &str) -> String {
-        if path.starts_with(READ_PREFIX) {
+        if path.starts_with(READ_PREFIX) || path.starts_with("/desktop-knowledge/v1/") {
             format!("http://127.0.0.1:{}{path}", self.port)
         } else {
             format!("http://127.0.0.1:{}{PREFIX}{path}", self.port)
@@ -647,6 +698,72 @@ impl ManagementClient {
         }
         Ok(page)
     }
+    pub async fn list_knowledge_reads(
+        &self,
+        id: &str,
+        offset: u32,
+        query: &str,
+    ) -> Result<KnowledgeReadPage, NativeError> {
+        if !safe_project_id(id)
+            || offset > 95
+            || query.len() > 80
+            || query.chars().any(char::is_control)
+        {
+            return Err(NativeError::new("INVALID_REQUEST", "Lecture invalide."));
+        }
+        let encoded = query
+            .bytes()
+            .map(|b| {
+                if b.is_ascii_alphanumeric() || b"-._~".contains(&b) {
+                    (b as char).to_string()
+                } else {
+                    format!("%{b:02X}")
+                }
+            })
+            .collect::<String>();
+        let page: KnowledgeReadPage = self.call(Method::GET,
+            &format!("/desktop-knowledge/v1/projects/{id}/documents?limit=20&offset={offset}&query={encoded}"), None).await?;
+        if page.schema_version != 1
+            || page.project_id != id
+            || page.source != "PROJECT_MARKDOWN_VAULT"
+            || page.read_at.len() > 48
+            || page.documents.len() > 20
+            || page
+                .documents
+                .iter()
+                .any(|d| !valid_knowledge_document(d, id, false))
+            || page.next_offset.is_some_and(|n| n > 95 || n <= offset)
+        {
+            return Err(NativeError::new(
+                "INCOMPATIBLE_RESPONSE",
+                "Réponse API incompatible.",
+            ));
+        }
+        Ok(page)
+    }
+    pub async fn get_knowledge_read(
+        &self,
+        id: &str,
+        document_id: &str,
+    ) -> Result<KnowledgeDocumentRead, NativeError> {
+        if !safe_project_id(id) || !safe_document_id(document_id) {
+            return Err(NativeError::new("INVALID_REQUEST", "Lecture invalide."));
+        }
+        let item: KnowledgeDocumentRead = self
+            .call(
+                Method::GET,
+                &format!("/desktop-knowledge/v1/projects/{id}/documents/{document_id}"),
+                None,
+            )
+            .await?;
+        if item.document_id != document_id || !valid_knowledge_document(&item, id, true) {
+            return Err(NativeError::new(
+                "INCOMPATIBLE_RESPONSE",
+                "Réponse API incompatible.",
+            ));
+        }
+        Ok(item)
+    }
 }
 
 fn safe_uuid(value: &str) -> bool {
@@ -773,6 +890,33 @@ mod desktop {
         supervisor
             .client()?
             .list_capability_reads(&project_id, offset)
+            .await
+    }
+    #[tauri::command]
+    pub async fn list_knowledge_reads(
+        window: WebviewWindow,
+        supervisor: State<'_, ManagementSupervisor>,
+        project_id: String,
+        offset: u32,
+        query: String,
+    ) -> Result<KnowledgeReadPage, NativeError> {
+        main_only(&window)?;
+        supervisor
+            .client()?
+            .list_knowledge_reads(&project_id, offset, &query)
+            .await
+    }
+    #[tauri::command]
+    pub async fn get_knowledge_read(
+        window: WebviewWindow,
+        supervisor: State<'_, ManagementSupervisor>,
+        project_id: String,
+        document_id: String,
+    ) -> Result<KnowledgeDocumentRead, NativeError> {
+        main_only(&window)?;
+        supervisor
+            .client()?
+            .get_knowledge_read(&project_id, &document_id)
             .await
     }
     #[tauri::command]
@@ -983,6 +1127,8 @@ mod desktop {
                 list_mission_reads,
                 get_mission_read,
                 list_capability_reads,
+                list_knowledge_reads,
+                get_knowledge_read,
                 research_engine_status,
                 research_profiles,
                 ollama_status_read,
@@ -1031,5 +1177,21 @@ mod tests {
         ] {
             assert!(!safe_project_id(value));
         }
+    }
+    #[test]
+    fn knowledge_dto_is_strict_and_project_scoped() {
+        let id = "a".repeat(64);
+        assert!(safe_document_id(&id));
+        assert!(!safe_document_id("../secret.md"));
+        let payload = serde_json::json!({"document_id":id,"project_id":"alpha","title":"Index",
+            "recorded_at":"2026-10-26T00:00:00+00:00","links":[{"label":"Lien","target_id":null}],
+            "source":"PROJECT_MARKDOWN_VAULT","content":"# Index"});
+        let doc: KnowledgeDocumentRead = serde_json::from_value(payload.clone()).unwrap();
+        assert!(valid_knowledge_document(&doc, "alpha", true));
+        assert!(!valid_knowledge_document(&doc, "beta", true));
+        assert!(!valid_knowledge_document(&doc, "alpha", false));
+        let mut unexpected = payload;
+        unexpected["private_path"] = serde_json::json!("/private");
+        assert!(serde_json::from_value::<KnowledgeDocumentRead>(unexpected).is_err());
     }
 }

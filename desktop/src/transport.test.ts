@@ -16,13 +16,15 @@ describe("D2 fixed native read transport", () => {
     await nativeManagement.missions("research_a", 0);
     await nativeManagement.mission("research_a", "00000000-0000-0000-0000-000000000001");
     await nativeManagement.capabilities("research_a", 0);
+    await nativeManagement.knowledge("research_a", 0, "sujet");
+    await nativeManagement.knowledgeDocument("research_a", "a".repeat(64));
     expect(invoke.mock.calls.map((call) => call[0])).toEqual([
       "management_runtime_status", "management_status", "list_domains", "list_projects", "get_project", "validate_project",
-      "list_mission_reads", "get_mission_read", "list_capability_reads",
+      "list_mission_reads", "get_mission_read", "list_capability_reads", "list_knowledge_reads", "get_knowledge_read",
     ]);
     expect(invoke.mock.calls[4]?.[1]).toEqual({ projectId: "research_a" });
     expect(invoke.mock.calls[5]?.[1]).toEqual({ projectId: "research_a" });
-    expect(Object.keys(nativeManagement)).toEqual(["runtimeStatus", "status", "domains", "projects", "project", "validation", "missions", "mission", "capabilities"]);
+    expect(Object.keys(nativeManagement)).toEqual(["runtimeStatus", "status", "domains", "projects", "project", "validation", "missions", "mission", "capabilities", "knowledge", "knowledgeDocument"]);
   });
   it("uses only two research reads", async () => {
     await nativeResearch.status();

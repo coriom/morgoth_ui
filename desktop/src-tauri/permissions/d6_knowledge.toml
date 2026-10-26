@@ -1,0 +1,10 @@
+# D6: fixed authenticated, Project-scoped vault reads only.
+[[permission]]
+identifier = "allow-list-knowledge-reads"
+description = "Reads one bounded page of managed Project Markdown metadata."
+commands.allow = ["list_knowledge_reads"]
+
+[[permission]]
+identifier = "allow-get-knowledge-read"
+description = "Reads one exact managed Project Markdown document by opaque ID."
+commands.allow = ["get_knowledge_read"]

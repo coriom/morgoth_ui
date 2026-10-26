@@ -19,6 +19,8 @@ function management(overrides: Partial<ManagementTransport> = {}): ManagementTra
     missions: vi.fn(async (id) => ({ project_id: id, missions: [], next_offset: null, source: "DISPOSABLE_POSTGRESQL" as const })),
     mission: vi.fn(async () => { throw new Error("not found"); }),
     capabilities: vi.fn(async (id) => ({ project_id: id, capabilities: [], next_offset: null, source: "DISPOSABLE_POSTGRESQL" as const })),
+    knowledge: vi.fn(async (id) => ({ schema_version: 1 as const, project_id: id, source: "PROJECT_MARKDOWN_VAULT" as const, read_at: new Date().toISOString(), documents: [], next_offset: null })),
+    knowledgeDocument: vi.fn(async () => { throw new Error("missing"); }),
     ...overrides };
 }
 function research(overrides: Partial<ResearchTransport> = {}): ResearchTransport {

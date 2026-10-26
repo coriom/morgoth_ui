@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { KnowledgeWorkspace } from "./KnowledgeWorkspace";
 import { MarkdownPreview } from "./MarkdownPreview";
 import { KnowledgeGraph } from "./KnowledgeGraph";
+import type { ManagementTransport } from "./transport";
 import { backlinksTo, filterNotes, linksFrom, readNote, readNoteList, type LocalNote, type NoteInput, type NoteTransport } from "./notes";
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
@@ -24,7 +25,8 @@ function memoryNotes(): NoteTransport {
 function mount(store: NoteTransport, project="alpha") {
   const client=new QueryClient({defaultOptions:{queries:{retry:false,refetchOnWindowFocus:false}}});
   return render(<QueryClientProvider client={client}><KnowledgeWorkspace projectId={project} verified={false} transport={store}
-    onDirtyChange={()=>{}} createSignal={0} openNoteRequest={null} refreshSignal={0}/></QueryClientProvider>);
+    management={{knowledge:async()=>{throw new Error("unavailable");},knowledgeDocument:async()=>{throw new Error("unavailable");}} as unknown as ManagementTransport}
+    onDirtyChange={()=>{}} createSignal={0} openNoteRequest={null} openBackendRequest={null} refreshSignal={0}/></QueryClientProvider>);
 }
 describe("local note contract and workspace", () => {
   it("rejects foreign, oversized, duplicate and malformed native records", () => {

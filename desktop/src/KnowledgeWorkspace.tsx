@@ -2,17 +2,21 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { MarkdownPreview } from "./MarkdownPreview";
 import { KnowledgeGraph } from "./KnowledgeGraph";
+import { BackendKnowledge } from "./BackendKnowledge";
+import type { ManagementTransport } from "./transport";
 import { backlinksTo, filterNotes, linksFrom, readNote, readNoteList, type LocalNote, type NoteTransport } from "./notes";
 
 const stamp = (value: number) => new Date(value).toLocaleString("fr-FR");
 
-/** Human-authored local notes only. Historical wiki and agent memory are not connected. */
-export function KnowledgeWorkspace({ projectId, verified, transport, onDirtyChange, createSignal, openNoteRequest, refreshSignal }: {
+/** Personal notes and the read-only Project vault remain distinct. */
+export function KnowledgeWorkspace({ projectId, verified, transport, management, onDirtyChange, createSignal, openNoteRequest, openBackendRequest, refreshSignal }: {
   projectId: string | null; verified: boolean; transport: NoteTransport; onDirtyChange: (value: boolean) => void;
-  createSignal: number; openNoteRequest: {id:string;seq:number} | null; refreshSignal: number;
+  management: ManagementTransport; createSignal: number; openNoteRequest: {id:string;seq:number} | null;
+  openBackendRequest: {id:string;seq:number} | null; refreshSignal: number;
 }) {
   const cache = useQueryClient();
   const [mode, setMode] = useState<"notes" | "graph">("notes");
+  const [source, setSource] = useState<"personal"|"morgoth">("personal");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [current, setCurrent] = useState<LocalNote | null>(null);
   const [creating, setCreating] = useState(false);
@@ -28,6 +32,7 @@ export function KnowledgeWorkspace({ projectId, verified, transport, onDirtyChan
   const titleRef = useRef<HTMLInputElement>(null);
   const seenCreate = useRef(0);
   const seenOpen = useRef(0);
+  const seenBackendOpen = useRef(0);
   const seenRefresh = useRef(refreshSignal);
   const list = useQuery({ queryKey: ["d5", "notes", projectId],
     queryFn: async () => readNoteList(await transport.list(projectId!), projectId!),
@@ -39,6 +44,8 @@ export function KnowledgeWorkspace({ projectId, verified, transport, onDirtyChan
   useEffect(() => { if (seenRefresh.current === refreshSignal) return; seenRefresh.current = refreshSignal;
     if (projectId) void cache.invalidateQueries({ queryKey: ["d5", "notes", projectId] }); }, [refreshSignal, projectId, cache]);
   const guard = () => !dirty || window.confirm("Modifications de note non enregistrées. Les abandonner ?");
+  const discardForBackend = () => { setDirty(false); setCreating(false); setEditing(false);
+    setTitle(current?.title ?? ""); setMarkdown(current?.markdown ?? ""); setCollection(current?.collection ?? "Général"); };
   const reset = (note: LocalNote | null) => {
     setCurrent(note); setSelectedId(note?.note_id ?? null); setCreating(note === null); setEditing(note === null);
     setTitle(note?.title ?? ""); setMarkdown(note?.markdown ?? ""); setCollection(note?.collection ?? "Général");
@@ -46,17 +53,20 @@ export function KnowledgeWorkspace({ projectId, verified, transport, onDirtyChan
   };
   const create = () => { if (!projectId || !guard()) return; reset(null); window.setTimeout(() => titleRef.current?.focus(), 0); };
   useEffect(() => { if (createSignal === seenCreate.current) return; seenCreate.current = createSignal;
-    reset(null); window.setTimeout(() => titleRef.current?.focus(), 0);
+    setSource("personal"); reset(null); window.setTimeout(() => titleRef.current?.focus(), 0);
     // The application shell has already confirmed leaving unsaved work.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [createSignal]);
   useEffect(() => { if (!openNoteRequest || openNoteRequest.seq === seenOpen.current) return;
     const note = notes.find(item => item.note_id === openNoteRequest.id);
     if (!note) return;
-    seenOpen.current = openNoteRequest.seq; reset(note);
+    seenOpen.current = openNoteRequest.seq; setSource("personal"); reset(note);
     // Selection is guarded at the application boundary as well.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openNoteRequest?.seq, list.dataUpdatedAt]);
+  useEffect(() => { if (!openBackendRequest || openBackendRequest.seq === seenBackendOpen.current) return;
+    seenBackendOpen.current = openBackendRequest.seq; discardForBackend(); setSource("morgoth");
+  }, [openBackendRequest?.seq]);
   const open = async (id: string) => {
     if (!projectId || !guard()) return;
     setBusy(true); setError(null);
@@ -91,8 +101,10 @@ export function KnowledgeWorkspace({ projectId, verified, transport, onDirtyChan
   if (!projectId) return <section className="quiet-empty"><h2>Aucun Project sélectionné</h2><p>Choisissez un Project pour ouvrir vos notes locales.</p></section>;
   return <div className="knowledge-page">
     <header className="page-heading"><div><p className="breadcrumb">{verified ? "Project vérifié" : "Project mémorisé · non vérifié"} / Connaissances</p><h1>Connaissances</h1><p>Des notes personnelles, des liens explicites.</p></div>
-      <div className="segmented" role="group" aria-label="Mode des connaissances"><button type="button" aria-pressed={mode === "notes"} onClick={() => setMode("notes")}>Notes</button>
-        <button type="button" aria-pressed={mode === "graph"} onClick={() => { if (guard()) setMode("graph"); }}>Graphe</button></div></header>
+      {source === "personal" && <div className="segmented" role="group" aria-label="Mode des connaissances"><button type="button" aria-pressed={mode === "notes"} onClick={() => setMode("notes")}>Notes</button>
+        <button type="button" aria-pressed={mode === "graph"} onClick={() => { if (guard()) setMode("graph"); }}>Graphe</button></div>}</header>
+    <div className="knowledge-source-switch" role="group" aria-label="Source de connaissance"><button type="button" aria-pressed={source === "personal"} onClick={()=>setSource("personal")}>Notes personnelles</button><button type="button" aria-pressed={source === "morgoth"} onClick={()=>{if(guard()){discardForBackend();setSource("morgoth");}}}>Connaissances Morgoth</button></div>
+    {source === "morgoth" ? <BackendKnowledge projectId={projectId} verified={verified} transport={management} openRequest={openBackendRequest} /> : <>
     {error && <p role="alert" className="notice warn">{error}</p>}
     {mode === "graph" ? <KnowledgeGraph notes={notes} selectedId={selectedId} onSelect={id => setSelectedId(id)} onOpen={id => void open(id)} />
       : <div className="knowledge-columns"><aside className="knowledge-list" aria-label="Collections et notes">
@@ -132,7 +144,8 @@ export function KnowledgeWorkspace({ projectId, verified, transport, onDirtyChan
             : <span key={link.target} className="broken-link">{link.label} · note absente</span>;
         }) : <p>Aucun lien.</p>}
         <h3>Rétroliens</h3>{backlinks.length ? backlinks.map(note => <button key={note.note_id} type="button" onClick={() => void open(note.note_id)}>{note.title}</button>) : <p>Aucun rétroliens.</p>}
-        <p className="source-stamp">Source : fichiers Markdown locaux, Project {projectId}. Aucun wiki historique connecté.</p>
+        <p className="source-stamp">Source : fichiers Markdown personnels locaux, Project {projectId}.</p>
       </aside></div>}
+    </>}
   </div>;
 }

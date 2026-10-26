@@ -16,7 +16,7 @@ describe("Tauri D5 authority declaration", () => {
       "allow-management-runtime-status",
       "allow-management-status", "allow-list-domains", "allow-list-projects",
       "allow-get-project", "allow-validate-project",
-      "allow-list-mission-reads", "allow-get-mission-read", "allow-list-capability-reads",
+      "allow-list-mission-reads", "allow-get-mission-read", "allow-list-capability-reads", "allow-list-knowledge-reads", "allow-get-knowledge-read",
       "allow-research-engine-status", "allow-research-profiles", "allow-ollama-status-read",
       "allow-preferred-project-read", "allow-preferred-project-set", "allow-local-drafts-list",
       "allow-local-draft-get", "allow-local-draft-create", "allow-local-draft-update", "allow-local-draft-delete",
@@ -29,7 +29,7 @@ describe("Tauri D5 authority declaration", () => {
     const registered = native.match(/\.invoke_handler\(tauri::generate_handler!\[([\s\S]*?)\]\)/)?.[1];
     expect(registered?.replace(/\s/g, "").split(",").filter(Boolean)).toEqual([
       "management_runtime_status", "management_status", "list_domains", "list_projects",
-      "get_project", "validate_project", "list_mission_reads", "get_mission_read", "list_capability_reads", "research_engine_status", "research_profiles", "ollama_status_read",
+      "get_project", "validate_project", "list_mission_reads", "get_mission_read", "list_capability_reads", "list_knowledge_reads", "get_knowledge_read", "research_engine_status", "research_profiles", "ollama_status_read",
       "preferred_project_read", "preferred_project_set", "local_drafts_list", "local_draft_get",
       "local_draft_create", "local_draft_update", "local_draft_delete",
       "local_notes_list", "local_note_get", "local_note_create", "local_note_update", "local_note_delete",

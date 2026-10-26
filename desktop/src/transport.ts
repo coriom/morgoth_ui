@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { components } from "./api.generated";
-import type { DesktopCodexReadinessV1, DesktopMissionPageV1, DesktopMissionReadV1, DesktopCapabilityPageV1, DesktopOllamaStatusV1 } from "../../types/morgoth";
+import type { DesktopCodexReadinessV1, DesktopMissionPageV1, DesktopMissionReadV1, DesktopCapabilityPageV1, DesktopOllamaStatusV1, DesktopKnowledgePageV1, DesktopKnowledgeDocumentV1 } from "../../types/morgoth";
 
 export type Status = components["schemas"]["ManagementStatus"];
 export type DomainList = components["schemas"]["DomainList"];
@@ -10,6 +10,8 @@ export type Validation = { project: Project; configuration_valid: boolean; runti
 export type MissionPage = DesktopMissionPageV1;
 export type Mission = DesktopMissionReadV1;
 export type CapabilityPage = DesktopCapabilityPageV1;
+export type KnowledgePage = DesktopKnowledgePageV1;
+export type KnowledgeDocument = DesktopKnowledgeDocumentV1;
 export type RuntimeStatus = { state: "STARTING" | "READY" | "FAILED" | "STOPPING" | "STOPPED"; diagnostic: string | null };
 
 export interface ManagementTransport {
@@ -22,6 +24,8 @@ export interface ManagementTransport {
   missions(id: string, offset: number): Promise<MissionPage>;
   mission(id: string, missionId: string): Promise<Mission>;
   capabilities(id: string, offset: number): Promise<CapabilityPage>;
+  knowledge(id: string, offset: number, query: string): Promise<KnowledgePage>;
+  knowledgeDocument(id: string, documentId: string): Promise<KnowledgeDocument>;
 }
 
 /** Only fixed commands cross the WebView-to-native boundary. */
@@ -35,6 +39,8 @@ export const nativeManagement: ManagementTransport = {
   missions: (id, offset) => invoke<MissionPage>("list_mission_reads", { projectId: id, offset }),
   mission: (id, missionId) => invoke<Mission>("get_mission_read", { projectId: id, missionId }),
   capabilities: (id, offset) => invoke<CapabilityPage>("list_capability_reads", { projectId: id, offset }),
+  knowledge: (id, offset, query) => invoke<KnowledgePage>("list_knowledge_reads", { projectId: id, offset, query }),
+  knowledgeDocument: (id, documentId) => invoke<KnowledgeDocument>("get_knowledge_read", { projectId: id, documentId }),
 };
 
 export type ResearchPhase = "STOPPED" | "STARTING" | "PAUSED" | "NOT_READY" | "RUNNING" | "FAILED" | "STOPPING";

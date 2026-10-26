@@ -59,6 +59,7 @@ export function CommandCenter({ transport, research, ollama, drafts, notes }: { 
   const [missionRequest, setMissionRequest] = useState<{kind:"create"|"open";id?:string;seq:number}|null>(null);
   const [noteCreateSignal, setNoteCreateSignal] = useState(0);
   const [noteOpenRequest, setNoteOpenRequest] = useState<{id:string;seq:number}|null>(null);
+  const [backendOpenRequest, setBackendOpenRequest] = useState<{id:string;seq:number}|null>(null);
   const [requestSeq, setRequestSeq] = useState(0);
   const [refreshSignal, setRefreshSignal] = useState(0);
   const [capabilityOffset, setCapabilityOffset] = useState(0);
@@ -108,7 +109,7 @@ export function CommandCenter({ transport, research, ollama, drafts, notes }: { 
   const chooseProject = async (id: string | null) => {
     if (id === selectedId || !leaveEditor()) { restoreSelectorFocus.current = false; return; }
     setSelectionError(false);
-    try { await drafts.setPreferred(id); setSelectedId(id); setMissionDirty(false); setNoteDirty(false); setCapabilityOffset(0); setMissionRequest(null); setNoteOpenRequest(null); }
+    try { await drafts.setPreferred(id); setSelectedId(id); setMissionDirty(false); setNoteDirty(false); setCapabilityOffset(0); setMissionRequest(null); setNoteOpenRequest(null); setBackendOpenRequest(null); }
     catch { restoreSelectorFocus.current = false; setSelectionError(true); }
   };
   const navigate = (next: View) => { if (next !== view && leaveEditor()) { setView(next); setMissionDirty(false); setNoteDirty(false); setMissionRequest(null); setNoteOpenRequest(null); } };
@@ -116,6 +117,7 @@ export function CommandCenter({ transport, research, ollama, drafts, notes }: { 
   const openDraft = (id: string) => { if (!leaveEditor()) return; const seq=requestSeq+1;setRequestSeq(seq);setMissionRequest({kind:"open",id,seq});setView("missions");setMissionDirty(false);setNoteDirty(false); };
   const newNote = () => { if (!selectedId || !leaveEditor()) return;setNoteOpenRequest(null);setNoteCreateSignal(value=>value+1);setView("knowledge");setMissionDirty(false);setNoteDirty(false); };
   const openNote = (id: string) => { if (!leaveEditor()) return;const seq=requestSeq+1;setRequestSeq(seq);setNoteOpenRequest({id,seq});setView("knowledge");setMissionDirty(false);setNoteDirty(false); };
+  const openBackendKnowledge = (id: string) => { if (!selectedInCatalog || !leaveEditor()) return; const seq=requestSeq+1;setRequestSeq(seq);setBackendOpenRequest({id,seq});setView("knowledge");setMissionDirty(false);setNoteDirty(false); };
   const selectedProject = projectData?.projects.find((item) => item.id === selectedId);
 
   return <div className={sidebarCollapsed ? "command-layout sidebar-collapsed" : "command-layout"}>
@@ -131,8 +133,8 @@ export function CommandCenter({ transport, research, ollama, drafts, notes }: { 
       <nav aria-label="Espaces" className="nav-list">{primaryViews.filter(item=>item.id!=="settings").map(item =>
         <button key={item.id} type="button" aria-current={view===item.id ? "page" : undefined} className={view===item.id ? "nav-link active" : "nav-link"} onClick={()=>navigate(item.id)}><span aria-hidden="true"><NavIcon name={item.icon} /></span><span>{item.label}</span></button>)}</nav>
       <div className="sidebar-bottom"><button type="button" className={view==="settings" || ["runtime","models","capabilities","security"].includes(view) ? "nav-link active" : "nav-link"} aria-current={view==="settings" ? "page" : undefined} onClick={()=>navigate("settings")}><span aria-hidden="true"><NavIcon name="settings" /></span><span>Réglages</span></button>
-        <CommandPalette projectId={selectedId} projects={projectData?.projects ?? []} drafts={drafts} notes={notes}
-          navigate={next=>navigate(next)} chooseProject={id=>void chooseProject(id)} openDraft={openDraft} openNote={openNote} newDraft={newDraft} newNote={newNote} /></div>
+        <CommandPalette projectId={selectedId} verified={selectedInCatalog} management={transport} projects={projectData?.projects ?? []} drafts={drafts} notes={notes}
+          navigate={next=>navigate(next)} chooseProject={id=>void chooseProject(id)} openDraft={openDraft} openNote={openNote} openBackend={openBackendKnowledge} newDraft={newDraft} newNote={newNote} /></div>
     </aside>
     <main className="workspace">
       {view!=="home" && view!=="knowledge" && <header className="topbar"><div><p className="breadcrumb">{selectedProject?.name ?? selectedId ?? "Espace personnel"} / {sectionName[view]}</p><h1>{sectionName[view]}</h1>
@@ -156,7 +158,7 @@ export function CommandCenter({ transport, research, ollama, drafts, notes }: { 
       {view === "home" && <Home projectId={selectedId} projectName={selectedProject?.name ?? null} verified={selectedInCatalog}
         drafts={drafts} notes={notes} onOpenDraft={openDraft} onNewDraft={newDraft} onOpenNote={openNote} onNewNote={newNote} onProjects={()=>navigate("projects")} />}
       {view === "knowledge" && <KnowledgeWorkspace key={selectedId ?? "none"} projectId={selectedId} verified={selectedInCatalog}
-        transport={notes} onDirtyChange={onNoteDirtyChange} createSignal={noteCreateSignal} openNoteRequest={noteOpenRequest} refreshSignal={refreshSignal} />}
+        transport={notes} management={transport} onDirtyChange={onNoteDirtyChange} createSignal={noteCreateSignal} openNoteRequest={noteOpenRequest} openBackendRequest={backendOpenRequest} refreshSignal={refreshSignal} />}
       {view === "settings" && <div className="settings-index"><h2>Votre espace, à votre rythme.</h2><p>Les observations techniques restent disponibles ici, sans commande d’exécution.</p>
         <div className="settings-links"><button onClick={()=>navigate("runtime")}>Vue générale et diagnostics <span>→</span></button>
           <button onClick={()=>navigate("models")}>Modèles et runtime <span>→</span></button>
