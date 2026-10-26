@@ -21,6 +21,7 @@ describe("Tauri D5 authority declaration", () => {
       "allow-preferred-project-read", "allow-preferred-project-set", "allow-local-drafts-list",
       "allow-local-draft-get", "allow-local-draft-create", "allow-local-draft-update", "allow-local-draft-delete",
       "allow-local-notes-list", "allow-local-note-get", "allow-local-note-create", "allow-local-note-update", "allow-local-note-delete", "allow-local-note-export",
+      "allow-workspace-backup-counts", "allow-workspace-backup-export", "allow-workspace-restore-preview", "allow-workspace-restore-apply",
     ]);
     expect(config.app.security.csp).toContain("frame-src 'none'");
     expect(config.app.security.csp).not.toContain("http://127.0.0.1");
@@ -33,6 +34,7 @@ describe("Tauri D5 authority declaration", () => {
       "preferred_project_read", "preferred_project_set", "local_drafts_list", "local_draft_get",
       "local_draft_create", "local_draft_update", "local_draft_delete",
       "local_notes_list", "local_note_get", "local_note_create", "local_note_update", "local_note_delete", "local_note_export",
+      "workspace_backup_counts", "workspace_backup_export", "workspace_restore_preview", "workspace_restore_apply",
     ]);
     expect(registered).not.toMatch(/initialize_research_engine|start_research|stop_research_engine|select_research_profile/);
   });

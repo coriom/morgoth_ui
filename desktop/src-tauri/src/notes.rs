@@ -155,6 +155,16 @@ fn decode(bytes: &[u8], project: &str, id: &str) -> Result<Note, NativeError> {
         provenance: meta.provenance,
     })
 }
+pub(crate) fn validate_restored(note: &Note, project: &str) -> Result<Vec<u8>, NativeError> {
+    if !valid_id(&note.note_id) || note.project_id != project {
+        return Err(refusal("INCOMPATIBLE_RECORD"));
+    }
+    let bytes = encode(note)?;
+    if decode(&bytes, project, &note.note_id)? != *note {
+        return Err(refusal("INCOMPATIBLE_RECORD"));
+    }
+    Ok(bytes)
+}
 fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), NativeError> {
     let dir = path.parent().ok_or_else(io_error)?;
     let temp = dir.join(format!(".{}.tmp", Uuid::new_v4()));
@@ -284,6 +294,35 @@ impl NoteStore {
     pub fn get(&self, project: &str, id: &str) -> Result<Note, NativeError> {
         let dir = self.dir(project)?;
         self.locked(&dir, || Self::get_locked(&dir, project, id))
+    }
+    /// Publish a previously validated record without replacing any existing identity.
+    pub(crate) fn restore_record(&self, note: &Note) -> Result<(), NativeError> {
+        let bytes = validate_restored(note, &note.project_id)?;
+        let dir = self.dir(&note.project_id)?;
+        self.locked(&dir, || {
+            let path = Self::path(&dir, &note.note_id)?;
+            if present(&path)? {
+                return Err(refusal("NOTE_CONFLICT"));
+            }
+            let temp = dir.join(format!(".{}.tmp", Uuid::new_v4()));
+            let outcome = (|| {
+                let mut file = OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .mode(0o600)
+                    .custom_flags(NOFOLLOW)
+                    .open(&temp)
+                    .map_err(|_| io_error())?;
+                file.write_all(&bytes).map_err(|_| io_error())?;
+                file.sync_all().map_err(|_| io_error())?;
+                fs::hard_link(&temp, &path).map_err(|_| refusal("NOTE_CONFLICT"))?;
+                File::open(&dir)
+                    .and_then(|f| f.sync_all())
+                    .map_err(|_| io_error())
+            })();
+            let _ = fs::remove_file(&temp);
+            outcome
+        })
     }
     /// Copy one verified human note to a fixed app-owned Markdown export folder.
     pub fn export_markdown(

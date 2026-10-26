@@ -181,3 +181,13 @@ button:focus-visible, select:focus-visible { outline-offset: 2px; }
 .onboarding-callout button { flex:none; border:0; background:transparent; color:var(--accent); padding:6px 0; font:inherit; cursor:pointer; }
 .onboarding-callout button:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
 @media (max-width:630px) { .onboarding-callout { margin:0 22px; align-items:flex-start; flex-direction:column; gap:5px; } }
+/* D8 uses the existing Settings rhythm; digest text wraps on narrow windows. */
+.backup-workspace { max-width: 800px; }
+.backup-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 25px 0; }
+.backup-actions button, .backup-preview button { border: 1px solid var(--line); border-radius: 6px; background: var(--raised); color: var(--ink); padding: 9px 13px; }
+.backup-actions button:hover:not(:disabled), .backup-preview button:hover:not(:disabled) { border-color: var(--accent); }
+.backup-actions button:disabled, .backup-preview button:disabled { opacity: .5; }
+.backup-preview { padding: 16px 0; border-top: 1px solid var(--line); }
+.backup-preview h3 { margin: 0 0 10px; font-size: 17px; font-weight: 550; }
+.backup-preview code { overflow-wrap: anywhere; user-select: text; }
+.backup-preview button { margin: 4px 8px 4px 0; }

@@ -9,8 +9,9 @@ import { Home } from "./Home";
 import { CommandPalette } from "./CommandPalette";
 import { nativeNotes, type NoteTransport } from "./notes";
 import { ProjectCreationForm } from "./ProjectCreation";
+import { BackupWorkspace } from "./BackupWorkspace";
 
-type View = "home" | "missions" | "knowledge" | "projects" | "settings" | "runtime" | "capabilities" | "models" | "security";
+type View = "home" | "missions" | "knowledge" | "projects" | "settings" | "backups" | "runtime" | "capabilities" | "models" | "security";
 type NavIconName = "home" | "missions" | "knowledge" | "projects" | "settings";
 const primaryViews: ReadonlyArray<{ id: View; label: string; icon: NavIconName }> = [
   { id: "home", label: "Accueil", icon: "home" },
@@ -30,7 +31,7 @@ function NavIcon({ name }: { name: NavIconName }) {
   return <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">{iconPaths[name]}</svg>;
 }
 const sectionName: Record<View, string> = { home: "Accueil", missions: "Missions", knowledge: "Connaissances",
-  projects: "Projets", settings: "Réglages", runtime: "Runtime", capabilities: "Capacités",
+  projects: "Projets", settings: "Réglages", backups: "Données et sauvegardes", runtime: "Runtime", capabilities: "Capacités",
   models: "Modèles & runtime", security: "Sécurité" };
 
 function Fact({ label, value, source = "Observé", tone = "neutral" }: {
@@ -143,7 +144,7 @@ export function CommandCenter({ transport, research, ollama, drafts, notes }: { 
         title={selectedProject?.name ?? selectedId ?? "Choisir un Project"}>P</button>
       <nav aria-label="Espaces" className="nav-list">{primaryViews.filter(item=>item.id!=="settings").map(item =>
         <button key={item.id} type="button" aria-current={view===item.id ? "page" : undefined} className={view===item.id ? "nav-link active" : "nav-link"} onClick={()=>navigate(item.id)}><span aria-hidden="true"><NavIcon name={item.icon} /></span><span>{item.label}</span></button>)}</nav>
-      <div className="sidebar-bottom"><button type="button" className={view==="settings" || ["runtime","models","capabilities","security"].includes(view) ? "nav-link active" : "nav-link"} aria-current={view==="settings" ? "page" : undefined} onClick={()=>navigate("settings")}><span aria-hidden="true"><NavIcon name="settings" /></span><span>Réglages</span></button>
+      <div className="sidebar-bottom"><button type="button" className={view==="settings" || ["backups","runtime","models","capabilities","security"].includes(view) ? "nav-link active" : "nav-link"} aria-current={view==="settings" ? "page" : undefined} onClick={()=>navigate("settings")}><span aria-hidden="true"><NavIcon name="settings" /></span><span>Réglages</span></button>
         <CommandPalette projectId={selectedId} verified={selectedInCatalog} management={transport} projects={projectData?.projects ?? []} drafts={drafts} notes={notes}
           navigate={next=>navigate(next)} chooseProject={id=>void chooseProject(id)} openDraft={openDraft} openNote={openNote} openBackend={openBackendKnowledge} newDraft={newDraft} newNote={newNote} /></div>
     </aside>
@@ -174,11 +175,14 @@ export function CommandCenter({ transport, research, ollama, drafts, notes }: { 
       {view === "knowledge" && <KnowledgeWorkspace key={selectedId ?? "none"} projectId={selectedId} verified={selectedInCatalog}
         transport={notes} management={transport} onDirtyChange={onNoteDirtyChange} createSignal={noteCreateSignal} openNoteRequest={noteOpenRequest} openBackendRequest={backendOpenRequest} refreshSignal={refreshSignal} />}
       {view === "settings" && <div className="settings-index"><h2>Votre espace, à votre rythme.</h2><p>Les observations techniques restent disponibles ici, sans commande d’exécution.</p>
-        <div className="settings-links"><button onClick={()=>navigate("runtime")}>Vue générale et diagnostics <span>→</span></button>
+        <div className="settings-links"><button onClick={()=>navigate("backups")}>Données et sauvegardes <span>→</span></button><button onClick={()=>navigate("runtime")}>Vue générale et diagnostics <span>→</span></button>
           <button onClick={()=>navigate("models")}>Modèles et runtime <span>→</span></button>
           <button onClick={()=>navigate("capabilities")}>Outils et capacités <span>→</span></button>
           <button onClick={()=>navigate("security")}>Sécurité et permissions <span>→</span></button></div>
         <p className="source-stamp">Apparence : thème sombre initial, jetons prêts pour une personnalisation ultérieure. Aucune préférence de thème n’est simulée.</p></div>}
+      {view === "backups" && <BackupWorkspace key={selectedId ?? "none"} projectId={selectedId}
+        verified={selectedInCatalog && !selectedProject?.legacy && selectedProject?.configuration_valid === true}
+        onRestored={() => { void queryClient.invalidateQueries(); setRefreshSignal(value => value + 1); }} />}
       {view === "runtime" && <div className="settings-index"><h2>Observations disponibles</h2><dl className="fact-list">
         <Fact label="Management" value={connected ? "Accessible" : "Indisponible"} source="Lecture native" />
         <Fact label="Recherche" value={engineData?.state ?? "Inconnue"} source="Superviseur natif" />

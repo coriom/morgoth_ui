@@ -336,6 +336,22 @@ pub struct Draft {
     pub created_at_ms: u64,
     pub updated_at_ms: u64,
 }
+pub(crate) fn validate_restored(draft: &Draft, project: &str) -> Result<Vec<u8>, NativeError> {
+    validate_id(&draft.draft_id)?;
+    if draft.project_id != project
+        || draft.schema_version != 1
+        || draft.revision == 0
+        || draft.updated_at_ms < draft.created_at_ms
+    {
+        return Err(refusal("INCOMPATIBLE_RECORD"));
+    }
+    validate_text(&draft.title, &draft.objective, &draft.verification_criteria)?;
+    let bytes = serde_json::to_vec(draft).map_err(|_| refusal("INCOMPATIBLE_RECORD"))?;
+    if bytes.len() as u64 > MAX_FILE {
+        return Err(refusal("OVERSIZED_RECORD"));
+    }
+    Ok(bytes)
+}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DraftInput {
@@ -460,6 +476,35 @@ impl DraftStore {
     pub fn get(&self, project_id: &str, draft_id: &str) -> Result<Draft, NativeError> {
         let dir = self.project_dir(project_id)?;
         self.locked(&dir, || Self::get_locked(&dir, project_id, draft_id))
+    }
+    /// Publish a previously validated brief without replacing an existing identity.
+    pub(crate) fn restore_record(&self, draft: &Draft) -> Result<(), NativeError> {
+        let bytes = validate_restored(draft, &draft.project_id)?;
+        let dir = self.project_dir(&draft.project_id)?;
+        self.locked(&dir, || {
+            let path = Self::path(&dir, &draft.draft_id)?;
+            if present(&path)? {
+                return Err(refusal("DRAFT_CONFLICT"));
+            }
+            let temporary = dir.join(format!(".{}.tmp", Uuid::new_v4()));
+            let result = (|| {
+                let mut file = OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .mode(0o600)
+                    .custom_flags(NOFOLLOW)
+                    .open(&temporary)
+                    .map_err(|_| io_error())?;
+                file.write_all(&bytes).map_err(|_| io_error())?;
+                file.sync_all().map_err(|_| io_error())?;
+                fs::hard_link(&temporary, &path).map_err(|_| refusal("DRAFT_CONFLICT"))?;
+                File::open(&dir)
+                    .and_then(|f| f.sync_all())
+                    .map_err(|_| io_error())
+            })();
+            let _ = fs::remove_file(&temporary);
+            result
+        })
     }
     pub fn create(&self, input: DraftInput) -> Result<Draft, NativeError> {
         validate_text(&input.title, &input.objective, &input.verification_criteria)?;

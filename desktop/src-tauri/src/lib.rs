@@ -5,6 +5,7 @@ use reqwest::{header, Method};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{io::Read, path::Path, time::Duration};
 
+pub mod backup;
 pub mod drafts;
 pub mod notes;
 pub mod ollama_read;
@@ -810,11 +811,231 @@ fn safe_uuid(value: &str) -> bool {
 #[cfg(feature = "desktop")]
 mod desktop {
     use super::*;
+    use crate::backup::{BackupReceipt, BackupStore, EXTENSION};
     use crate::drafts::{Draft, DraftInput, DraftStore, DraftUpdate};
     use crate::notes::{Note, NoteInput, NoteStore, NoteUpdate};
     use crate::research::{ProfilesResponse, ResearchEngineStatus, ResearchEngineSupervisor};
     use crate::supervisor::{ManagementRuntimeStatus, ManagementSupervisor, SupervisorConfig};
+    use gtk::prelude::*;
+    use std::{path::PathBuf, sync::Mutex, time::Duration};
     use tauri::{Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+    pub struct PendingRestore {
+        project: String,
+        path: PathBuf,
+        digest: String,
+        token: String,
+        notes_count: usize,
+        drafts_count: usize,
+    }
+    fn backup_store(app: &tauri::AppHandle) -> Result<BackupStore, NativeError> {
+        let root = app
+            .path()
+            .app_local_data_dir()
+            .map_err(|_| NativeError::new("LOCAL_BACKUP", "Stockage local indisponible."))?;
+        Ok(BackupStore {
+            notes: NoteStore::new(root.join("knowledge-v1")),
+            drafts: DraftStore::new(root.join("mission-workspace-v1")),
+            state_root: root.join("workspace-backup-v1"),
+            app_data: root,
+        })
+    }
+    async fn verified_backup_project(
+        supervisor: &ManagementSupervisor,
+        project: &str,
+    ) -> Result<(), NativeError> {
+        if !safe_project_id(project) || project == "default" {
+            return Err(NativeError::new("INVALID_PROJECT", "Project géré requis."));
+        }
+        let found = supervisor.client()?.get_project(project).await?;
+        if found.id != project || found.legacy || !found.configuration_valid {
+            return Err(NativeError::new(
+                "PROJECT_UNVERIFIED",
+                "Project géré non vérifié.",
+            ));
+        }
+        Ok(())
+    }
+    async fn choose_backup_file(
+        app: &tauri::AppHandle,
+        save: bool,
+        project: &str,
+    ) -> Result<Option<PathBuf>, NativeError> {
+        let (sender, receiver) = std::sync::mpsc::sync_channel(1);
+        let name = format!("{project}{EXTENSION}");
+        app.run_on_main_thread(move || {
+            let chooser = gtk::FileChooserDialog::builder()
+                .title(if save {
+                    "Exporter l’espace personnel"
+                } else {
+                    "Ouvrir une sauvegarde Morgoth"
+                })
+                .action(if save {
+                    gtk::FileChooserAction::Save
+                } else {
+                    gtk::FileChooserAction::Open
+                })
+                .build();
+            chooser.add_button("Annuler", gtk::ResponseType::Cancel);
+            chooser.add_button(
+                if save { "Exporter" } else { "Ouvrir" },
+                gtk::ResponseType::Accept,
+            );
+            if save {
+                chooser.set_current_name(&name);
+            }
+            let sender = std::cell::RefCell::new(Some(sender));
+            chooser.connect_response(move |dialog, response| {
+                if let Some(sender) = sender.borrow_mut().take() {
+                    let _ = sender.send(if response == gtk::ResponseType::Accept {
+                        dialog.filename()
+                    } else {
+                        None
+                    });
+                }
+                dialog.close();
+            });
+            chooser.show_all();
+        })
+        .map_err(|_| NativeError::new("DIALOG_UNAVAILABLE", "Dialogue natif indisponible."))?;
+        tauri::async_runtime::spawn_blocking(move || {
+            receiver.recv_timeout(Duration::from_secs(300))
+        })
+        .await
+        .map_err(|_| NativeError::new("DIALOG_UNAVAILABLE", "Dialogue natif indisponible."))?
+        .map_err(|_| NativeError::new("DIALOG_UNAVAILABLE", "Dialogue natif indisponible."))
+    }
+    async fn confirm_restore(
+        app: &tauri::AppHandle,
+        session: &PendingRestore,
+    ) -> Result<bool, NativeError> {
+        let (sender, receiver) = std::sync::mpsc::sync_channel(1);
+        let summary = format!("Restaurer {} notes et {} briefs dans le Project {} ?\n\nAucun contenu existant ne sera supprimé.",
+            session.notes_count, session.drafts_count, session.project);
+        app.run_on_main_thread(move || {
+            let dialog = gtk::MessageDialog::new(
+                None::<&gtk::Window>,
+                gtk::DialogFlags::MODAL,
+                gtk::MessageType::Question,
+                gtk::ButtonsType::OkCancel,
+                &summary,
+            );
+            dialog.set_title("Confirmer la restauration Morgoth");
+            let sender = std::cell::RefCell::new(Some(sender));
+            dialog.connect_response(move |dialog, response| {
+                if let Some(sender) = sender.borrow_mut().take() {
+                    let _ = sender.send(response == gtk::ResponseType::Ok);
+                }
+                dialog.close();
+            });
+            dialog.show();
+        })
+        .map_err(|_| NativeError::new("DIALOG_UNAVAILABLE", "Confirmation native indisponible."))?;
+        tauri::async_runtime::spawn_blocking(move || {
+            receiver.recv_timeout(Duration::from_secs(300))
+        })
+        .await
+        .map_err(|_| NativeError::new("DIALOG_UNAVAILABLE", "Confirmation native indisponible."))?
+        .map_err(|_| NativeError::new("DIALOG_UNAVAILABLE", "Confirmation native indisponible."))
+    }
+    #[tauri::command]
+    pub async fn workspace_backup_counts(
+        window: WebviewWindow,
+        app: tauri::AppHandle,
+        supervisor: State<'_, ManagementSupervisor>,
+        project_id: String,
+    ) -> Result<(usize, usize), NativeError> {
+        main_only(&window)?;
+        verified_backup_project(&supervisor, &project_id).await?;
+        let store = backup_store(&app)?;
+        draft_job(move || store.counts(&project_id)).await
+    }
+    #[tauri::command]
+    pub async fn workspace_backup_export(
+        window: WebviewWindow,
+        app: tauri::AppHandle,
+        supervisor: State<'_, ManagementSupervisor>,
+        project_id: String,
+    ) -> Result<Option<BackupReceipt>, NativeError> {
+        main_only(&window)?;
+        verified_backup_project(&supervisor, &project_id).await?;
+        let Some(destination) = choose_backup_file(&app, true, &project_id).await? else {
+            return Ok(None);
+        };
+        let store = backup_store(&app)?;
+        draft_job(move || store.export(&project_id, &destination).map(Some)).await
+    }
+    #[derive(serde::Serialize)]
+    pub struct RestorePreview {
+        receipt: BackupReceipt,
+        token: String,
+    }
+    #[tauri::command]
+    pub async fn workspace_restore_preview(
+        window: WebviewWindow,
+        app: tauri::AppHandle,
+        supervisor: State<'_, ManagementSupervisor>,
+        pending: State<'_, Mutex<Option<PendingRestore>>>,
+        project_id: String,
+    ) -> Result<Option<RestorePreview>, NativeError> {
+        main_only(&window)?;
+        verified_backup_project(&supervisor, &project_id).await?;
+        let Some(path) = choose_backup_file(&app, false, &project_id).await? else {
+            return Ok(None);
+        };
+        let store = backup_store(&app)?;
+        let scoped = project_id.clone();
+        let selected = path.clone();
+        let receipt = draft_job(move || store.preview(&scoped, &selected)).await?;
+        let token = uuid::Uuid::new_v4().to_string();
+        *pending.lock().map_err(|_| {
+            NativeError::new("RESTORE_UNAVAILABLE", "Prévisualisation indisponible.")
+        })? = Some(PendingRestore {
+            project: project_id,
+            path,
+            digest: receipt.sha256.clone(),
+            token: token.clone(),
+            notes_count: receipt.notes_count,
+            drafts_count: receipt.drafts_count,
+        });
+        Ok(Some(RestorePreview { receipt, token }))
+    }
+    #[tauri::command]
+    pub async fn workspace_restore_apply(
+        window: WebviewWindow,
+        app: tauri::AppHandle,
+        supervisor: State<'_, ManagementSupervisor>,
+        pending: State<'_, Mutex<Option<PendingRestore>>>,
+        project_id: String,
+        token: String,
+    ) -> Result<Option<BackupReceipt>, NativeError> {
+        main_only(&window)?;
+        verified_backup_project(&supervisor, &project_id).await?;
+        let session = {
+            let mut guard = pending.lock().map_err(|_| {
+                NativeError::new("RESTORE_UNAVAILABLE", "Restauration indisponible.")
+            })?;
+            if guard
+                .as_ref()
+                .is_none_or(|p| p.project != project_id || p.token != token)
+            {
+                return Err(NativeError::new(
+                    "RESTORE_NOT_PREVIEWED",
+                    "Prévisualisation requise.",
+                ));
+            }
+            guard.take().expect("checked pending restore")
+        };
+        if !confirm_restore(&app, &session).await? {
+            return Ok(None);
+        }
+        let store = backup_store(&app)?;
+        draft_job(move || {
+            store
+                .restore(&project_id, &session.path, &session.digest)
+                .map(Some)
+        })
+        .await
+    }
     fn main_only(window: &WebviewWindow) -> Result<(), NativeError> {
         if window.label() == "main" {
             Ok(())
@@ -1191,6 +1412,7 @@ mod desktop {
         let app = tauri::Builder::default()
             .manage(supervisor)
             .manage(research)
+            .manage(Mutex::new(None::<PendingRestore>))
             .setup(|app| {
                 let expected = if cfg!(debug_assertions) {
                     "http://127.0.0.1:5173"
@@ -1237,6 +1459,10 @@ mod desktop {
                 local_note_update,
                 local_note_delete,
                 local_note_export,
+                workspace_backup_counts,
+                workspace_backup_export,
+                workspace_restore_preview,
+                workspace_restore_apply,
             ])
             .build(tauri::generate_context!())
             .expect("Morgoth desktop runtime failed");

@@ -123,20 +123,20 @@ fn main() {
             verification_criteria: "Contrôle humain".into(),
         })
         .unwrap();
-    let first = note_store
-        .create(NoteInput {
-            project_id: "personal".into(),
-            title: "Alpha".into(),
-            collection: "Personnel".into(),
-            markdown: "Voir [[Beta]].".into(),
-        })
-        .unwrap();
     let second = note_store
         .create(NoteInput {
             project_id: "personal".into(),
             title: "Beta".into(),
             collection: "Personnel".into(),
             markdown: "Source synthétique.".into(),
+        })
+        .unwrap();
+    let first = note_store
+        .create(NoteInput {
+            project_id: "personal".into(),
+            title: "Alpha".into(),
+            collection: "Personnel".into(),
+            markdown: format!("Voir [[{}|Beta]].", second.note_id),
         })
         .unwrap();
     let reopened_drafts = DraftStore::new(local.join("mission-workspace-v1"));
@@ -154,7 +154,7 @@ fn main() {
             .get("personal", &first.note_id)
             .unwrap()
             .markdown,
-        "Voir [[Beta]]."
+        format!("Voir [[{}|Beta]].", second.note_id)
     );
     assert_eq!(
         reopened_notes
@@ -166,7 +166,10 @@ fn main() {
     let exported = reopened_notes
         .export_markdown("personal", &first.note_id, &local.join("note-exports-v1"))
         .unwrap();
-    assert_eq!(std::fs::read_to_string(exported).unwrap(), "Voir [[Beta]].");
+    assert_eq!(
+        std::fs::read_to_string(exported).unwrap(),
+        format!("Voir [[{}|Beta]].", second.note_id)
+    );
     assert!(reopened_drafts.list("other").unwrap().is_empty());
     assert!(reopened_notes.list("other").unwrap().is_empty());
     println!("D7_NATIVE_PERSISTENCE_PASS=true PROJECT_CREATED=true ENGINE_STARTED=false PERSONAL_RECORDS_REOPENED=true CROSS_PROJECT_EMPTY=true NO_INFERENCE=true");

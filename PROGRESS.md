@@ -73,6 +73,20 @@ unchanged. See `docs/DESKTOP-D2-*.md` for exact evidence and limitations.
 
 # PROGRESS.md — Morgoth UI Development Tracker
 
+## 2026-10-26 — Desktop D8 Project workspace portability
+
+Branch `feat/morgoth-desktop-d8-workspace-backup-v1` adds a bounded, versioned
+JSON export of human local notes and mission briefs, with SHA-256 integrity,
+native GTK file selection and explicit same-Project empty-target restoration.
+The original D4/D5 stores and Tauri application identity remain in place.
+An interruption journal supports explicit resumption from the identical
+validated archive without replacing existing records. Management Project
+verification remains mandatory; backend vault knowledge, agent memory and
+secrets are excluded. See `docs/DESKTOP-D8-WORKSPACE-PORTABILITY.md` for the
+format, recovery behavior, launch commands and acceptance limits. New direct
+Rust dependencies: `sha2` and Linux GTK (already present transitively in the
+Tauri lockfile). No backend change or inference.
+
 ## 2026-10-21 — Desktop D1 command center candidate (feature branch)
 
 The native Tauri/Vite Desktop now has six read-only supervision views: Overview,

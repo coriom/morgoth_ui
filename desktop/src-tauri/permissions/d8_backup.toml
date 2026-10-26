@@ -1,0 +1,19 @@
+[[permission]]
+identifier = "allow-workspace-backup-counts"
+description = "Count verified Project personal records only."
+commands.allow = ["workspace_backup_counts"]
+
+[[permission]]
+identifier = "allow-workspace-backup-export"
+description = "Export verified Project personal records to a native-dialog selected destination."
+commands.allow = ["workspace_backup_export"]
+
+[[permission]]
+identifier = "allow-workspace-restore-preview"
+description = "Preview one native-dialog selected, validated Project archive."
+commands.allow = ["workspace_restore_preview"]
+
+[[permission]]
+identifier = "allow-workspace-restore-apply"
+description = "Restore only a previously previewed matching Project archive."
+commands.allow = ["workspace_restore_apply"]
