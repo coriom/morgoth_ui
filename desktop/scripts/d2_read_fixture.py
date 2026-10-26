@@ -57,6 +57,7 @@ async def _seed(socket: Path, projects: tuple[object, object]) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Disposable D2 native read proof")
     parser.add_argument("--window", action="store_true", help="open one local Tauri window after the native read proof")
+    parser.add_argument("--x11", action="store_true", help="use XWayland for targeted disposable window screenshots")
     args = parser.parse_args()
     ui = Path(__file__).resolve().parents[2]
     root = ui.parent
@@ -114,6 +115,8 @@ def main() -> int:
                 gui_env = {**env, "DISPLAY": os.environ.get("DISPLAY", ""),
                            "WAYLAND_DISPLAY": os.environ.get("WAYLAND_DISPLAY", ""),
                            "XDG_RUNTIME_DIR": os.environ.get("XDG_RUNTIME_DIR", "")}
+                if args.x11:
+                    gui_env["GDK_BACKEND"] = "x11"
                 vite = subprocess.Popen(["npm", "run", "dev", "--", "--strictPort"], cwd=desktop, env=gui_env,
                                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 for _ in range(30):
