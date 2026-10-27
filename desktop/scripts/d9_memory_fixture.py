@@ -73,8 +73,12 @@ async def populate(socket: Path, home: Path) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--window", action="store_true")
+    parser.add_argument("--window-seconds", type=int, default=0,
+                        help="bound a disposable native window smoke (5–120 seconds)")
     parser.add_argument("--x11", action="store_true")
     args = parser.parse_args()
+    if args.window_seconds and (not args.window or not 5 <= args.window_seconds <= 120):
+        raise SystemExit("D9_WINDOW_DURATION_INVALID")
     ui = Path(__file__).resolve().parents[2]
     backend = ui.parent / "dev-desktop-d9-backend"
     if git(ui, "branch", "--show-current") != UI_BRANCH or git(ui, "status", "--porcelain", "--untracked-files=all"):
@@ -130,7 +134,12 @@ def main() -> int:
                     else:
                         raise RuntimeError("D9_VITE_UNAVAILABLE")
                     print("D9_WINDOW=OPEN Select alpha > Connaissances > Mémoire structurée. Fixture synthétique.", flush=True)
-                    subprocess.run([str(desktop / "src-tauri/target/debug/morgoth-desktop")], env=gui, cwd=ui, check=True)
+                    try:
+                        subprocess.run([str(desktop / "src-tauri/target/debug/morgoth-desktop")],
+                            env=gui, cwd=ui, check=True,
+                            timeout=args.window_seconds or None)
+                    except subprocess.TimeoutExpired:
+                        print("D9_WINDOW_BOUND_REACHED=true", flush=True)
                 finally:
                     vite.terminate()
                     try:
