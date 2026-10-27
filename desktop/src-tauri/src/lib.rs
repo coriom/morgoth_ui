@@ -545,7 +545,10 @@ impl ManagementClient {
         Self::new(port, path)
     }
     fn url(&self, path: &str) -> String {
-        if path.starts_with(READ_PREFIX) || path.starts_with("/desktop-knowledge/v1/") {
+        if path.starts_with(READ_PREFIX)
+            || path.starts_with("/desktop-knowledge/v1/")
+            || path.starts_with("/desktop-memory/v1/")
+        {
             format!("http://127.0.0.1:{}{path}", self.port)
         } else {
             format!("http://127.0.0.1:{}{PREFIX}{path}", self.port)
@@ -1773,6 +1776,22 @@ pub use desktop::run;
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn structured_memory_routes_use_fixed_native_local_origin() {
+        let client = ManagementClient {
+            http: reqwest::Client::new(),
+            port: 8765,
+            token: "fixture".into(),
+        };
+        assert_eq!(
+            client.url("/desktop-memory/v1/projects/alpha/theses"),
+            "http://127.0.0.1:8765/desktop-memory/v1/projects/alpha/theses"
+        );
+        assert_eq!(
+            client.url("/projects"),
+            "http://127.0.0.1:8765/management/v1/projects"
+        );
+    }
     #[test]
     fn project_creation_requires_safe_identity_and_non_operational_receipt() {
         let input = CreateProjectRequest {
