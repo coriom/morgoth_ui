@@ -122,7 +122,9 @@ def main() -> int:
                     env=gui, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 try:
                     opener = build_opener(ProxyHandler({}))
-                    for _ in range(40):
+                    # Vite startup under WSL contention can exceed the old 8 s fixture wait.
+                    deadline = time.monotonic() + 30
+                    while time.monotonic() < deadline:
                         if vite.poll() is not None:
                             raise RuntimeError("D9_VITE_UNAVAILABLE")
                         try:
@@ -130,7 +132,7 @@ def main() -> int:
                                 if response.status == 200:
                                     break
                         except OSError:
-                            time.sleep(.2)
+                            time.sleep(.25)
                     else:
                         raise RuntimeError("D9_VITE_UNAVAILABLE")
                     print("D9_WINDOW=OPEN Select alpha > Connaissances > Mémoire structurée. Fixture synthétique.", flush=True)
