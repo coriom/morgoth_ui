@@ -39,7 +39,7 @@ async def populate(socket: Path, home: Path) -> None:
     projects = {p.id: p for p in manager._catalog()}
     conn = await asyncpg.connect(host=str(socket), port=int(PORT), database="morgoth_test", user=getpass.getuser())
     try:
-        for project in projects.values():
+        for project in (projects["alpha"], projects["beta"]):
             schema = project.postgres_schema
             await conn.execute(f'CREATE SCHEMA "{schema}"')
             await conn.execute(f'''CREATE TABLE "{schema}".theses (
