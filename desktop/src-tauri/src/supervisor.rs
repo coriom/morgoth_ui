@@ -14,7 +14,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-pub const BACKEND_SHA: &str = "3f18a375453af0c8efe2586440b3e8612707c6f2";
+pub const BACKEND_SHA: &str = "a91377c9ace8d70bf64aa44b3bd54773af612e3a";
 const STARTUP_LIMIT: Duration = Duration::from_secs(15);
 const STOP_GRACE: Duration = Duration::from_secs(3);
 
@@ -256,6 +256,10 @@ fn child_command(config: &SupervisorConfig, token_path: &Path, port: u16) -> Com
     // The backend independently requires an owner-private Unix socket and morgoth_test.
     if let Some(socket) = std::env::var_os("MORGOTH_DESKTOP_TEST_PG_SOCKET") {
         command.arg("--test-pg-socket").arg(socket);
+    }
+    // Optional operator-owned authority file; no locator originates in the WebView.
+    if let Some(config) = std::env::var_os("MORGOTH_DESKTOP_MEMORY_READ_CONFIG") {
+        command.arg("--memory-read-config").arg(config);
     }
     #[cfg(target_os = "linux")]
     {

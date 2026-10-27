@@ -191,3 +191,12 @@ button:focus-visible, select:focus-visible { outline-offset: 2px; }
 .backup-preview h3 { margin: 0 0 10px; font-size: 17px; font-weight: 550; }
 .backup-preview code { overflow-wrap: anywhere; user-select: text; }
 .backup-preview button { margin: 4px 8px 4px 0; }
+/* Structured memory shares the quiet knowledge controls, with a bounded graph pane. */
+.memory-graph.knowledge-columns { grid-template-columns:minmax(0,1fr) 235px; }
+.memory-graph .graph-canvas { min-height:430px; max-height:610px; overflow:hidden; }
+.memory-graph .graph-canvas svg { width:100%; height:520px; }
+.memory-graph .graph-node text { text-anchor:start; font-size:12px; }
+.memory-graph .graph-inspector { max-height:650px; }
+.memory-graph .graph-inspector button { overflow-wrap:anywhere; }
+.backend-knowledge .knowledge-list select,.backend-knowledge .knowledge-list input[type=date] { width:100%; min-width:0; margin:3px 0 12px; }
+@media(max-width:850px){.memory-graph.knowledge-columns{display:block}.memory-graph .graph-inspector{max-height:240px}}

@@ -73,6 +73,18 @@ unchanged. See `docs/DESKTOP-D2-*.md` for exact evidence and limitations.
 
 # PROGRESS.md — Morgoth UI Development Tracker
 
+## 2026-10-27 — Desktop D9 Structured Memory Explorer candidate
+
+The isolated D9 Desktop branch adds a third, read-only Knowledge source for
+recorded Project theses and contradictions. Four fixed native IPC reads use an
+authenticated Management contract pinned to a separate D9 backend read branch.
+The optional PostgreSQL authority requires an operator-owned private config,
+a Project-specific read-only role and an already initialized schema; no source
+is inferred from Project creation. Personal notes, vault documents, mission
+drafts and the D8 backup format remain separate. See
+`docs/DESKTOP-D9-STRUCTURED-MEMORY.md` for provenance and acceptance limits.
+No runtime dependency, inference or execution permission was added.
+
 ## 2026-10-26 — Desktop D8 Project workspace portability
 
 Branch `feat/morgoth-desktop-d8-workspace-backup-v1` adds a bounded, versioned

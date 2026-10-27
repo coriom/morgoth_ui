@@ -22,6 +22,10 @@ function management(overrides: Partial<ManagementTransport> = {}): ManagementTra
     capabilities: vi.fn(async (id) => ({ project_id: id, capabilities: [], next_offset: null, source: "DISPOSABLE_POSTGRESQL" as const })),
     knowledge: vi.fn(async (id) => ({ schema_version: 1 as const, project_id: id, source: "PROJECT_MARKDOWN_VAULT" as const, read_at: new Date().toISOString(), documents: [], next_offset: null })),
     knowledgeDocument: vi.fn(async () => { throw new Error("missing"); }),
+    structuredTheses: vi.fn(async (id) => ({schema_version:1 as const,project_id:id,source:"PROJECT_STRUCTURED_POSTGRESQL" as const,read_at:new Date().toISOString(),theses:[],next_offset:null})),
+    structuredThesis: vi.fn(async () => { throw new Error("missing"); }),
+    structuredContradictions: vi.fn(async (id) => ({schema_version:1 as const,project_id:id,source:"PROJECT_STRUCTURED_POSTGRESQL" as const,read_at:new Date().toISOString(),contradictions:[],next_offset:null})),
+    structuredContradiction: vi.fn(async () => { throw new Error("missing"); }),
     ...overrides };
 }
 function research(overrides: Partial<ResearchTransport> = {}): ResearchTransport {

@@ -3,20 +3,21 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { MarkdownPreview } from "./MarkdownPreview";
 import { KnowledgeGraph } from "./KnowledgeGraph";
 import { BackendKnowledge } from "./BackendKnowledge";
+import { StructuredMemory } from "./StructuredMemory";
 import type { ManagementTransport } from "./transport";
 import { backlinksTo, filterNotes, linksFrom, readNote, readNoteList, type LocalNote, type NoteTransport } from "./notes";
 
 const stamp = (value: number) => new Date(value).toLocaleString("fr-FR");
 
 /** Personal notes and the read-only Project vault remain distinct. */
-export function KnowledgeWorkspace({ projectId, verified, transport, management, onDirtyChange, createSignal, openNoteRequest, openBackendRequest, refreshSignal }: {
+export function KnowledgeWorkspace({ projectId, verified, transport, management, onDirtyChange, createSignal, openNoteRequest, openBackendRequest, openStructuredRequest, refreshSignal }: {
   projectId: string | null; verified: boolean; transport: NoteTransport; onDirtyChange: (value: boolean) => void;
   management: ManagementTransport; createSignal: number; openNoteRequest: {id:string;seq:number} | null;
-  openBackendRequest: {id:string;seq:number} | null; refreshSignal: number;
+  openBackendRequest: {id:string;seq:number} | null; openStructuredRequest?: {id:string;seq:number} | null; refreshSignal: number;
 }) {
   const cache = useQueryClient();
   const [mode, setMode] = useState<"notes" | "graph">("notes");
-  const [source, setSource] = useState<"personal"|"morgoth">("personal");
+  const [source, setSource] = useState<"personal"|"morgoth"|"structured">("personal");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [current, setCurrent] = useState<LocalNote | null>(null);
   const [creating, setCreating] = useState(false);
@@ -68,6 +69,10 @@ export function KnowledgeWorkspace({ projectId, verified, transport, management,
   useEffect(() => { if (!openBackendRequest || openBackendRequest.seq === seenBackendOpen.current) return;
     seenBackendOpen.current = openBackendRequest.seq; discardForBackend(); setSource("morgoth");
   }, [openBackendRequest?.seq]);
+  useEffect(() => { if (openStructuredRequest) { discardForBackend(); setSource("structured"); }
+    // Parent guards unsaved edits before publishing this request.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openStructuredRequest?.seq]);
   const open = async (id: string) => {
     if (!projectId || !guard()) return;
     setBusy(true); setError(null);
@@ -114,8 +119,8 @@ export function KnowledgeWorkspace({ projectId, verified, transport, management,
     <header className="page-heading"><div><p className="breadcrumb">{verified ? "Project vérifié" : "Project mémorisé · non vérifié"} / Connaissances</p><h1>Connaissances</h1><p>{source === "personal" ? "Des notes personnelles, des liens explicites." : "Documents du Project, lus sans inférence et sans modification."}</p></div>
       {source === "personal" && <div className="segmented" role="group" aria-label="Mode des connaissances"><button type="button" aria-pressed={mode === "notes"} onClick={() => setMode("notes")}>Notes</button>
         <button type="button" aria-pressed={mode === "graph"} onClick={() => { if (guard()) setMode("graph"); }}>Graphe</button></div>}</header>
-    <div className="knowledge-source-switch" role="group" aria-label="Source de connaissance"><button type="button" aria-pressed={source === "personal"} onClick={()=>setSource("personal")}>Notes personnelles</button><button type="button" aria-pressed={source === "morgoth"} onClick={()=>{if(guard()){discardForBackend();setSource("morgoth");}}}>Connaissances Morgoth</button></div>
-    {source === "morgoth" ? <BackendKnowledge projectId={projectId} verified={verified} transport={management} openRequest={openBackendRequest} /> : <>
+    <div className="knowledge-source-switch" role="group" aria-label="Source de connaissance"><button type="button" aria-pressed={source === "personal"} onClick={()=>setSource("personal")}>Notes personnelles</button><button type="button" aria-pressed={source === "morgoth"} onClick={()=>{if(guard()){discardForBackend();setSource("morgoth");}}}>Coffre Morgoth</button><button type="button" aria-pressed={source === "structured"} onClick={()=>{if(guard()){discardForBackend();setSource("structured");}}}>Mémoire structurée</button></div>
+    {source === "morgoth" ? <BackendKnowledge projectId={projectId} verified={verified} transport={management} openRequest={openBackendRequest} /> : source === "structured" ? <StructuredMemory key={projectId} projectId={projectId} verified={verified} transport={management} openRequest={openStructuredRequest} /> : <>
     {error && <p role="alert" className="notice warn">{error}</p>}
     {mode === "graph" ? <KnowledgeGraph notes={notes} selectedId={selectedId} onSelect={id => setSelectedId(id)} onOpen={id => void open(id)} />
       : <div className="knowledge-columns"><aside className="knowledge-list" aria-label="Collections et notes">

@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { components } from "./api.generated";
-import type { DesktopCodexReadinessV1, DesktopMissionPageV1, DesktopMissionReadV1, DesktopCapabilityPageV1, DesktopOllamaStatusV1, DesktopKnowledgePageV1, DesktopKnowledgeDocumentV1 } from "../../types/morgoth";
+import type { DesktopCodexReadinessV1, DesktopMissionPageV1, DesktopMissionReadV1, DesktopCapabilityPageV1, DesktopOllamaStatusV1, DesktopKnowledgePageV1, DesktopKnowledgeDocumentV1, DesktopStructuredThesisV1, DesktopStructuredThesisPageV1, DesktopStructuredContradictionV1, DesktopStructuredContradictionPageV1 } from "../../types/morgoth";
 
 export type Status = components["schemas"]["ManagementStatus"];
 export type DomainList = components["schemas"]["DomainList"];
@@ -14,6 +14,10 @@ export type Mission = DesktopMissionReadV1;
 export type CapabilityPage = DesktopCapabilityPageV1;
 export type KnowledgePage = DesktopKnowledgePageV1;
 export type KnowledgeDocument = DesktopKnowledgeDocumentV1;
+export type StructuredThesis = DesktopStructuredThesisV1;
+export type StructuredThesisPage = DesktopStructuredThesisPageV1;
+export type StructuredContradiction = DesktopStructuredContradictionV1;
+export type StructuredContradictionPage = DesktopStructuredContradictionPageV1;
 export type RuntimeStatus = { state: "STARTING" | "READY" | "FAILED" | "STOPPING" | "STOPPED"; diagnostic: string | null };
 
 export interface ManagementTransport {
@@ -29,6 +33,10 @@ export interface ManagementTransport {
   capabilities(id: string, offset: number): Promise<CapabilityPage>;
   knowledge(id: string, offset: number, query: string): Promise<KnowledgePage>;
   knowledgeDocument(id: string, documentId: string): Promise<KnowledgeDocument>;
+  structuredTheses(id: string, offset: number, query: string, status: string, confidence: string): Promise<StructuredThesisPage>;
+  structuredThesis(id: string, thesisId: string): Promise<StructuredThesis>;
+  structuredContradictions(id: string, offset: number): Promise<StructuredContradictionPage>;
+  structuredContradiction(id: string, contradictionId: string): Promise<StructuredContradiction>;
 }
 
 /** Only fixed commands cross the WebView-to-native boundary. */
@@ -45,6 +53,10 @@ export const nativeManagement: ManagementTransport = {
   capabilities: (id, offset) => invoke<CapabilityPage>("list_capability_reads", { projectId: id, offset }),
   knowledge: (id, offset, query) => invoke<KnowledgePage>("list_knowledge_reads", { projectId: id, offset, query }),
   knowledgeDocument: (id, documentId) => invoke<KnowledgeDocument>("get_knowledge_read", { projectId: id, documentId }),
+  structuredTheses: (id, offset, query, status, confidence) => invoke<StructuredThesisPage>("list_structured_theses", { projectId: id, offset, query, status, confidence }),
+  structuredThesis: (id, thesisId) => invoke<StructuredThesis>("get_structured_thesis", { projectId: id, thesisId }),
+  structuredContradictions: (id, offset) => invoke<StructuredContradictionPage>("list_structured_contradictions", { projectId: id, offset }),
+  structuredContradiction: (id, contradictionId) => invoke<StructuredContradiction>("get_structured_contradiction", { projectId: id, contradictionId }),
 };
 
 export type ResearchPhase = "STOPPED" | "STARTING" | "PAUSED" | "NOT_READY" | "RUNNING" | "FAILED" | "STOPPING";

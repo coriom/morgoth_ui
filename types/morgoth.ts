@@ -551,6 +551,30 @@ export interface DesktopKnowledgePageV1 {
   next_offset: number | null;
 }
 
+/** Persisted agent statements are recorded claims, never human-verified facts. */
+export interface DesktopStructuredThesisV1 {
+  schema_version: 1; project_id: string; thesis_id: string; subject: string; claim: string;
+  confidence: "low" | "medium" | "high";
+  status: "active" | "contradicted" | "quarantined" | "superseded";
+  created_at: string; code_version: string | null; objective_id: string | null;
+  quarantine_reason: string | null; superseded_by: string | null;
+  evidence_sources: Array<{source: string}>; evidence_count: number;
+  evidence_omitted: boolean; source: "PROJECT_STRUCTURED_POSTGRESQL";
+}
+export interface DesktopStructuredContradictionV1 {
+  schema_version: 1; project_id: string; contradiction_id: string;
+  subject_group: string | null; thesis_id_a: string; thesis_id_b: string;
+  detected_at: string; resolution: string | null; source: "PROJECT_STRUCTURED_POSTGRESQL";
+}
+export interface DesktopStructuredThesisPageV1 {
+  schema_version: 1; project_id: string; source: "PROJECT_STRUCTURED_POSTGRESQL";
+  read_at: string; theses: DesktopStructuredThesisV1[]; next_offset: number | null;
+}
+export interface DesktopStructuredContradictionPageV1 {
+  schema_version: 1; project_id: string; source: "PROJECT_STRUCTURED_POSTGRESQL";
+  read_at: string; contradictions: DesktopStructuredContradictionV1[]; next_offset: number | null;
+}
+
 /** Native-only, manual, non-generative Ollama observation. Never implies inference qualification. */
 export interface DesktopOllamaStatusV1 {
   source: "OLLAMA_LOOPBACK_GET_V1";

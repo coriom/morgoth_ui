@@ -18,13 +18,17 @@ describe("D2 fixed native read transport", () => {
     await nativeManagement.capabilities("research_a", 0);
     await nativeManagement.knowledge("research_a", 0, "sujet");
     await nativeManagement.knowledgeDocument("research_a", "a".repeat(64));
+    await nativeManagement.structuredTheses("research_a", 0, "sujet", "", "");
+    await nativeManagement.structuredThesis("research_a", "00000000-0000-0000-0000-000000000001");
+    await nativeManagement.structuredContradictions("research_a", 0);
+    await nativeManagement.structuredContradiction("research_a", "00000000-0000-0000-0000-000000000002");
     expect(invoke.mock.calls.map((call) => call[0])).toEqual([
       "management_runtime_status", "management_status", "list_domains", "list_projects", "get_project", "validate_project",
-      "list_mission_reads", "get_mission_read", "list_capability_reads", "list_knowledge_reads", "get_knowledge_read",
+      "list_mission_reads", "get_mission_read", "list_capability_reads", "list_knowledge_reads", "get_knowledge_read", "list_structured_theses", "get_structured_thesis", "list_structured_contradictions", "get_structured_contradiction",
     ]);
     expect(invoke.mock.calls[4]?.[1]).toEqual({ projectId: "research_a" });
     expect(invoke.mock.calls[5]?.[1]).toEqual({ projectId: "research_a" });
-    expect(Object.keys(nativeManagement)).toEqual(["runtimeStatus", "status", "domains", "projects", "createProject", "project", "validation", "missions", "mission", "capabilities", "knowledge", "knowledgeDocument"]);
+    expect(Object.keys(nativeManagement)).toEqual(["runtimeStatus", "status", "domains", "projects", "createProject", "project", "validation", "missions", "mission", "capabilities", "knowledge", "knowledgeDocument", "structuredTheses", "structuredThesis", "structuredContradictions", "structuredContradiction"]);
   });
   it("uses one fixed creation IPC with only three allowlisted fields", async () => {
     await nativeManagement.createProject({ id: "personal", name: "Personnel", domain: "crypto" });

@@ -1,0 +1,19 @@
+[[permission]]
+identifier = "allow-list-structured-theses"
+description = "Read bounded Project-scoped structured theses."
+commands.allow = ["list_structured_theses"]
+
+[[permission]]
+identifier = "allow-get-structured-thesis"
+description = "Read one exact Project-scoped thesis."
+commands.allow = ["get_structured_thesis"]
+
+[[permission]]
+identifier = "allow-list-structured-contradictions"
+description = "Read bounded Project-scoped recorded contradiction relationships."
+commands.allow = ["list_structured_contradictions"]
+
+[[permission]]
+identifier = "allow-get-structured-contradiction"
+description = "Read one exact Project-scoped contradiction."
+commands.allow = ["get_structured_contradiction"]

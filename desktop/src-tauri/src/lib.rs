@@ -229,6 +229,111 @@ pub struct KnowledgeReadPage {
     pub next_offset: Option<u32>,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MemoryEvidenceSource {
+    pub source: String,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StructuredThesis {
+    pub schema_version: u8,
+    pub project_id: String,
+    pub thesis_id: String,
+    pub subject: String,
+    pub claim: String,
+    pub confidence: String,
+    pub status: String,
+    pub created_at: String,
+    pub code_version: Option<String>,
+    pub objective_id: Option<String>,
+    pub quarantine_reason: Option<String>,
+    pub superseded_by: Option<String>,
+    pub evidence_sources: Vec<MemoryEvidenceSource>,
+    pub evidence_count: u32,
+    pub evidence_omitted: bool,
+    pub source: String,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StructuredContradiction {
+    pub schema_version: u8,
+    pub project_id: String,
+    pub contradiction_id: String,
+    pub subject_group: Option<String>,
+    pub thesis_id_a: String,
+    pub thesis_id_b: String,
+    pub detected_at: String,
+    pub resolution: Option<String>,
+    pub source: String,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StructuredThesisPage {
+    pub schema_version: u8,
+    pub project_id: String,
+    pub source: String,
+    pub read_at: String,
+    pub theses: Vec<StructuredThesis>,
+    pub next_offset: Option<u32>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StructuredContradictionPage {
+    pub schema_version: u8,
+    pub project_id: String,
+    pub source: String,
+    pub read_at: String,
+    pub contradictions: Vec<StructuredContradiction>,
+    pub next_offset: Option<u32>,
+}
+
+fn valid_thesis(item: &StructuredThesis, id: &str) -> bool {
+    item.schema_version == 1
+        && item.project_id == id
+        && item.source == "PROJECT_STRUCTURED_POSTGRESQL"
+        && safe_uuid(&item.thesis_id)
+        && !item.subject.is_empty()
+        && item.subject.len() <= 640
+        && !item.claim.is_empty()
+        && item.claim.len() <= 8192
+        && item.created_at.len() <= 48
+        && matches!(
+            item.status.as_str(),
+            "active" | "contradicted" | "quarantined" | "superseded"
+        )
+        && matches!(item.confidence.as_str(), "low" | "medium" | "high")
+        && item.code_version.as_ref().is_none_or(|s| s.len() <= 64)
+        && item.objective_id.as_ref().is_none_or(|s| s.len() <= 80)
+        && item
+            .quarantine_reason
+            .as_ref()
+            .is_none_or(|s| s.len() <= 960)
+        && item.superseded_by.as_deref().is_none_or(safe_uuid)
+        && (item.status != "superseded" || item.superseded_by.is_some())
+        && item.evidence_count <= 32
+        && item.evidence_sources.len() <= 8
+        && item.evidence_sources.len() <= item.evidence_count as usize
+        && item.evidence_sources.iter().all(|s| {
+            !s.source.is_empty()
+                && s.source.len() <= 80
+                && s.source
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b"_.:-".contains(&b))
+        })
+}
+fn valid_contradiction(item: &StructuredContradiction, id: &str) -> bool {
+    item.schema_version == 1
+        && item.project_id == id
+        && item.source == "PROJECT_STRUCTURED_POSTGRESQL"
+        && safe_uuid(&item.contradiction_id)
+        && safe_uuid(&item.thesis_id_a)
+        && safe_uuid(&item.thesis_id_b)
+        && item.detected_at.len() <= 48
+        && item.subject_group.as_ref().is_none_or(|s| s.len() <= 640)
+        && item.resolution.as_ref().is_none_or(|s| s.len() <= 960)
+}
+
 fn safe_document_id(id: &str) -> bool {
     id.len() == 64
         && id
@@ -795,6 +900,135 @@ impl ManagementClient {
         }
         Ok(item)
     }
+    pub async fn list_structured_theses(
+        &self,
+        id: &str,
+        offset: u32,
+        query: &str,
+        status: &str,
+        confidence: &str,
+    ) -> Result<StructuredThesisPage, NativeError> {
+        if !safe_project_id(id)
+            || id == "default"
+            || offset > 480
+            || query.len() > 80
+            || query.chars().any(char::is_control)
+            || !matches!(
+                status,
+                "" | "active" | "contradicted" | "quarantined" | "superseded"
+            )
+            || !matches!(confidence, "" | "low" | "medium" | "high")
+        {
+            return Err(NativeError::new("INVALID_REQUEST", "Lecture invalide."));
+        }
+        let encoded = query
+            .bytes()
+            .map(|b| {
+                if b.is_ascii_alphanumeric() || b"-._~".contains(&b) {
+                    (b as char).to_string()
+                } else {
+                    format!("%{b:02X}")
+                }
+            })
+            .collect::<String>();
+        let page: StructuredThesisPage = self.call(Method::GET,
+            &format!("/desktop-memory/v1/projects/{id}/theses?limit=20&offset={offset}&query={encoded}&status={status}&confidence={confidence}"), None).await?;
+        if page.schema_version != 1
+            || page.project_id != id
+            || page.source != "PROJECT_STRUCTURED_POSTGRESQL"
+            || page.read_at.len() > 48
+            || page.theses.len() > 20
+            || page.theses.iter().any(|v| !valid_thesis(v, id))
+            || page.next_offset.is_some_and(|n| n <= offset || n > 500)
+        {
+            return Err(NativeError::new(
+                "INCOMPATIBLE_RESPONSE",
+                "Réponse API incompatible.",
+            ));
+        }
+        Ok(page)
+    }
+    pub async fn get_structured_thesis(
+        &self,
+        id: &str,
+        thesis_id: &str,
+    ) -> Result<StructuredThesis, NativeError> {
+        if !safe_project_id(id) || id == "default" || !safe_uuid(thesis_id) {
+            return Err(NativeError::new("INVALID_REQUEST", "Lecture invalide."));
+        }
+        let item: StructuredThesis = self
+            .call(
+                Method::GET,
+                &format!("/desktop-memory/v1/projects/{id}/theses/{thesis_id}"),
+                None,
+            )
+            .await?;
+        if item.thesis_id != thesis_id || !valid_thesis(&item, id) {
+            return Err(NativeError::new(
+                "INCOMPATIBLE_RESPONSE",
+                "Réponse API incompatible.",
+            ));
+        }
+        Ok(item)
+    }
+    pub async fn list_structured_contradictions(
+        &self,
+        id: &str,
+        offset: u32,
+    ) -> Result<StructuredContradictionPage, NativeError> {
+        if !safe_project_id(id) || id == "default" || offset > 480 {
+            return Err(NativeError::new("INVALID_REQUEST", "Lecture invalide."));
+        }
+        let page: StructuredContradictionPage = self
+            .call(
+                Method::GET,
+                &format!(
+                    "/desktop-memory/v1/projects/{id}/contradictions?limit=20&offset={offset}"
+                ),
+                None,
+            )
+            .await?;
+        if page.schema_version != 1
+            || page.project_id != id
+            || page.source != "PROJECT_STRUCTURED_POSTGRESQL"
+            || page.read_at.len() > 48
+            || page.contradictions.len() > 20
+            || page
+                .contradictions
+                .iter()
+                .any(|v| !valid_contradiction(v, id))
+            || page.next_offset.is_some_and(|n| n <= offset || n > 500)
+        {
+            return Err(NativeError::new(
+                "INCOMPATIBLE_RESPONSE",
+                "Réponse API incompatible.",
+            ));
+        }
+        Ok(page)
+    }
+    pub async fn get_structured_contradiction(
+        &self,
+        id: &str,
+        contradiction_id: &str,
+    ) -> Result<StructuredContradiction, NativeError> {
+        if !safe_project_id(id) || id == "default" || !safe_uuid(contradiction_id) {
+            return Err(NativeError::new("INVALID_REQUEST", "Lecture invalide."));
+        }
+        let item: StructuredContradiction = self
+            .call(
+                Method::GET,
+                &format!("/desktop-memory/v1/projects/{id}/contradictions/{contradiction_id}"),
+                None,
+            )
+            .await?;
+        if item.contradiction_id != contradiction_id || !valid_contradiction(&item, id) {
+            return Err(NativeError::new(
+                "INCOMPATIBLE_RESPONSE",
+                "Réponse API incompatible.",
+            ));
+        }
+        Ok(item)
+    }
 }
 
 fn safe_uuid(value: &str) -> bool {
@@ -1211,6 +1445,61 @@ mod desktop {
             .await
     }
     #[tauri::command]
+    pub async fn list_structured_theses(
+        window: WebviewWindow,
+        supervisor: State<'_, ManagementSupervisor>,
+        project_id: String,
+        offset: u32,
+        query: String,
+        status: String,
+        confidence: String,
+    ) -> Result<StructuredThesisPage, NativeError> {
+        main_only(&window)?;
+        supervisor
+            .client()?
+            .list_structured_theses(&project_id, offset, &query, &status, &confidence)
+            .await
+    }
+    #[tauri::command]
+    pub async fn get_structured_thesis(
+        window: WebviewWindow,
+        supervisor: State<'_, ManagementSupervisor>,
+        project_id: String,
+        thesis_id: String,
+    ) -> Result<StructuredThesis, NativeError> {
+        main_only(&window)?;
+        supervisor
+            .client()?
+            .get_structured_thesis(&project_id, &thesis_id)
+            .await
+    }
+    #[tauri::command]
+    pub async fn list_structured_contradictions(
+        window: WebviewWindow,
+        supervisor: State<'_, ManagementSupervisor>,
+        project_id: String,
+        offset: u32,
+    ) -> Result<StructuredContradictionPage, NativeError> {
+        main_only(&window)?;
+        supervisor
+            .client()?
+            .list_structured_contradictions(&project_id, offset)
+            .await
+    }
+    #[tauri::command]
+    pub async fn get_structured_contradiction(
+        window: WebviewWindow,
+        supervisor: State<'_, ManagementSupervisor>,
+        project_id: String,
+        contradiction_id: String,
+    ) -> Result<StructuredContradiction, NativeError> {
+        main_only(&window)?;
+        supervisor
+            .client()?
+            .get_structured_contradiction(&project_id, &contradiction_id)
+            .await
+    }
+    #[tauri::command]
     pub fn research_engine_status(
         window: WebviewWindow,
         supervisor: State<'_, ResearchEngineSupervisor>,
@@ -1443,6 +1732,10 @@ mod desktop {
                 list_capability_reads,
                 list_knowledge_reads,
                 get_knowledge_read,
+                list_structured_theses,
+                get_structured_thesis,
+                list_structured_contradictions,
+                get_structured_contradiction,
                 research_engine_status,
                 research_profiles,
                 ollama_status_read,
@@ -1576,5 +1869,37 @@ mod tests {
         let mut unexpected = payload;
         unexpected["private_path"] = serde_json::json!("/private");
         assert!(serde_json::from_value::<KnowledgeDocumentRead>(unexpected).is_err());
+    }
+    #[test]
+    fn structured_memory_dto_is_bounded_and_project_scoped() {
+        let thesis_id = "00000000-0000-4000-8000-000000000001";
+        let payload = serde_json::json!({
+            "schema_version":1,"project_id":"alpha","thesis_id":thesis_id,
+            "subject":"Synthetic subject","claim":"Synthetic claim","confidence":"medium",
+            "status":"active","created_at":"2026-10-27T00:00:00+00:00",
+            "code_version":null,"objective_id":null,"quarantine_reason":null,
+            "superseded_by":null,"evidence_sources":[{"source":"fixture"}],
+            "evidence_count":1,"evidence_omitted":true,"source":"PROJECT_STRUCTURED_POSTGRESQL"
+        });
+        let thesis: StructuredThesis = serde_json::from_value(payload.clone()).unwrap();
+        assert!(valid_thesis(&thesis, "alpha"));
+        assert!(!valid_thesis(&thesis, "beta"));
+        let mut oversized = thesis.clone();
+        oversized.claim = "x".repeat(8193);
+        assert!(!valid_thesis(&oversized, "alpha"));
+        let mut unexpected = payload;
+        unexpected["raw_evidence"] = serde_json::json!("private text");
+        assert!(serde_json::from_value::<StructuredThesis>(unexpected).is_err());
+        let contradiction: StructuredContradiction = serde_json::from_value(serde_json::json!({
+            "schema_version":1,"project_id":"alpha",
+            "contradiction_id":"00000000-0000-4000-8000-000000000003",
+            "subject_group":"Synthetic subject","thesis_id_a":thesis_id,
+            "thesis_id_b":"00000000-0000-4000-8000-000000000002",
+            "detected_at":"2026-10-27T00:00:00+00:00","resolution":null,
+            "source":"PROJECT_STRUCTURED_POSTGRESQL"
+        }))
+        .unwrap();
+        assert!(valid_contradiction(&contradiction, "alpha"));
+        assert!(!valid_contradiction(&contradiction, "beta"));
     }
 }
