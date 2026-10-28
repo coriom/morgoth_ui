@@ -1851,14 +1851,15 @@ mod desktop {
                 let expected = if cfg!(debug_assertions) {
                     "http://127.0.0.1:5173"
                 } else {
-                    "tauri://localhost"
+                    "http://tauri.localhost"
                 };
                 WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
                     .title("Morgoth · Command Center")
                     .inner_size(1120.0, 780.0)
                     .on_navigation(move |url| {
                         let origin = url.origin().ascii_serialization();
-                        origin == expected || origin == "http://tauri.localhost"
+                        origin == expected
+                            || (url.scheme() == "tauri" && url.host_str() == Some("localhost"))
                     })
                     .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
                     .build()?;
