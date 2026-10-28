@@ -100,6 +100,15 @@ describe("local note contract and workspace", () => {
     fireEvent.click(screen.getByRole("button",{name:/Ouvrir la note/}));
     expect(opened).toHaveBeenCalledWith(source.note_id);
   });
+  it("renders isolated personal notes and explains filters that hide every node", () => {
+    const isolated: LocalNote = {schema_version:1,note_id:id(3),project_id:"alpha",title:"Sans lien",collection:"Général",
+      markdown:"Une note enregistrée",revision:1,created_at_ms:1,updated_at_ms:1,provenance:"HUMAN_AUTHORED"};
+    const view = render(<KnowledgeGraph notes={[isolated]} selectedId={null} onSelect={vi.fn()} onOpen={vi.fn()} />);
+    expect(view.container.querySelectorAll("g.graph-node")).toHaveLength(1);
+    expect(screen.getByText(/sans lien UUID valide/)).toBeTruthy();
+    fireEvent.change(screen.getByRole("searchbox", {name:"Rechercher un nœud"}), {target:{value:"introuvable"}});
+    expect(screen.getByText(/Aucun nœud ne correspond aux filtres/)).toBeTruthy();
+  });
   it("creates, edits, links, reloads and isolates human notes", async () => {
     const store=memoryNotes();
     const first=mount(store);

@@ -57,4 +57,11 @@ describe("D6 Project vault projection",()=>{
     await waitFor(()=>expect(screen.getByRole("alert").textContent).toContain("indisponible"));
     expect(screen.queryByText("Coffre vide")).toBeNull();
   });
+  it("explains an accessible but empty backend vault without implying missing personal notes", async () => {
+    const api={...transport(),knowledge:vi.fn(async(id:string)=>({...page(id),documents:[]}))};
+    mount("alpha",true,api);
+    expect(await screen.findByText("Coffre Morgoth vide")).toBeTruthy();
+    expect(screen.getByText(/leur import ne remplit pas ce coffre/)).toBeTruthy();
+    expect(screen.getByText(/Aucun agent ne sera lancé/)).toBeTruthy();
+  });
 });

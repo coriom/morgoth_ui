@@ -10,6 +10,16 @@ description = "Remember or clear the local Project preference."
 commands.allow = ["preferred_project_set"]
 
 [[permission]]
+identifier = "allow-text-size-read"
+description = "Read the local text size preference."
+commands.allow = ["text_size_read"]
+
+[[permission]]
+identifier = "allow-text-size-set"
+description = "Set one bounded local text size preference."
+commands.allow = ["text_size_set"]
+
+[[permission]]
 identifier = "allow-local-drafts-list"
 description = "List bounded Project-scoped local briefs."
 commands.allow = ["local_drafts_list"]

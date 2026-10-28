@@ -24,8 +24,13 @@ export function MissionWorkspace({ projectId, verified, connected, transport, dr
   const [dirty, setDirty] = useState(false);
   const [search, setSearch] = useState("");
   const [busy, setBusy] = useState(false);
+  const [savedMessage, setSavedMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const titleRef = useRef<HTMLInputElement>(null);
+  const objectiveRef = useRef<HTMLTextAreaElement>(null);
+  const criteriaRef = useRef<HTMLTextAreaElement>(null);
+  const fieldsRef = useRef<HTMLDivElement>(null);
+  const submitting = useRef(false);
   const lastRefresh = useRef(refreshSignal);
   const seenRequest = useRef(0);
   const list = useQuery({ queryKey: ["d4", "drafts", projectId],
@@ -55,9 +60,10 @@ export function MissionWorkspace({ projectId, verified, connected, transport, dr
   }, [refreshSignal, projectId, selectedMission, cache]);
   const guard = () => !dirty || window.confirm("Modifications non enregistrées. Les abandonner ?");
   const reset = (draft: LocalDraft | null) => {
+    if (fieldsRef.current) fieldsRef.current.scrollTop = 0;
     setCurrent(draft); setCreating(draft === null); setSelectedMission(null);
     setTitle(draft?.title ?? ""); setObjective(draft?.objective ?? "");
-    setCriteria(draft?.verification_criteria ?? ""); setDirty(false); setError(null);
+    setCriteria(draft?.verification_criteria ?? ""); setDirty(false); setError(null); setSavedMessage(null);
   };
   const newDraft = (approved = false) => { if (!approved && !guard()) return; reset(null); window.setTimeout(() => titleRef.current?.focus(), 0); };
   const openDraft = async (draftId: string, approved = false) => {
@@ -68,18 +74,22 @@ export function MissionWorkspace({ projectId, verified, connected, transport, dr
     finally { setBusy(false); }
   };
   const save = async () => {
-    if (!projectId || !clean(title, 120) || !clean(objective, 4000) || !clean(criteria, 4000)) {
-      setError("Saisissez un titre, un objectif et des critères de vérification dans les limites indiquées."); return;
+    if (submitting.current) return;
+    const invalid = !clean(title, 120) ? titleRef.current : !clean(objective, 4000) ? objectiveRef.current : !clean(criteria, 4000) ? criteriaRef.current : null;
+    if (!projectId || invalid) {
+      setError("Renseignez le titre, l’objectif et les critères de vérification avant d’enregistrer.");
+      invalid?.focus(); return;
     }
-    setBusy(true); setError(null);
+    submitting.current = true; setBusy(true); setError(null); setSavedMessage(null);
     try {
       const input = { project_id: projectId, title, objective, verification_criteria: criteria };
       const saved = readDraft(current ? await drafts.update({ ...input, draft_id: current.draft_id,
         expected_revision: current.revision }) : await drafts.create(input), projectId);
       reset(saved);
       await cache.invalidateQueries({ queryKey: ["d4", "drafts", projectId] });
+      setSavedMessage("Brief enregistré localement.");
     } catch { setError("Enregistrement refusé ou conflit de révision. Votre texte reste dans l’éditeur."); }
-    finally { setBusy(false); }
+    finally { submitting.current = false; setBusy(false); }
   };
   const duplicate = async () => {
     if (!current || !projectId || !guard()) return;
@@ -150,25 +160,28 @@ export function MissionWorkspace({ projectId, verified, connected, transport, dr
               onClick={() => { setOffset(history.data.next_offset!); setSelectedMission(null); }}>Suivant</button></div>}
         </>}
       </aside>
-      <section className="panel mission-editor" aria-label="Détail de mission">
+      <section className={creating || current ? "panel mission-editor editing" : "panel mission-editor"} aria-label="Détail de mission">
         {error && <p className="notice warn" role="alert">{error}</p>}
+        {savedMessage && <p role="status" className="source-stamp">{savedMessage}</p>}
         {(creating || current) ? <>
           <p className="eyebrow">BROUILLON LOCAL · JAMAIS SOUMIS</p><h2>{current ? "Modifier le brief" : "Nouveau brief"}</h2>
           <p>Ce texte est enregistré sur cet appareil. Aucun agent, modèle ou service backend ne le reçoit.</p>
-          <form onSubmit={(event) => { event.preventDefault(); void save(); }} onKeyDown={(event) => {
+          <form noValidate onSubmit={(event) => { event.preventDefault(); void save(); }} onKeyDown={(event) => {
             if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") { event.preventDefault(); void save(); }
           }}>
+            <div ref={fieldsRef} className="mission-form-fields">
             <label htmlFor="draft-title">Titre · 120 caractères maximum</label>
-            <input ref={titleRef} id="draft-title" value={title} maxLength={120} required
-              onChange={(event) => { setTitle(event.target.value); setDirty(true); }} />
+            <input ref={titleRef} id="draft-title" value={title} maxLength={120} aria-required="true"
+              onChange={(event) => { setTitle(event.target.value); setDirty(true); setSavedMessage(null); }} />
             <label htmlFor="draft-objective">Objectif · 4 000 caractères maximum</label>
-            <textarea id="draft-objective" rows={9} maxLength={4000} required value={objective}
-              onChange={(event) => { setObjective(event.target.value); setDirty(true); }} />
+            <textarea ref={objectiveRef} id="draft-objective" rows={5} maxLength={4000} aria-required="true" value={objective}
+              onChange={(event) => { setObjective(event.target.value); setDirty(true); setSavedMessage(null); }} />
             <label htmlFor="draft-criteria">Critères de vérification · 4 000 caractères maximum</label>
-            <textarea id="draft-criteria" rows={6} maxLength={4000} required value={criteria}
-              onChange={(event) => { setCriteria(event.target.value); setDirty(true); }} />
+            <textarea ref={criteriaRef} id="draft-criteria" rows={4} maxLength={4000} aria-required="true" value={criteria}
+              onChange={(event) => { setCriteria(event.target.value); setDirty(true); setSavedMessage(null); }} />
             {current && <p className="read-stamp">Créé {stamp(current.created_at_ms)} · modifié {stamp(current.updated_at_ms)} · révision {current.revision}</p>}
-            <div className="editor-actions"><button type="submit" disabled={busy}>Enregistrer localement</button>
+            </div>
+            <div className="editor-actions mission-save-actions"><button type="submit" disabled={busy}>{busy ? "Enregistrement…" : "Enregistrer localement"}</button>
               <button type="button" disabled={busy} onClick={() => { if (guard()) { if (current) reset(current); else { setCreating(false); setDirty(false); } } }}>Annuler</button>
               {current && <><button type="button" disabled={busy} onClick={() => void duplicate()}>Dupliquer la version enregistrée</button>
                 <button type="button" disabled={busy} onClick={() => void remove()}>Supprimer…</button></>}

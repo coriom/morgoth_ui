@@ -526,3 +526,7 @@ Branche Tauri `feat/morgoth-desktop-d10-knowledge-import-v1` issue de `314d98444
 Branche Tauri `feat/morgoth-desktop-d11-native-release-v1` issue de D10 `c85f0c94adf6cf0ba6647b7580e2b80c7a273ee5`. Construction Tauri release avec assets intégrés, reçu local liant binaire et assets au commit, lanceur quotidien sans Vite ni compilation. Contrats de données et autorité inchangés. Voir `docs/DESKTOP-D11-NATIVE-RELEASE.md` pour les prérequis et limites. Aucune dépendance ajoutée.
 
 Le candidat release réel s'est affiché sous WSLg/XWayland. Le Project synthétique sélectionné est revenu après redémarrage du binaire ; le port Vite 5173 est resté fermé. La saisie WebKitGTK par AT-SPI restant indisponible, les dialogues d'import/restauration et le parcours documentaire complet demeurent en acceptation manuelle, sans déclaration de réussite native.
+
+# Desktop D11.1 — retours d'acceptation utilisateur
+
+Branche Tauri isolée `fix/morgoth-desktop-d11-user-acceptance-v1`, issue de D11 `4381ce328767ce7e9936bb96735a337c6703fd1a`. Le formulaire de brief valide explicitement les champs et garde ses actions accessibles ; la taille du texte est réglable et persistante ; l'état Management détaillé est dans Diagnostics ; les états de coffre et de graphe sont clarifiés. Voir `docs/DESKTOP-D111-USER-ACCEPTANCE.md` pour la portée et les limites d'acceptation native. Aucune dépendance ajoutée, aucun changement backend ni élargissement d'autorité.

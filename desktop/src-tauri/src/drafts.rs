@@ -46,10 +46,11 @@ pub(crate) fn private_dir(path: &Path) -> Result<(), NativeError> {
             }
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            fs::DirBuilder::new()
-                .mode(0o700)
-                .create(path)
-                .map_err(|_| io_error())?;
+            match fs::DirBuilder::new().mode(0o700).create(path) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+                Err(_) => return Err(io_error()),
+            }
             return private_dir(path);
         }
         Err(_) => return Err(io_error()),
@@ -74,10 +75,18 @@ pub(crate) fn prepare_root(root: &Path) -> Result<(), NativeError> {
                     && (meta.uid() == unsafe { libc::geteuid() } || meta.uid() == 0) => {}
             Ok(_) => return Err(refusal("UNTRUSTED_PATH")),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                fs::DirBuilder::new()
-                    .mode(0o700)
-                    .create(ancestor)
-                    .map_err(|_| io_error())?;
+                match fs::DirBuilder::new().mode(0o700).create(ancestor) {
+                    Ok(()) => {}
+                    Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+                    Err(_) => return Err(io_error()),
+                }
+                let meta = fs::symlink_metadata(ancestor).map_err(|_| io_error())?;
+                if !meta.is_dir()
+                    || meta.is_symlink()
+                    || (meta.uid() != unsafe { libc::geteuid() } && meta.uid() != 0)
+                {
+                    return Err(refusal("UNTRUSTED_PATH"));
+                }
             }
             Err(_) => return Err(io_error()),
         }
@@ -136,6 +145,7 @@ fn read_json<T: for<'de> Deserialize<'de>>(path: &Path) -> Result<T, NativeError
 mod tests {
     use super::*;
     use std::os::unix::fs::symlink;
+    use std::sync::{Arc, Barrier};
 
     fn input(project_id: &str) -> DraftInput {
         DraftInput {
@@ -272,6 +282,59 @@ mod tests {
         symlink(temp.path().join("other"), &preference).unwrap();
         assert_eq!(code(store.set_preferred(None)), "UNTRUSTED_FILE");
     }
+
+    #[test]
+    fn text_size_is_bounded_durable_and_refuses_untrusted_records() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("app");
+        let store = DraftStore::new(root.clone());
+        assert_eq!(store.text_size().unwrap(), 100);
+        assert_eq!(code(store.set_text_size(115)), "INVALID_TEXT_SIZE");
+        store.set_text_size(140).unwrap();
+        assert_eq!(DraftStore::new(root.clone()).text_size().unwrap(), 140);
+        let path = root.join("text-size-v1.json");
+        assert_eq!(
+            fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        fs::write(&path, b"{broken").unwrap();
+        assert_eq!(code(store.set_text_size(100)), "INCOMPATIBLE_RECORD");
+        assert_eq!(fs::read(&path).unwrap(), b"{broken");
+        fs::remove_file(&path).unwrap();
+        symlink(temp.path().join("outside"), &path).unwrap();
+        assert_eq!(code(store.text_size()), "UNTRUSTED_FILE");
+    }
+
+    #[test]
+    fn concurrent_first_preference_reads_preserve_private_directory_validation() {
+        let temp = tempfile::tempdir().unwrap();
+        let store = Arc::new(DraftStore::new(
+            temp.path().join("new/app/mission-workspace-v1"),
+        ));
+        let barrier = Arc::new(Barrier::new(12));
+        let jobs: Vec<_> = (0..12)
+            .map(|index| {
+                let store = Arc::clone(&store);
+                let barrier = Arc::clone(&barrier);
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    if index % 2 == 0 {
+                        store.text_size().map(|_| ())
+                    } else {
+                        store.preferred().map(|_| ())
+                    }
+                })
+            })
+            .collect();
+        for job in jobs {
+            job.join().unwrap().unwrap();
+        }
+        assert_eq!(store.text_size().unwrap(), 100);
+        assert_eq!(
+            fs::metadata(&store.root).unwrap().permissions().mode() & 0o777,
+            0o700
+        );
+    }
 }
 fn atomic_write(path: &Path, value: &impl Serialize) -> Result<(), NativeError> {
     let bytes = serde_json::to_vec(value).map_err(|_| refusal("INCOMPATIBLE_RECORD"))?;
@@ -375,6 +438,16 @@ pub struct DraftUpdate {
 struct Preference {
     schema_version: u8,
     project_id: Option<String>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TextSizePreference {
+    schema_version: u8,
+    percent: u16,
+}
+
+fn valid_text_size(percent: u16) -> bool {
+    matches!(percent, 90 | 100 | 110 | 120 | 130 | 140)
 }
 
 pub struct DraftStore {
@@ -620,6 +693,42 @@ impl DraftStore {
                 &Preference {
                     schema_version: 1,
                     project_id,
+                },
+            )
+        })
+    }
+    pub fn text_size(&self) -> Result<u16, NativeError> {
+        prepare_root(&self.root)?;
+        self.locked(&self.root, || {
+            let path = self.root.join("text-size-v1.json");
+            if !present(&path)? {
+                return Ok(100);
+            }
+            let value: TextSizePreference = read_json(&path)?;
+            if value.schema_version != 1 || !valid_text_size(value.percent) {
+                return Err(refusal("INCOMPATIBLE_RECORD"));
+            }
+            Ok(value.percent)
+        })
+    }
+    pub fn set_text_size(&self, percent: u16) -> Result<(), NativeError> {
+        if !valid_text_size(percent) {
+            return Err(refusal("INVALID_TEXT_SIZE"));
+        }
+        prepare_root(&self.root)?;
+        self.locked(&self.root, || {
+            let path = self.root.join("text-size-v1.json");
+            if present(&path)? {
+                let prior: TextSizePreference = read_json(&path)?;
+                if prior.schema_version != 1 || !valid_text_size(prior.percent) {
+                    return Err(refusal("INCOMPATIBLE_RECORD"));
+                }
+            }
+            atomic_write(
+                &path,
+                &TextSizePreference {
+                    schema_version: 1,
+                    percent,
                 },
             )
         })

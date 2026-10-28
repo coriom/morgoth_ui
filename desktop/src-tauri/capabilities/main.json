@@ -23,6 +23,8 @@
     "allow-ollama-status-read",
     "allow-preferred-project-read",
     "allow-preferred-project-set",
+    "allow-text-size-read",
+    "allow-text-size-set",
     "allow-local-drafts-list",
     "allow-local-draft-get",
     "allow-local-draft-create",

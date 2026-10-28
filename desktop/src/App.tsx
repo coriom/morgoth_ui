@@ -10,6 +10,7 @@ import { CommandPalette } from "./CommandPalette";
 import { nativeNotes, type NoteTransport } from "./notes";
 import { ProjectCreationForm } from "./ProjectCreation";
 import { BackupWorkspace } from "./BackupWorkspace";
+import { nativeAppearance, readTextSize, TEXT_SIZES, type AppearanceTransport, type TextSize } from "./appearance";
 
 type View = "home" | "missions" | "knowledge" | "projects" | "settings" | "backups" | "runtime" | "capabilities" | "models" | "security";
 type NavIconName = "home" | "missions" | "knowledge" | "projects" | "settings";
@@ -48,7 +49,7 @@ function EmptyEvidence({ title, children }: { title: string; children: ReactNode
 const mib = (value: number | null): string => value === null ? "Inconnu"
   : value < 1_048_576 ? `${value} octets` : `${(value / 1_048_576).toFixed(1)} MiB`;
 
-export function CommandCenter({ transport, research, ollama, drafts, notes }: { transport: ManagementTransport; research: ResearchTransport; ollama: OllamaTransport; drafts: DraftTransport; notes: NoteTransport }) {
+export function CommandCenter({ transport, research, ollama, drafts, notes, appearance }: { transport: ManagementTransport; research: ResearchTransport; ollama: OllamaTransport; drafts: DraftTransport; notes: NoteTransport; appearance: AppearanceTransport }) {
   const queryClient = useQueryClient();
   const [view, setView] = useState<View>("home");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -57,6 +58,10 @@ export function CommandCenter({ transport, research, ollama, drafts, notes }: { 
   const [missionDirty, setMissionDirty] = useState(false);
   const [noteDirty, setNoteDirty] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [textSize, setTextSize] = useState<TextSize>(100);
+  const [textSizeError, setTextSizeError] = useState(false);
+  const [textSizeBusy, setTextSizeBusy] = useState(true);
+  const textSizeWriting = useRef(false);
   const projectSelector = useRef<HTMLSelectElement>(null);
   const restoreSelectorFocus = useRef(false);
   const [missionRequest, setMissionRequest] = useState<{kind:"create"|"open";id?:string;seq:number}|null>(null);
@@ -74,6 +79,23 @@ export function CommandCenter({ transport, research, ollama, drafts, notes }: { 
       .finally(() => { if (active) setPreferenceLoaded(true); });
     return () => { active = false; };
   }, [drafts]);
+  useEffect(() => {
+    let active = true;
+    void appearance.read().then(value => { if (active) setTextSize(readTextSize(value)); })
+      .catch(() => { if (active) setTextSizeError(true); })
+      .finally(() => { if (active) setTextSizeBusy(false); });
+    return () => { active = false; };
+  }, [appearance]);
+  useEffect(() => { document.documentElement.dataset.textScale = String(textSize);
+    return () => { delete document.documentElement.dataset.textScale; }; }, [textSize]);
+  const changeTextSize = async (next: TextSize) => {
+    if (next === textSize || textSizeBusy || textSizeWriting.current) return;
+    textSizeWriting.current = true; setTextSizeBusy(true);
+    const prior = textSize; setTextSize(next); setTextSizeError(false);
+    try { await appearance.set(next); }
+    catch { setTextSize(prior); setTextSizeError(true); }
+    finally { textSizeWriting.current = false; setTextSizeBusy(false); }
+  };
   useEffect(() => {
     if (restoreSelectorFocus.current) {
       projectSelector.current?.focus();
@@ -107,6 +129,12 @@ export function CommandCenter({ transport, research, ollama, drafts, notes }: { 
   const projectCount = connected && projectData ? String(projectData.projects.length) : "Indisponible";
   const refreshBusy = runtime.isFetching || management.isFetching || projects.isFetching || project.isFetching
     || engine.isFetching || profiles.isFetching || capabilities.isFetching || localModels.isFetching;
+  const refreshSources = () => { setRefreshSignal((value) => value + 1); void runtime.refetch(); if (ready) void management.refetch();
+    if (selectedId) void queryClient.invalidateQueries({ queryKey: ["d2", "missions", selectedId] });
+    if (view === "models") void localModels.refetch();
+    if (connected) { void projects.refetch(); void engine.refetch(); if (selectedInCatalog) { void project.refetch();
+      if (view === "capabilities" || view === "security") void capabilities.refetch(); }
+      if (profiles.isSuccess) void profiles.refetch(); } };
   const onDirtyChange = useCallback((value: boolean) => setMissionDirty(value), []);
   const onNoteDirtyChange = useCallback((value: boolean) => setNoteDirty(value), []);
   const leaveEditor = () => (!missionDirty && !noteDirty) || window.confirm("Modifications non enregistrées. Les abandonner ?");
@@ -146,27 +174,16 @@ export function CommandCenter({ transport, research, ollama, drafts, notes }: { 
         title={selectedProject?.name ?? selectedId ?? "Choisir un Project"}>P</button>
       <nav aria-label="Espaces" className="nav-list">{primaryViews.filter(item=>item.id!=="settings").map(item =>
         <button key={item.id} type="button" aria-current={view===item.id ? "page" : undefined} className={view===item.id ? "nav-link active" : "nav-link"} onClick={()=>navigate(item.id)}><span aria-hidden="true"><NavIcon name={item.icon} /></span><span>{item.label}</span></button>)}</nav>
-      <div className="sidebar-bottom"><button type="button" className={view==="settings" || ["backups","runtime","models","capabilities","security"].includes(view) ? "nav-link active" : "nav-link"} aria-current={view==="settings" ? "page" : undefined} onClick={()=>navigate("settings")}><span aria-hidden="true"><NavIcon name="settings" /></span><span>Réglages</span></button>
+      <div className="sidebar-bottom"><div className="text-size-control" role="group" aria-label="Taille du texte"><button type="button" aria-label="Réduire le texte" disabled={textSizeBusy || textSize===90} onClick={()=>void changeTextSize(TEXT_SIZES[Math.max(0,TEXT_SIZES.indexOf(textSize)-1)])}>A−</button><button type="button" aria-label="Réinitialiser la taille du texte" title="Taille par défaut" disabled={textSizeBusy || textSize===100} onClick={()=>void changeTextSize(100)}>{textSize}%</button><button type="button" aria-label="Agrandir le texte" disabled={textSizeBusy || textSize===140} onClick={()=>void changeTextSize(TEXT_SIZES[Math.min(TEXT_SIZES.length-1,TEXT_SIZES.indexOf(textSize)+1)])}>A+</button></div>{textSizeError && <p role="alert" className="text-size-error">Taille non enregistrée.</p>}
+        <button type="button" className={view==="settings" || ["backups","runtime","models","capabilities","security"].includes(view) ? "nav-link active" : "nav-link"} aria-current={view==="settings" ? "page" : undefined} onClick={()=>navigate("settings")}><span aria-hidden="true"><NavIcon name="settings" /></span><span>Réglages</span></button>
         <CommandPalette projectId={selectedId} verified={selectedInCatalog} management={transport} projects={projectData?.projects ?? []} drafts={drafts} notes={notes}
           navigate={next=>navigate(next)} chooseProject={id=>void chooseProject(id)} openDraft={openDraft} openNote={openNote} openBackend={openBackendKnowledge} openStructured={openStructuredMemory} newDraft={newDraft} newNote={newNote} /></div>
     </aside>
     <main className="workspace">
       {view!=="home" && view!=="knowledge" && <header className="topbar"><div><p className="breadcrumb">{selectedProject?.name ?? selectedId ?? "Espace personnel"} / {sectionName[view]}</p><h1>{sectionName[view]}</h1>
         {view==="missions" && <p>Des briefs locaux non soumis et des checkpoints historiques distincts.</p>}</div></header>}
-      {view!=="home" && view!=="knowledge" && <section className="connection-strip" aria-label="État de connexion">
-        <span className={`connection-indicator ${connected ? "online" : ""}`} aria-hidden="true" />
-        <div><strong>{managerLoading ? "Connexion en cours" : refreshBusy && connected ? "Vérification en cours" : connected ? "Gestion locale accessible" : "Gestion locale indisponible"}</strong>
-          <span>{managerLoading ? "Lecture du superviseur natif" : connected ? "API de gestion authentifiée par le processus natif" : "Aucune activité déduite de l’interface"}</span>
-          {management.dataUpdatedAt > 0 && <small>{connected ? "Dernière lecture Management réussie" : "Ancienne lecture Management, non actuelle"} : {new Date(management.dataUpdatedAt).toLocaleString("fr-FR")}</small>}</div>
-        <button type="button" disabled={refreshBusy} onClick={() => { setRefreshSignal((value) => value + 1); void runtime.refetch(); if (ready) void management.refetch();
-          if (view === "models") void localModels.refetch();
-          if (connected) { void projects.refetch(); void engine.refetch(); if (selectedInCatalog) { void project.refetch();
-            if (view === "capabilities" || view === "security") void capabilities.refetch(); }
-            if (profiles.isSuccess) void profiles.refetch(); } }}>Actualiser</button>
-      </section>}
       {selectionError && <p className="notice warn" role="alert">Préférence Project indisponible. La sélection précédente est conservée.</p>}
-      {selectedId && view!=="home" && view!=="knowledge" && view!=="missions" && <p className="source-stamp">Project : <strong>{selectedProject?.name ?? selectedId}</strong> · {selectedInCatalog ? "catalogue Management vérifié" : "identité locale mémorisée, non vérifiée"}.
-        {connected && management.isSuccess && ` Dernière lecture Management réussie : ${new Date(management.dataUpdatedAt).toLocaleString("fr-FR")}.`}</p>}
+      {selectedId && view!=="home" && view!=="knowledge" && view!=="missions" && <p className="source-stamp">Project : <strong>{selectedProject?.name ?? selectedId}</strong> · {selectedInCatalog ? "catalogue Management vérifié" : "identité locale mémorisée, non vérifiée"}.</p>}
       {managerError && view!=="home" && view!=="knowledge" && view!=="missions" && <p className="notice warn" role="alert">Les données du backend restent indisponibles. Aucune activité n’est présumée.</p>}
 
       {view === "home" && connected && projectData && !projectData.projects.some(item => !item.legacy) &&
@@ -185,7 +202,8 @@ export function CommandCenter({ transport, research, ollama, drafts, notes }: { 
       {view === "backups" && <BackupWorkspace key={selectedId ?? "none"} projectId={selectedId}
         verified={selectedInCatalog && !selectedProject?.legacy && selectedProject?.configuration_valid === true}
         onRestored={() => { void queryClient.invalidateQueries(); setRefreshSignal(value => value + 1); }} />}
-      {view === "runtime" && <div className="settings-index"><h2>Observations disponibles</h2><dl className="fact-list">
+      {view === "runtime" && <div className="settings-index"><div className="panel-heading"><h2>Observations disponibles</h2><button type="button" disabled={refreshBusy} onClick={refreshSources}>Actualiser les sources</button></div>
+        <p className="source-stamp">Management : {managerLoading ? "lecture en cours" : connected ? "accessible" : "indisponible"}. {management.dataUpdatedAt > 0 && `${connected ? "Dernière lecture confirmée" : "Lecture précédente, non actuelle"} : ${new Date(management.dataUpdatedAt).toLocaleString("fr-FR")}.`}</p><dl className="fact-list">
         <Fact label="Management" value={connected ? "Accessible" : "Indisponible"} source="Lecture native" />
         <Fact label="Recherche" value={engineData?.state ?? "Inconnue"} source="Superviseur natif" />
         <Fact label="Project du moteur" value={engineData?.project_id ?? "Aucun confirmé"} source="Superviseur natif" />
@@ -297,8 +315,8 @@ export function CommandCenter({ transport, research, ollama, drafts, notes }: { 
 }
 
 /** Own one query cache for this native window; no retries or background polling. */
-export function App({ transport = nativeManagement, research = nativeResearch, ollama = nativeOllama, drafts = nativeDrafts, notes = nativeNotes }:
-  { transport?: ManagementTransport; research?: ResearchTransport; ollama?: OllamaTransport; drafts?: DraftTransport; notes?: NoteTransport }) {
+export function App({ transport = nativeManagement, research = nativeResearch, ollama = nativeOllama, drafts = nativeDrafts, notes = nativeNotes, appearance = nativeAppearance }:
+  { transport?: ManagementTransport; research?: ResearchTransport; ollama?: OllamaTransport; drafts?: DraftTransport; notes?: NoteTransport; appearance?: AppearanceTransport }) {
   const [queryClient] = useState(() => new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 10_000, refetchOnWindowFocus: false } } }));
-  return <QueryClientProvider client={queryClient}><CommandCenter transport={transport} research={research} ollama={ollama} drafts={drafts} notes={notes} /></QueryClientProvider>;
+  return <QueryClientProvider client={queryClient}><CommandCenter transport={transport} research={research} ollama={ollama} drafts={drafts} notes={notes} appearance={appearance} /></QueryClientProvider>;
 }

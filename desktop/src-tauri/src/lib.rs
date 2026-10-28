@@ -1621,6 +1621,25 @@ mod desktop {
         draft_job(move || store.set_preferred(project_id)).await
     }
     #[tauri::command]
+    pub async fn text_size_read(
+        window: WebviewWindow,
+        app: tauri::AppHandle,
+    ) -> Result<u16, NativeError> {
+        main_only(&window)?;
+        let store = draft_store(&app)?;
+        draft_job(move || store.text_size()).await
+    }
+    #[tauri::command]
+    pub async fn text_size_set(
+        window: WebviewWindow,
+        app: tauri::AppHandle,
+        percent: u16,
+    ) -> Result<(), NativeError> {
+        main_only(&window)?;
+        let store = draft_store(&app)?;
+        draft_job(move || store.set_text_size(percent)).await
+    }
+    #[tauri::command]
     pub async fn local_drafts_list(
         window: WebviewWindow,
         app: tauri::AppHandle,
@@ -1887,6 +1906,8 @@ mod desktop {
                 ollama_status_read,
                 preferred_project_read,
                 preferred_project_set,
+                text_size_read,
+                text_size_set,
                 local_drafts_list,
                 local_draft_get,
                 local_draft_create,

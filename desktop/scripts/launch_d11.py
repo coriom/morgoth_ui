@@ -42,7 +42,7 @@ def main() -> int:
     if git("branch", "--show-current") != BRANCH or git("status", "--porcelain", "--untracked-files=all"):
         raise RuntimeError("SOURCE_NOT_CLEAN")
     binary = DESKTOP / "src-tauri/target/release/morgoth-desktop"
-    receipt_path = binary.parent / "morgoth-d11-release.json"
+    receipt_path = binary.parent / "morgoth-d111-release.json"
     receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
     if set(receipt) != {"format", "source_sha", "binary_sha256", "asset_index_sha256"} or receipt["format"] != 1 or receipt["source_sha"] != git("rev-parse", "HEAD") or receipt["binary_sha256"] != digest(binary) or receipt["asset_index_sha256"] != digest(DESKTOP / "dist/index.html"):
         raise RuntimeError("RELEASE_IDENTITY_MISMATCH")
@@ -68,7 +68,7 @@ def main() -> int:
         if home is not None:
             safe_directory(home, private=True)
         if args.check:
-            print("D11_RELEASE_CHECK_OK")
+            print("D111_RELEASE_CHECK_OK")
             return 0
         env = os.environ.copy()
         env.pop("MORGOTH_DESKTOP_MEMORY_READ_CONFIG", None)
@@ -79,7 +79,7 @@ def main() -> int:
         if temporary:
             env["HOME"] = temporary.name
             env["XDG_DATA_HOME"] = str(Path(temporary.name) / ".local/share")
-        print("D11_RELEASE_START MODE=" + ("DISPOSABLE" if temporary else "PERSISTENT"), flush=True)
+        print("D111_RELEASE_START MODE=" + ("DISPOSABLE" if temporary else "PERSISTENT"), flush=True)
         app = subprocess.Popen([str(binary)], cwd=ROOT, env=env, start_new_session=True)
         try:
             return app.wait()
@@ -100,5 +100,5 @@ if __name__ == "__main__":
     try:
         raise SystemExit(main())
     except (OSError, RuntimeError, ValueError, KeyError, subprocess.SubprocessError) as exc:
-        print("D11_LAUNCH_BLOCKED=" + (str(exc) if isinstance(exc, RuntimeError) else "LOCAL_PREFLIGHT_FAILURE"), file=sys.stderr)
+        print("D111_LAUNCH_BLOCKED=" + (str(exc) if isinstance(exc, RuntimeError) else "LOCAL_PREFLIGHT_FAILURE"), file=sys.stderr)
         raise SystemExit(2) from None

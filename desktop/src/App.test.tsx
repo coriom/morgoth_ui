@@ -4,6 +4,7 @@ import { App } from "./App";
 import type { ComponentProps } from "react";
 import type { NoteTransport } from "./notes";
 import type { DraftInput, DraftTransport, LocalDraft } from "./drafts";
+import type { AppearanceTransport } from "./appearance";
 import type { ManagementTransport, Project, ResearchEngineStatus, ResearchTransport, OllamaTransport, OllamaStatus } from "./transport";
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
@@ -82,12 +83,18 @@ function memoryDrafts(): DraftTransport {
 const emptyNotes = (): NoteTransport => ({ list: vi.fn(async () => []), get: vi.fn(async () => { throw new Error("missing"); }),
   create: vi.fn(async () => { throw new Error("missing"); }), update: vi.fn(async () => { throw new Error("missing"); }), delete: vi.fn(async () => undefined),
   exportMarkdown: vi.fn(async () => "/tmp/synthetic-export.md") });
-function TestedApp(props: ComponentProps<typeof App>) { return <App notes={emptyNotes()} {...props} />; }
+const defaultAppearance: AppearanceTransport = { read: async () => 100, set: async () => undefined };
+function TestedApp(props: ComponentProps<typeof App>) { return <App notes={emptyNotes()} appearance={defaultAppearance} {...props} />; }
 function nav(label: string) {
   const technical: Record<string,string> = { "Capacités": "Outils et capacités", "Modèles": "Modèles et runtime", "Sécurité": "Sécurité et permissions" };
   if (technical[label]) { fireEvent.click(screen.getByRole("button", { name: /Réglages/ }));
     fireEvent.click(screen.getByRole("button", { name: new RegExp(technical[label]) })); return; }
   fireEvent.click(screen.getByRole("button", { name: new RegExp(label) }));
+}
+function refreshInDiagnostics() {
+  nav("Réglages");
+  fireEvent.click(screen.getByRole("button", { name: /Vue générale et diagnostics/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Actualiser les sources" }));
 }
 
 describe("read-only command center", () => {
@@ -205,8 +212,7 @@ describe("read-only command center", () => {
     nav("Projets");
     fireEvent.click(await screen.findByRole("button", { name: /alpha · crypto/ }));
     expect(await screen.findByRole("heading", { name: "alpha" })).toBeTruthy();
-    await waitFor(() => expect(screen.getByRole("button", { name: "Actualiser" }).hasAttribute("disabled")).toBe(false));
-    fireEvent.click(screen.getByRole("button", { name: "Actualiser" }));
+    refreshInDiagnostics(); nav("Projets");
     expect(await screen.findByText("Détail indisponible ou invalide.")).toBeTruthy();
     expect(document.querySelector(".projects-grid .panel:last-child dl")).toBeNull();
     expect(screen.queryByText("private detail")).toBeNull();
@@ -261,8 +267,7 @@ describe("read-only command center", () => {
     render(<TestedApp drafts={drafts()} transport={management({ status })} research={research()} />);
     nav("Projets");
     expect(await screen.findByRole("button", { name: /alpha · crypto/ })).toBeTruthy();
-    await waitFor(() => expect(screen.getByRole("button", { name: "Actualiser" }).hasAttribute("disabled")).toBe(false));
-    fireEvent.click(screen.getByRole("button", { name: "Actualiser" }));
+    refreshInDiagnostics(); nav("Projets");
     expect(await screen.findByText(/Les données du backend restent indisponibles/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: /alpha · crypto/ })).toBeNull();
     expect(screen.queryByText("private upstream detail")).toBeNull();
@@ -319,8 +324,7 @@ describe("read-only command center", () => {
     fireEvent.click(await screen.findByRole("button", { name: /alpha · crypto/ }));
     nav("Missions");
     expect(await screen.findByRole("button", { name: /Old checkpoint/ })).toBeTruthy();
-    await waitFor(() => expect(screen.getByRole("button", { name: "Actualiser" }).hasAttribute("disabled")).toBe(false));
-    fireEvent.click(screen.getByRole("button", { name: "Actualiser" }));
+    refreshInDiagnostics(); nav("Missions");
     expect(await screen.findByText(/Registre temporairement indisponible ou incompatible/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Old checkpoint/ })).toBeNull();
     expect(screen.queryByText("private backend")).toBeNull();
@@ -391,6 +395,44 @@ describe("read-only command center", () => {
     confirm.mockRestore();
     expect(screen.queryByRole("button", { name: /Copie · Mon brief Local/ })).toBeNull();
     expect(backend.mission).not.toHaveBeenCalled();
+  });
+  it("explains missing brief fields, focuses the first omission, and preserves text after a failed save", async () => {
+    const store = memoryDrafts();
+    render(<TestedApp drafts={store} transport={management()} research={research()} />);
+    await screen.findByRole("option", { name: "alpha · alpha" });
+    fireEvent.change(screen.getByLabelText("Espace actuel"), { target: { value: "alpha" } });
+    nav("Missions");
+    fireEvent.click(await screen.findByRole("button", { name: /Nouveau brief/ }));
+    fireEvent.change(screen.getByLabelText(/Titre ·/), { target: { value: "Brief conservé" } });
+    fireEvent.click(screen.getByRole("button", { name: "Enregistrer localement" }));
+    expect(screen.getByRole("alert").textContent).toContain("Renseignez le titre");
+    expect(document.activeElement).toBe(screen.getByLabelText(/Objectif ·/));
+    expect(store.create).not.toHaveBeenCalled();
+    expect((screen.getByLabelText(/Titre ·/) as HTMLInputElement).value).toBe("Brief conservé");
+    fireEvent.change(screen.getByLabelText(/Objectif ·/), { target: { value: "Objet long ".repeat(200) } });
+    fireEvent.click(screen.getByRole("button", { name: "Enregistrer localement" }));
+    expect(document.activeElement).toBe(screen.getByLabelText(/Critères de vérification ·/));
+    fireEvent.change(screen.getByLabelText(/Critères de vérification ·/), { target: { value: "Résultat observé" } });
+    fireEvent.click(screen.getByRole("button", { name: "Enregistrer localement" }));
+    await waitFor(() => expect(store.create).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText("Brief enregistré localement.")).toBeTruthy();
+  });
+  it("keeps text-size controls available and restores the saved preference", async () => {
+    let level = 100;
+    const appearance: AppearanceTransport = { read: vi.fn(async () => level), set: vi.fn(async next => { level = next; }) };
+    const props = { drafts: memoryDrafts(), transport: management(), research: research(), appearance };
+    const first = render(<TestedApp {...props} />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Agrandir le texte" }).hasAttribute("disabled")).toBe(false));
+    fireEvent.click(screen.getByRole("button", { name: "Agrandir le texte" }));
+    await waitFor(() => expect(document.documentElement.dataset.textScale).toBe("110"));
+    expect(level).toBe(110);
+    first.unmount();
+    render(<TestedApp {...props} />);
+    await waitFor(() => expect(document.documentElement.dataset.textScale).toBe("110"));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Réinitialiser la taille du texte" }).hasAttribute("disabled")).toBe(false));
+    fireEvent.click(screen.getByRole("button", { name: "Réinitialiser la taille du texte" }));
+    await waitFor(() => expect(level).toBe(100));
+    expect(document.querySelector(".connection-strip")).toBeNull();
   });
   it("guards unsaved text and isolates drafts when changing Projects", async () => {
     const store = memoryDrafts();

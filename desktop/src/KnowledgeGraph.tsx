@@ -51,6 +51,8 @@ export function KnowledgeGraph({ notes, selectedId, onSelect, onOpen }: {
       <button type="button" aria-pressed={local} onClick={() => setLocal(value => !value)}>{local ? "Graphe local" : "Graphe global"}</button>
       <button type="button" onClick={() => { setPan({x:0,y:0}); setScale(1); setQuery(""); }}>Réinitialiser la vue</button></div>
     {graph.truncated && <p className="source-stamp">Le dessin est limité à 160 notes. La liste et la recherche restent disponibles dans Notes.</p>}
+    {graph.edges.length === 0 && <p className="graph-explanation">{notes.length} note(s) enregistrée(s) dans ce Project, sans lien UUID valide entre elles. Les notes isolées restent visibles.</p>}
+    {visible.length === 0 && <p className="graph-explanation">Aucun nœud ne correspond aux filtres. Effacez la recherche ou choisissez une autre collection.</p>}
     <div className="graph-layout"><div className="graph-canvas">
       <svg viewBox="0 0 760 520" role="group" aria-label="Graphe des liens enregistrés entre notes du Project"
         onWheel={event => { event.preventDefault(); zoom(event.deltaY < 0 ? .08 : -.08); }}

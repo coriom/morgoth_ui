@@ -67,9 +67,9 @@ function SourceGraph({ documents, selected, select, open }: {
 }
 
 /** Read-only Project vault; personal notes stay in their separate native store. */
-export function BackendKnowledge({ projectId, verified, transport, openRequest }: {
+export function BackendKnowledge({ projectId, verified, transport, openRequest, onPersonal }: {
   projectId: string | null; verified: boolean; transport: ManagementTransport;
-  openRequest: {id:string;seq:number} | null;
+  openRequest: {id:string;seq:number} | null; onPersonal?: () => void;
 }) {
   const [mode,setMode] = useState<"documents"|"graph">("documents");
   const [selected,setSelected] = useState<string|null>(null);
@@ -102,7 +102,7 @@ export function BackendKnowledge({ projectId, verified, transport, openRequest }
     <div className="segmented" role="group" aria-label="Vue du coffre"><button type="button" aria-pressed={mode==="documents"} onClick={()=>setMode("documents")}>Documents</button><button type="button" aria-pressed={mode==="graph"} onClick={()=>setMode("graph")}>Graphe</button><button type="button" onClick={()=>void corpus.refetch()} disabled={corpus.isFetching}>Actualiser</button></div>
     {corpus.isPending && <p className="skeleton">Lecture du coffre autorisé…</p>}
     {corpus.isError && <p role="alert" className="notice warn">Coffre indisponible, incompatible ou trop volumineux. Aucun document n’est présumé absent.</p>}
-    {corpus.isSuccess && !docs.length && <div className="quiet-empty"><h2>Coffre vide</h2><p>Ce Project possède un coffre accessible, sans document Markdown enregistré.</p></div>}
+    {corpus.isSuccess && !docs.length && <div className="quiet-empty"><h2>Coffre Morgoth vide</h2><p>Ce Project possède un coffre backend accessible, sans document Markdown enregistré. Vos notes personnelles sont séparées : leur import ne remplit pas ce coffre. Aucun agent ne sera lancé pour le remplir.</p>{onPersonal && <button type="button" className="text-link" onClick={onPersonal}>Voir les notes personnelles →</button>}</div>}
     {corpus.isSuccess && docs.length>0 && mode==="graph" && <SourceGraph documents={docs} selected={selected} select={setSelected} open={open}/>}
     {corpus.isSuccess && docs.length>0 && mode==="documents" && <div className="knowledge-columns"><aside className="knowledge-list" aria-label="Documents Morgoth">
       <form onSubmit={event=>{event.preventDefault();if(text.length<=80){setQuery(text.trim());setSearchError(false);}else setSearchError(true);}}>
