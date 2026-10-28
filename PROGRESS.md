@@ -524,3 +524,5 @@ Branche Tauri `feat/morgoth-desktop-d10-knowledge-import-v1` issue de `314d98444
 # Desktop D11 — candidat release natif local
 
 Branche Tauri `feat/morgoth-desktop-d11-native-release-v1` issue de D10 `c85f0c94adf6cf0ba6647b7580e2b80c7a273ee5`. Construction Tauri release avec assets intégrés, reçu local liant binaire et assets au commit, lanceur quotidien sans Vite ni compilation. Contrats de données et autorité inchangés. Voir `docs/DESKTOP-D11-NATIVE-RELEASE.md` pour les prérequis et limites. Aucune dépendance ajoutée.
+
+Le candidat release réel s'est affiché sous WSLg/XWayland. Le Project synthétique sélectionné est revenu après redémarrage du binaire ; le port Vite 5173 est resté fermé. La saisie WebKitGTK par AT-SPI restant indisponible, les dialogues d'import/restauration et le parcours documentaire complet demeurent en acceptation manuelle, sans déclaration de réussite native.

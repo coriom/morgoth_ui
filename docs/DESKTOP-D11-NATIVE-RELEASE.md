@@ -35,3 +35,14 @@ Sélectionner un Project vérifié, rédiger des briefs et notes, puis utiliser 
 ## Portée de l'acceptation
 
 Les tests de stockage et de transport ne prouvent pas à eux seuls les dialogues GTK. Un contrôle manuel avec données synthétiques reste requis lorsque WSLg/AT-SPI ne peut sélectionner ou confirmer un fichier. Le binaire est un candidat local de productivité, sans qualification d'agent autonome.
+
+## Vérification du candidat (2026-10-28)
+
+- `npm run typecheck`, `npm run contract:check`, `npm test -- --reporter=dot` (63/63) et `npm run build` : réussis.
+- `cargo fmt --all --check`, `cargo test --locked --offline --features desktop --quiet` (67/67) et Clippy strict avec `desktop,desktop-release` : réussis.
+- `python3 desktop/scripts/build_d11.py` : réussi avec le CLI Tauri et les assets intégrés ; `python3 desktop/scripts/launch_d11.py --preview --check` : réussi. Le binaire ELF release contient les noms des assets JavaScript et des deux polices locales. Le reçu scelle le commit, le binaire et l'index d'assets.
+- Une première release a montré une page blanche. Le diagnostic a identifié deux causes réelles : absence de `tauri/custom-protocol`, puis refus de l'origine native dont la sérialisation valait `null`. La fonction `desktop-release` et la vérification exacte schéma/hôte ont corrigé ces deux défauts. La fenêtre finale rend l'application ; [capture release vide](screenshots/d11-release-empty.png).
+- WSLg/XWayland : fenêtre Tauri réelle de 1120 × 780 observée, navigation Connaissances et Projects activée via AT-SPI. Un Project synthétique `d11synthetic` a été créé dans un Management home jetable, sélectionné puis retrouvé après fermeture et redémarrage de la release avec le même XDG_DATA_HOME jetable ; [capture après redémarrage](screenshots/d11-release-project-restart.png). Aucun écouteur TCP sur 5173 durant ce lancement. Le lanceur n'a exécuté ni Node ni Vite.
+- L'entrée texte AT-SPI de WebKitGTK n'expose pas `EditableText` ici. Les parcours UI de création de brief/note, sélection et confirmation GTK d'import, export/restauration D8, et navigation responsive d'une contradiction D9 **ne sont pas acceptés dans la fenêtre release**. Les suites existantes valident leurs contrats Rust et React, sans remplacer une action native non observée. Aucune source PostgreSQL privée n'a été connectée.
+
+Contrôle manuel restant, sur des données synthétiques : créer un Project, un brief et deux notes ; importer un petit dossier avec un lien `[[Note]]` et un lien ambigu ; vérifier backlink/graphe et recherche `Ctrl+K` ; exporter D8 hors données applicatives ; restaurer dans un espace vide du même Project ; redémarrer et vérifier les documents ; consulter un coffre backend synthétique et une contradiction D9 si une source de test autorisée est disponible. Ne pas utiliser des documents personnels pour qualifier cette procédure.
