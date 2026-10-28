@@ -5,7 +5,7 @@ import { KnowledgeGraph } from "./KnowledgeGraph";
 import { BackendKnowledge } from "./BackendKnowledge";
 import { StructuredMemory } from "./StructuredMemory";
 import type { ManagementTransport } from "./transport";
-import { backlinksTo, filterNotes, linksFrom, readNote, readNoteList, type LocalNote, type NoteTransport } from "./notes";
+import { backlinksTo, filterNotes, importSourceName, linksFrom, readImportPreview, readNote, readNoteList, type ImportPreview, type LocalNote, type NoteTransport } from "./notes";
 
 const stamp = (value: number) => new Date(value).toLocaleString("fr-FR");
 
@@ -31,6 +31,8 @@ export function KnowledgeWorkspace({ projectId, verified, transport, management,
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [exportPath, setExportPath] = useState<string | null>(null);
+  const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
+  const [importReceipt, setImportReceipt] = useState<string | null>(null);
   const titleRef = useRef<HTMLInputElement>(null);
   const seenCreate = useRef(0);
   const seenOpen = useRef(0);
@@ -110,6 +112,23 @@ export function KnowledgeWorkspace({ projectId, verified, transport, management,
     } catch { setError("Export non confirmé ou déjà présent. Vérifiez le dossier indiqué dans la documentation ; la note originale reste intacte."); }
     finally { setBusy(false); }
   };
+  const previewImport = async (directory: boolean) => {
+    if (!projectId || !verified || !transport.importPreview || !guard()) return;
+    setBusy(true); setError(null); setImportReceipt(null);
+    try { const raw=await transport.importPreview(projectId,directory); setImportPreview(raw===null?null:readImportPreview(raw,projectId)); }
+    catch { setError("Examen de l’import refusé. Aucune nouvelle publication n’est confirmée ; vérifiez vos notes si un import antérieur a été interrompu."); }
+    finally { setBusy(false); }
+  };
+  const applyImport = async () => {
+    if (!projectId || !verified || !transport.importApply || !importPreview || !window.confirm(`Importer ${importPreview.eligible} note(s) dans ${projectId} ? Les fichiers d’origine restent inchangés.`)) return;
+    setBusy(true); setError(null);
+    try { const count=await transport.importApply(projectId,importPreview.token);
+      if (typeof count!=="number" || !Number.isSafeInteger(count) || count<0 || count>importPreview.eligible) throw new Error("INVALID_IMPORT_RECEIPT");
+      setImportPreview(null); setImportReceipt(`${count} note(s) ajoutée(s) au Project ${projectId}.`);
+      await cache.invalidateQueries({queryKey:["d5","notes",projectId]});
+    } catch { setImportPreview(null); setError("Import non confirmé ou interrompu. Relancez l’examen pour vérifier une reprise éventuelle ; ne répétez pas l’import à l’aveugle."); }
+    finally {setBusy(false);}
+  };
   const shown = filterNotes(notes, filter, collectionFilter);
   const collections = [...new Set(notes.map(note => note.collection))].sort((a,b) => a.localeCompare(b));
   const outgoing = current ? linksFrom(current.markdown) : [];
@@ -122,9 +141,17 @@ export function KnowledgeWorkspace({ projectId, verified, transport, management,
     <div className="knowledge-source-switch" role="group" aria-label="Source de connaissance"><button type="button" aria-pressed={source === "personal"} onClick={()=>setSource("personal")}>Notes personnelles</button><button type="button" aria-pressed={source === "morgoth"} onClick={()=>{if(guard()){discardForBackend();setSource("morgoth");}}}>Coffre Morgoth</button><button type="button" aria-pressed={source === "structured"} onClick={()=>{if(guard()){discardForBackend();setSource("structured");}}}>Mémoire structurée</button></div>
     {source === "morgoth" ? <BackendKnowledge projectId={projectId} verified={verified} transport={management} openRequest={openBackendRequest} /> : source === "structured" ? <StructuredMemory key={projectId} projectId={projectId} verified={verified} transport={management} openRequest={openStructuredRequest} /> : <>
     {error && <p role="alert" className="notice warn">{error}</p>}
+    {importReceipt && <p role="status" className="notice">{importReceipt}</p>}
+    {importPreview && <section className="import-review" aria-label="Examen de l’import Markdown"><h2>Importer des notes</h2>
+      <p>Destination : Project {projectId}. {importPreview.recovery ? "Import interrompu : reprise contrôlée des enregistrements validés." : "Fichiers sélectionnés par vous ; les originaux resteront inchangés."}</p>
+      <p>{importPreview.inspected} entrées examinées · {importPreview.eligible} admissibles · {importPreview.duplicate} doublons · {importPreview.rejected} refusées · {importPreview.estimated_bytes} octets lus.</p>
+      {(importPreview.unresolved_links>0 || importPreview.ambiguous_links>0) && <p role="status">{importPreview.unresolved_links} liens non résolus · {importPreview.ambiguous_links} liens ambigus. Ils restent visibles sans lien inventé.</p>}
+      <ul>{importPreview.entries.map((entry,index)=><li key={`${entry.name}-${index}`}><strong>{entry.name}</strong> · {entry.outcome === "ELIGIBLE" ? "admissible" : entry.outcome === "DUPLICATE" ? "doublon" : "refusé"}{entry.warning && ` · ${entry.warning}`}{entry.excerpt && <small> · {entry.excerpt}</small>}</li>)}</ul>
+      <div className="editor-actions"><button type="button" disabled={busy || !importPreview.eligible} onClick={()=>void applyImport()}>Confirmer l’import</button><button type="button" disabled={busy} onClick={()=>setImportPreview(null)}>Annuler</button></div>
+    </section>}
     {mode === "graph" ? <KnowledgeGraph notes={notes} selectedId={selectedId} onSelect={id => setSelectedId(id)} onOpen={id => void open(id)} />
       : <div className="knowledge-columns"><aside className="knowledge-list" aria-label="Collections et notes">
-        <div className="list-actions"><button type="button" onClick={create} disabled={busy}>＋ Nouvelle note</button></div>
+        <div className="list-actions"><button type="button" onClick={create} disabled={busy}>＋ Nouvelle note</button>{verified && transport.importPreview && <><button type="button" disabled={busy} onClick={()=>void previewImport(false)}>Importer fichiers…</button><button type="button" disabled={busy} onClick={()=>void previewImport(true)}>Importer dossier…</button></>}</div>
         <label htmlFor="note-search">Rechercher titre et contenu</label><input id="note-search" type="search" value={filter} onChange={event => setFilter(event.target.value)} placeholder="Rechercher…" />
         <div className="list-caption">Collections</div><button type="button" className={collectionFilter === "all" ? "list-filter selected" : "list-filter"} onClick={() => setCollectionFilter("all")}>Toutes les notes <span>{notes.length}</span></button>
         {collections.map(name => <button key={name} type="button" className={collectionFilter === name ? "list-filter selected" : "list-filter"} onClick={() => setCollectionFilter(name)}>{name}<span>{notes.filter(note => note.collection === name).length}</span></button>)}
@@ -137,7 +164,7 @@ export function KnowledgeWorkspace({ projectId, verified, transport, management,
           <strong>{note.title}</strong><small>{note.collection} · {stamp(note.updated_at_ms)}</small></button>)}
       </aside><article className="note-document" aria-label="Note sélectionnée">
         {creating || current ? <>
-          <div className="document-meta"><span>Note personnelle locale · {editing || creating ? "édition" : "lecture"}</span><span>{current ? `Modifiée ${stamp(current.updated_at_ms)}` : "Non enregistrée"}</span></div>
+          <div className="document-meta"><span>{current && importSourceName(current) ? `Import personnel · ${importSourceName(current)}` : "Note personnelle locale"} · {editing || creating ? "édition" : "lecture"}</span><span>{current ? `Modifiée ${stamp(current.updated_at_ms)}` : "Non enregistrée"}</span></div>
           {editing || creating ? <form onSubmit={event => { event.preventDefault(); void save(); }} onKeyDown={event => {
             if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") { event.preventDefault(); void save(); }
           }}><label htmlFor="note-title">Titre</label><input ref={titleRef} id="note-title" className="document-title-input" value={title} maxLength={160} required onChange={event => { setTitle(event.target.value); setDirty(true); }} />

@@ -5,7 +5,7 @@ import { KnowledgeWorkspace } from "./KnowledgeWorkspace";
 import { MarkdownPreview } from "./MarkdownPreview";
 import { KnowledgeGraph } from "./KnowledgeGraph";
 import type { ManagementTransport } from "./transport";
-import { backlinksTo, filterNotes, linksFrom, readNote, readNoteList, type LocalNote, type NoteInput, type NoteTransport } from "./notes";
+import { backlinksTo, filterNotes, importSourceName, linksFrom, readImportPreview, readNote, readNoteList, type LocalNote, type NoteInput, type NoteTransport } from "./notes";
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12,"0")}`;
@@ -23,9 +23,9 @@ function memoryNotes(): NoteTransport {
     exportMarkdown: vi.fn(async (project,noteId) => { await get(project,noteId); return "/tmp/synthetic-export.md"; }),
   };
 }
-function mount(store: NoteTransport, project="alpha") {
+function mount(store: NoteTransport, project="alpha", verified=false) {
   const client=new QueryClient({defaultOptions:{queries:{retry:false,refetchOnWindowFocus:false}}});
-  return render(<QueryClientProvider client={client}><KnowledgeWorkspace projectId={project} verified={false} transport={store}
+  return render(<QueryClientProvider client={client}><KnowledgeWorkspace projectId={project} verified={verified} transport={store}
     management={{knowledge:async()=>{throw new Error("unavailable");},knowledgeDocument:async()=>{throw new Error("unavailable");}} as unknown as ManagementTransport}
     onDirtyChange={()=>{}} createSignal={0} openNoteRequest={null} openBackendRequest={null} refreshSignal={0}/></QueryClientProvider>);
 }
@@ -44,6 +44,7 @@ describe("local note contract and workspace", () => {
       markdown:`Voir [[${id(2)}|Cible]] et [[${id(9)}|Perdu]]`,revision:1,created_at_ms:1,updated_at_ms:1,provenance:"HUMAN_LOCAL"};
     const b={...a,note_id:id(2),title:"Cible",markdown:"Texte de vérification"};
     expect(linksFrom(a.markdown).map(link=>link.target)).toEqual([id(2),id(9)]);
+    expect(linksFrom(`![[${id(2)}]] [[${id(9)}]]`).map(link=>link.target)).toEqual([id(9)]);
     expect(backlinksTo([a,b],id(2))).toEqual([a]);
     expect(filterNotes([a,b],"vérification","all")).toEqual([b]);
     expect(filterNotes([a,b],"source","Méthode")).toEqual([a]);
@@ -54,10 +55,42 @@ describe("local note contract and workspace", () => {
     expect(screen.getByText(/<script>window.bad=true<\/script>/)).toBeTruthy();
     expect(screen.getByText(/Manquant · lien absent/)).toBeTruthy();
   });
+  it("validates imported provenance and marks unresolved named links", () => {
+    const provenance=`HUMAN_IMPORTED_V1:${"a".repeat(64)}:123:${btoa(String.fromCharCode(...new TextEncoder().encode("folder/Été.md"))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=/g,"")}`;
+    const note: LocalNote={schema_version:1,note_id:id(1),project_id:"alpha",title:"Été",collection:"folder",
+      markdown:"[[Introuvable]]",revision:1,created_at_ms:123,updated_at_ms:123,provenance};
+    expect(readNote(note,"alpha")).toEqual(note);
+    expect(importSourceName(note)).toBe("folder/Été.md");
+    expect(()=>readNote({...note,provenance:"HUMAN_IMPORTED_V1:x"},"alpha")).toThrow();
+    render(<MarkdownPreview markdown={note.markdown} notes={[note]} onOpen={()=>{}}/>);
+    expect(screen.getByText(/\[\[Introuvable\]\] · lien absent/)).toBeTruthy();
+  });
+  it("previews an explicit native import and requires confirmation before publication", async () => {
+    const store=memoryNotes(); const token=id(33); const preview={token,project_id:"alpha",inspected:2,eligible:1,rejected:1,duplicate:0,
+      unresolved_links:1,ambiguous_links:0,estimated_bytes:42,recovery:false,entries:[
+        {name:"a.md",title:"a",outcome:"ELIGIBLE",warning:null,excerpt:"# A"},
+        {name:"too-big.md",title:"",outcome:"REJECTED",warning:"Document supérieur à 32 KiB",excerpt:null}]};
+    store.importPreview=vi.fn(async()=>preview);store.importApply=vi.fn(async()=>1);
+    expect(readImportPreview(preview,"alpha").eligible).toBe(1);
+    expect(()=>readImportPreview(preview,"beta")).toThrow();
+    mount(store,"alpha",true);
+    fireEvent.click(screen.getByRole("button",{name:"Importer dossier…"}));
+    expect(await screen.findByRole("heading",{name:"Importer des notes"})).toBeTruthy();
+    expect(store.importApply).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button",{name:"Annuler"}));
+    expect(store.importApply).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button",{name:"Importer fichiers…"}));
+    await screen.findByRole("heading",{name:"Importer des notes"});
+    vi.spyOn(window,"confirm").mockReturnValue(true);
+    fireEvent.click(screen.getByRole("button",{name:"Confirmer l’import"}));
+    await waitFor(()=>expect(store.importApply).toHaveBeenCalledWith("alpha",token));
+  });
   it("draws only recorded relationships and retains a keyboard list", () => {
     const source: LocalNote={schema_version:1,note_id:id(1),project_id:"alpha",title:"Source",collection:"Général",
-      markdown:`[[${id(2)}|Cible]] [[${id(9)}|Absente]]`,revision:1,created_at_ms:1,updated_at_ms:1,provenance:"HUMAN_LOCAL"};
+      markdown:`[[${id(2)}|Cible]] [[${id(9)}|Absente]]`,revision:1,created_at_ms:1,updated_at_ms:1,
+      provenance:`HUMAN_IMPORTED_V1:${"a".repeat(64)}:1:${btoa("source.md")}`};
     const target={...source,note_id:id(2),title:"Cible",markdown:""};
+    expect(readNote(source,"alpha")).toEqual(source);
     const selected=vi.fn(); const opened=vi.fn();
     const result=render(<KnowledgeGraph notes={[source,target]} selectedId={source.note_id} onSelect={selected} onOpen={opened}/>);
     expect(result.container.querySelectorAll("line.graph-edge")).toHaveLength(1);

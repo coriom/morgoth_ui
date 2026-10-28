@@ -21,6 +21,7 @@ describe("Tauri D5 authority declaration", () => {
       "allow-preferred-project-read", "allow-preferred-project-set", "allow-local-drafts-list",
       "allow-local-draft-get", "allow-local-draft-create", "allow-local-draft-update", "allow-local-draft-delete",
       "allow-local-notes-list", "allow-local-note-get", "allow-local-note-create", "allow-local-note-update", "allow-local-note-delete", "allow-local-note-export",
+      "allow-local-notes-import-preview", "allow-local-notes-import-apply",
       "allow-workspace-backup-counts", "allow-workspace-backup-export", "allow-workspace-restore-preview", "allow-workspace-restore-apply",
       "allow-list-structured-theses", "allow-get-structured-thesis", "allow-list-structured-contradictions", "allow-get-structured-contradiction",
     ]);
@@ -35,6 +36,7 @@ describe("Tauri D5 authority declaration", () => {
       "preferred_project_read", "preferred_project_set", "local_drafts_list", "local_draft_get",
       "local_draft_create", "local_draft_update", "local_draft_delete",
       "local_notes_list", "local_note_get", "local_note_create", "local_note_update", "local_note_delete", "local_note_export",
+      "local_notes_import_preview", "local_notes_import_apply",
       "workspace_backup_counts", "workspace_backup_export", "workspace_restore_preview", "workspace_restore_apply",
     ]);
     expect(registered).not.toMatch(/initialize_research_engine|start_research|stop_research_engine|select_research_profile/);

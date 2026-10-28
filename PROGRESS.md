@@ -516,3 +516,7 @@ Python remains the engine and desktop does not require a Next.js server.
 # Desktop D5.1 — finition visuelle (branche Tauri dédiée)
 
 La branche `feat/morgoth-desktop-d5-visual-polish-v1` issue de `caef12c1c7a9a2a38c8c28709c626b6ae822ba40` affine la typographie Source Sans 3 embarquée, les barres de défilement et les sélecteurs natifs. Les contrats backend, la persistance locale et l'autorité Tauri restent inchangés. Voir `docs/DESKTOP-D51-VISUAL-POLISH.md` pour les vérifications et les limites ; cette section concerne le Desktop Tauri et non l'ancien Next.js de `main`.
+
+# Desktop D10 — import Markdown personnel et recherche intersources
+
+Branche Tauri `feat/morgoth-desktop-d10-knowledge-import-v1` issue de `314d984449a89d129e285d57edd65fb24e8b5438`. Sélection native explicite de fichiers ou dossier Markdown, prévisualisation, résolution prudente des wikiliens, stockage local Project-scopé avec provenance, reprise après interruption et compatibilité D8 format 1. Recherche bornée par source dans la palette. Tests et limites d'acceptation native : `docs/DESKTOP-D10-KNOWLEDGE-IMPORT.md`. Aucun changement du backend, de l'autorité agent ou de l'identifiant Tauri.

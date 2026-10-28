@@ -201,3 +201,16 @@ button:focus-visible, select:focus-visible { outline-offset: 2px; }
 .backend-knowledge .knowledge-list select,.backend-knowledge .knowledge-list input[type=date] { width:100%; min-width:0; margin:3px 0 12px; }
 @media(max-width:850px){.memory-graph.knowledge-columns{display:block}.memory-graph .graph-inspector{max-height:240px}}
 @media(max-width:1150px){.structured-columns .note-relations{display:block;grid-column:1/-1;border-left:0;border-top:1px solid var(--line);padding:20px 26px}}
+/* D10 import review stays in the writing surface rather than opening a dashboard. */
+.knowledge-list .list-actions{display:flex;flex-wrap:wrap;gap:7px}
+.knowledge-list .list-actions button:not(:first-child){background:transparent;color:var(--muted);border:1px solid var(--line);font-weight:520;padding:7px 9px}
+.knowledge-list .list-actions button:hover:not(:disabled){color:var(--ink);border-color:var(--accent)}
+.import-review{padding:20px clamp(26px,4vw,60px);border-bottom:1px solid var(--line);max-width:900px}
+.import-review h2{font-size:20px;font-weight:580;margin:0 0 8px}
+.import-review p{color:var(--muted);line-height:1.5;margin:8px 0;font-size:13px}
+.import-review ul{list-style:none;padding:0;margin:14px 0;max-height:220px;overflow:auto}
+.import-review li{padding:7px 0;border-bottom:1px solid var(--line);color:var(--muted);font-size:13px;overflow-wrap:anywhere}
+.import-review li strong{color:var(--ink);font-weight:580}
+.import-review li small{color:var(--faint)}
+.palette>select{display:block;width:calc(100% - 36px);margin:0 18px 10px;padding:6px 8px;color:var(--muted);background:var(--surface);border:1px solid var(--line);border-radius:5px;font:inherit}
+.palette>select:focus-visible,.import-review button:focus-visible,.knowledge-list .list-actions button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}

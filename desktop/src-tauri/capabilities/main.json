@@ -34,6 +34,8 @@
     "allow-local-note-update",
     "allow-local-note-delete",
     "allow-local-note-export",
+    "allow-local-notes-import-preview",
+    "allow-local-notes-import-apply",
     "allow-workspace-backup-counts",
     "allow-workspace-backup-export",
     "allow-workspace-restore-preview",

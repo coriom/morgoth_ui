@@ -3,8 +3,11 @@ import { invoke } from "@tauri-apps/api/core";
 export type LocalNote = {
   schema_version: 1; note_id: string; project_id: string; title: string;
   collection: string; markdown: string; revision: number;
-  created_at_ms: number; updated_at_ms: number; provenance: "HUMAN_LOCAL";
+  created_at_ms: number; updated_at_ms: number; provenance: string;
 };
+export type ImportEntry = { name: string; title: string; outcome: "ELIGIBLE"|"REJECTED"|"DUPLICATE"; warning: string|null; excerpt: string|null };
+export type ImportPreview = { token: string; project_id: string; inspected: number; eligible: number; rejected: number; duplicate: number;
+  unresolved_links: number; ambiguous_links: number; estimated_bytes: number; recovery: boolean; entries: ImportEntry[] };
 export type NoteInput = Pick<LocalNote, "project_id" | "title" | "collection" | "markdown">;
 export type NoteUpdate = NoteInput & { note_id: string; expected_revision: number };
 export interface NoteTransport {
@@ -14,6 +17,8 @@ export interface NoteTransport {
   update(input: NoteUpdate): Promise<unknown>;
   delete(projectId: string, noteId: string, expectedRevision: number): Promise<void>;
   exportMarkdown(projectId: string, noteId: string): Promise<string>;
+  importPreview?(projectId: string, directory: boolean): Promise<unknown>;
+  importApply?(projectId: string, token: string): Promise<unknown>;
 }
 export const nativeNotes: NoteTransport = {
   list: projectId => invoke("local_notes_list", { projectId }),
@@ -22,6 +27,8 @@ export const nativeNotes: NoteTransport = {
   update: input => invoke("local_note_update", { input }),
   delete: (projectId, noteId, expectedRevision) => invoke("local_note_delete", { projectId, noteId, expectedRevision }),
   exportMarkdown: (projectId, noteId) => invoke<string>("local_note_export", { projectId, noteId }),
+  importPreview: (projectId, directory) => invoke("local_notes_import_preview", { projectId, directory }),
+  importApply: (projectId, token) => invoke("local_notes_import_apply", { projectId, token }),
 };
 const uuid = (value: unknown): value is string => typeof value === "string" &&
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(value);
@@ -35,8 +42,36 @@ export function readNote(value: unknown, projectId: string): LocalNote {
     || [...value.collection].length > 48 || typeof value.markdown !== "string" || value.markdown.length > 32768
     || !integer(value.revision) || value.revision < 1 || !integer(value.created_at_ms)
     || !integer(value.updated_at_ms) || value.updated_at_ms < value.created_at_ms
-    || value.provenance !== "HUMAN_LOCAL") throw new Error("INVALID_LOCAL_NOTE");
+    || !validProvenance(value.provenance)) throw new Error("INVALID_LOCAL_NOTE");
   return value as LocalNote;
+}
+function validProvenance(value: unknown): value is string {
+  if (value === "HUMAN_LOCAL") return true;
+  if (typeof value !== "string" || value.length > 512) return false;
+  const match = /^HUMAN_IMPORTED_V1:([0-9a-f]{64}):([0-9]+):([A-Za-z0-9_-]+)$/.exec(value);
+  if (!match) return false;
+  try {
+    const name = new TextDecoder("utf-8", { fatal: true }).decode(Uint8Array.from(atob(match[3].replace(/-/g,"+").replace(/_/g,"/")), char => char.charCodeAt(0)));
+    return name.length > 0 && name.length <= 240 && name.split("/").every(part => !!part && part !== "." && part !== ".." && !part.startsWith(".") && !/[\x00-\x1f\x7f]/.test(part));
+  } catch { return false; }
+}
+export function importSourceName(note: LocalNote): string | null {
+  if (!note.provenance.startsWith("HUMAN_IMPORTED_V1:")) return null;
+  try { return new TextDecoder().decode(Uint8Array.from(atob(note.provenance.split(":")[3].replace(/-/g,"+").replace(/_/g,"/")),char=>char.charCodeAt(0))); }
+  catch { return null; }
+}
+export function readImportPreview(value: unknown, projectId: string): ImportPreview {
+  if (!record(value) || !uuid(value.token) || value.project_id !== projectId || !Array.isArray(value.entries) || value.entries.length > 1000
+    || !["inspected","eligible","rejected","duplicate","unresolved_links","ambiguous_links","estimated_bytes"].every(k => integer(value[k]))
+    || typeof value.recovery !== "boolean" || !integer(value.eligible) || value.eligible > 500 || !integer(value.inspected) || value.inspected > 1000
+    || !integer(value.estimated_bytes) || value.estimated_bytes > 8*1024*1024
+    || value.entries.some((e: unknown) => !record(e) || typeof e.name !== "string" || e.name.length > 240 || typeof e.title !== "string" || e.title.length > 160
+      || !["ELIGIBLE","REJECTED","DUPLICATE"].includes(String(e.outcome)) || (e.warning !== null && (typeof e.warning !== "string" || e.warning.length > 160))
+      || (e.excerpt !== null && (typeof e.excerpt !== "string" || e.excerpt.length > 160)))
+    || value.entries.filter((e: ImportEntry) => e.outcome === "ELIGIBLE").length !== value.eligible
+    || value.entries.filter((e: ImportEntry) => e.outcome === "REJECTED").length !== value.rejected
+    || value.entries.filter((e: ImportEntry) => e.outcome === "DUPLICATE").length !== value.duplicate) throw new Error("INVALID_IMPORT_PREVIEW");
+  return value as ImportPreview;
 }
 export function readNoteList(value: unknown, projectId: string): LocalNote[] {
   if (!Array.isArray(value) || value.length > 500) throw new Error("INVALID_LOCAL_NOTE_LIST");
@@ -50,6 +85,7 @@ const LINK = /\[\[([0-9a-f-]{36})(?:\|([^\]\n]{1,100}))?\]\]/g;
 export function linksFrom(markdown: string): NoteLink[] {
   const found = new Map<string, NoteLink>();
   for (const match of markdown.matchAll(LINK)) {
+    if (match.index > 0 && markdown[match.index - 1] === "!") continue;
     if (uuid(match[1])) found.set(match[1], { target: match[1], label: match[2]?.trim() || match[1] });
   }
   return [...found.values()];

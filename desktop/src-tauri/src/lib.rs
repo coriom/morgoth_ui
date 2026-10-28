@@ -7,6 +7,7 @@ use std::{io::Read, path::Path, time::Duration};
 
 pub mod backup;
 pub mod drafts;
+pub mod note_import;
 pub mod notes;
 pub mod ollama_read;
 #[cfg(target_os = "linux")]
@@ -1050,6 +1051,7 @@ mod desktop {
     use super::*;
     use crate::backup::{BackupReceipt, BackupStore, EXTENSION};
     use crate::drafts::{Draft, DraftInput, DraftStore, DraftUpdate};
+    use crate::note_import::{ImportPlan, ImportPreview, ImportStore};
     use crate::notes::{Note, NoteInput, NoteStore, NoteUpdate};
     use crate::research::{ProfilesResponse, ResearchEngineStatus, ResearchEngineSupervisor};
     use crate::supervisor::{ManagementRuntimeStatus, ManagementSupervisor, SupervisorConfig};
@@ -1063,6 +1065,63 @@ mod desktop {
         token: String,
         notes_count: usize,
         drafts_count: usize,
+    }
+    #[derive(Default)]
+    pub struct PendingImport {
+        plan: Option<ImportPlan>,
+        applying: bool,
+    }
+    fn import_store(app: &tauri::AppHandle) -> Result<ImportStore, NativeError> {
+        let root = app
+            .path()
+            .app_local_data_dir()
+            .map_err(|_| NativeError::new("LOCAL_IMPORT", "Stockage local indisponible."))?;
+        Ok(ImportStore {
+            notes: NoteStore::new(root.join("knowledge-v1")),
+            state_root: root.join("note-import-v1"),
+        })
+    }
+    async fn choose_import_source(
+        app: &tauri::AppHandle,
+        directory: bool,
+    ) -> Result<Option<Vec<PathBuf>>, NativeError> {
+        let (sender, receiver) = std::sync::mpsc::sync_channel(1);
+        app.run_on_main_thread(move || {
+            let chooser = gtk::FileChooserDialog::builder()
+                .title(if directory {
+                    "Choisir un dossier Markdown"
+                } else {
+                    "Choisir des fichiers Markdown"
+                })
+                .action(if directory {
+                    gtk::FileChooserAction::SelectFolder
+                } else {
+                    gtk::FileChooserAction::Open
+                })
+                .build();
+            chooser.set_select_multiple(!directory);
+            chooser.add_button("Annuler", gtk::ResponseType::Cancel);
+            chooser.add_button("Examiner", gtk::ResponseType::Accept);
+            let sender = std::cell::RefCell::new(Some(sender));
+            chooser.connect_response(move |dialog, response| {
+                if let Some(sender) = sender.borrow_mut().take() {
+                    let _ = sender.send(if response == gtk::ResponseType::Accept {
+                        Some(dialog.filenames())
+                    } else {
+                        None
+                    });
+                }
+                dialog.close();
+            });
+            chooser.show_all();
+        })
+        .map_err(|_| NativeError::new("DIALOG_UNAVAILABLE", "Dialogue natif indisponible."))?;
+        tauri::async_runtime::spawn_blocking(move || {
+            receiver.recv_timeout(Duration::from_secs(300))
+        })
+        .await
+        .map_err(|_| NativeError::new("DIALOG_UNAVAILABLE", "Dialogue natif indisponible."))?
+        .map_err(|_| NativeError::new("DIALOG_UNAVAILABLE", "Dialogue natif indisponible."))
     }
     fn backup_store(app: &tauri::AppHandle) -> Result<BackupStore, NativeError> {
         let root = app
@@ -1695,6 +1754,88 @@ mod desktop {
         })
         .await
     }
+    #[tauri::command]
+    pub async fn local_notes_import_preview(
+        window: WebviewWindow,
+        app: tauri::AppHandle,
+        supervisor: State<'_, ManagementSupervisor>,
+        pending: State<'_, Mutex<PendingImport>>,
+        project_id: String,
+        directory: bool,
+    ) -> Result<Option<ImportPreview>, NativeError> {
+        main_only(&window)?;
+        verified_backup_project(&supervisor, &project_id).await?;
+        if pending
+            .lock()
+            .map_err(|_| NativeError::new("LOCAL_IMPORT", "Import indisponible."))?
+            .applying
+        {
+            return Err(NativeError::new("LOCAL_IMPORT", "Import déjà en cours."));
+        }
+        let store = import_store(&app)?;
+        let project = project_id.clone();
+        let recovered = draft_job(move || store.recovery(&project)).await?;
+        let plan = if let Some(recovered) = recovered {
+            recovered
+        } else {
+            let Some(paths) = choose_import_source(&app, directory).await? else {
+                return Ok(None);
+            };
+            let store = import_store(&app)?;
+            draft_job(move || {
+                crate::note_import::prepare(&project_id, &paths, directory, &store.notes)
+            })
+            .await?
+        };
+        let preview = plan.preview.clone();
+        let mut session = pending
+            .lock()
+            .map_err(|_| NativeError::new("LOCAL_IMPORT", "Import indisponible."))?;
+        if session.applying {
+            return Err(NativeError::new("LOCAL_IMPORT", "Import déjà en cours."));
+        }
+        session.plan = Some(plan);
+        Ok(Some(preview))
+    }
+    #[tauri::command]
+    pub async fn local_notes_import_apply(
+        window: WebviewWindow,
+        app: tauri::AppHandle,
+        supervisor: State<'_, ManagementSupervisor>,
+        pending: State<'_, Mutex<PendingImport>>,
+        project_id: String,
+        token: String,
+    ) -> Result<usize, NativeError> {
+        main_only(&window)?;
+        verified_backup_project(&supervisor, &project_id).await?;
+        let plan = {
+            let mut session = pending
+                .lock()
+                .map_err(|_| NativeError::new("LOCAL_IMPORT", "Import indisponible."))?;
+            if session.applying {
+                return Err(NativeError::new("LOCAL_IMPORT", "Import déjà en cours."));
+            }
+            let plan = session
+                .plan
+                .take()
+                .ok_or_else(|| NativeError::new("LOCAL_IMPORT", "Prévisualisation requise."))?;
+            if plan.preview.project_id != project_id || plan.preview.token != token {
+                session.plan = Some(plan);
+                return Err(NativeError::new(
+                    "LOCAL_IMPORT",
+                    "Prévisualisation non concordante.",
+                ));
+            }
+            session.applying = true;
+            plan
+        };
+        let store = import_store(&app)?;
+        let result = draft_job(move || store.apply(&plan)).await;
+        if let Ok(mut session) = pending.lock() {
+            session.applying = false;
+        }
+        result
+    }
     pub fn run() {
         let config = SupervisorConfig::from_environment();
         let supervisor = ManagementSupervisor::start(config.clone());
@@ -1705,6 +1846,7 @@ mod desktop {
             .manage(supervisor)
             .manage(research)
             .manage(Mutex::new(None::<PendingRestore>))
+            .manage(Mutex::new(PendingImport::default()))
             .setup(|app| {
                 let expected = if cfg!(debug_assertions) {
                     "http://127.0.0.1:5173"
@@ -1755,6 +1897,8 @@ mod desktop {
                 local_note_update,
                 local_note_delete,
                 local_note_export,
+                local_notes_import_preview,
+                local_notes_import_apply,
                 workspace_backup_counts,
                 workspace_backup_export,
                 workspace_restore_preview,

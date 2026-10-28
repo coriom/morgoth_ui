@@ -3,6 +3,7 @@ use crate::{
     drafts::{now, prepare_root, present, private_dir, private_file, NOFOLLOW},
     safe_project_id, NativeError,
 };
+use base64::Engine;
 use serde::{Deserialize, Serialize};
 use std::{
     fs::{self, File, OpenOptions},
@@ -47,6 +48,40 @@ fn valid_text(title: &str, body: &str, collection: &str) -> bool {
         && collection
             .chars()
             .all(|c| c.is_alphanumeric() || matches!(c, ' ' | '-' | '_'))
+}
+fn valid_provenance(value: &str) -> bool {
+    if value == "HUMAN_LOCAL" {
+        return true;
+    }
+    let Some(rest) = value.strip_prefix("HUMAN_IMPORTED_V1:") else {
+        return false;
+    };
+    let parts: Vec<_> = rest.split(':').collect();
+    if parts.len() != 3
+        || parts[0].len() != 64
+        || !parts[0]
+            .bytes()
+            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+        || parts[1].parse::<u64>().is_err()
+        || parts[2].len() > 320
+    {
+        return false;
+    }
+    let Ok(path) = base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(parts[2]) else {
+        return false;
+    };
+    let Ok(path) = std::str::from_utf8(&path) else {
+        return false;
+    };
+    !path.is_empty()
+        && path.len() <= 240
+        && path.split('/').all(|part| {
+            !part.is_empty()
+                && part != "."
+                && part != ".."
+                && !part.starts_with('.')
+                && !part.chars().any(char::is_control)
+        })
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -137,7 +172,7 @@ fn decode(bytes: &[u8], project: &str, id: &str) -> Result<Note, NativeError> {
         || meta.project_id != project
         || meta.revision == 0
         || meta.updated_at_ms < meta.created_at_ms
-        || meta.provenance != "HUMAN_LOCAL"
+        || !valid_provenance(&meta.provenance)
         || !valid_text(&meta.title, body, &meta.collection)
     {
         return Err(refusal("INCOMPATIBLE_RECORD"));

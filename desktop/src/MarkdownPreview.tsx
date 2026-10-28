@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { linksFrom, type LocalNote } from "./notes";
 
-const TOKEN = /(\[\[[0-9a-f-]{36}(?:\|[^\]\n]{1,100})?\]\]|\*\*[^*\n]+\*\*|`[^`\n]+`)/g;
+const TOKEN = /(\[\[[^\]\n]{1,240}\]\]|\*\*[^*\n]+\*\*|`[^`\n]+`)/g;
 
 function inline(text: string, notes: readonly LocalNote[], onOpen: (id: string) => void): ReactNode[] {
   const result: ReactNode[] = [];
@@ -11,6 +11,7 @@ function inline(text: string, notes: readonly LocalNote[], onOpen: (id: string) 
     if (index > cursor) result.push(text.slice(cursor, index));
     const token = match[0];
     if (token.startsWith("[[")) {
+      if (index > 0 && text[index - 1] === "!") { result.push(token); cursor = index + token.length; continue; }
       const link = linksFrom(token)[0];
       const target = link && notes.find(note => note.note_id === link.target);
       result.push(target ? <button className="wiki-link" type="button" key={index} onClick={() => onOpen(target.note_id)}>{link.label === link.target ? target.title : link.label}</button>

@@ -1,0 +1,9 @@
+[[permission]]
+identifier = "allow-local-notes-import-preview"
+description = "Preview user-selected Markdown for a verified Project"
+commands.allow = ["local_notes_import_preview"]
+
+[[permission]]
+identifier = "allow-local-notes-import-apply"
+description = "Confirm a reviewed Project-scoped Markdown import"
+commands.allow = ["local_notes_import_apply"]
