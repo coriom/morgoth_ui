@@ -520,3 +520,7 @@ La branche `feat/morgoth-desktop-d5-visual-polish-v1` issue de `caef12c1c7a9a2a3
 # Desktop D10 — import Markdown personnel et recherche intersources
 
 Branche Tauri `feat/morgoth-desktop-d10-knowledge-import-v1` issue de `314d984449a89d129e285d57edd65fb24e8b5438`. Sélection native explicite de fichiers ou dossier Markdown, prévisualisation, résolution prudente des wikiliens, stockage local Project-scopé avec provenance, reprise après interruption et compatibilité D8 format 1. Recherche bornée par source dans la palette. Tests et limites d'acceptation native : `docs/DESKTOP-D10-KNOWLEDGE-IMPORT.md`. Aucun changement du backend, de l'autorité agent ou de l'identifiant Tauri.
+
+# Desktop D11 — candidat release natif local
+
+Branche Tauri `feat/morgoth-desktop-d11-native-release-v1` issue de D10 `c85f0c94adf6cf0ba6647b7580e2b80c7a273ee5`. Construction Tauri release avec assets intégrés, reçu local liant binaire et assets au commit, lanceur quotidien sans Vite ni compilation. Contrats de données et autorité inchangés. Voir `docs/DESKTOP-D11-NATIVE-RELEASE.md` pour les prérequis et limites. Aucune dépendance ajoutée.
