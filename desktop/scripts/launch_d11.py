@@ -80,7 +80,17 @@ def main() -> int:
             env["HOME"] = temporary.name
             env["XDG_DATA_HOME"] = str(Path(temporary.name) / ".local/share")
         print("D11_RELEASE_START MODE=" + ("DISPOSABLE" if temporary else "PERSISTENT"), flush=True)
-        return subprocess.run([str(binary)], cwd=ROOT, env=env, check=False).returncode
+        app = subprocess.Popen([str(binary)], cwd=ROOT, env=env, start_new_session=True)
+        try:
+            return app.wait()
+        except KeyboardInterrupt:
+            app.terminate()
+            try:
+                app.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                app.kill()
+                app.wait(timeout=5)
+            return 130
     finally:
         if temporary:
             temporary.cleanup()

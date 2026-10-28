@@ -40,7 +40,7 @@ def main() -> None:
         raise RuntimeError("BUILD_DEPENDENCIES_UNAVAILABLE")
     env = os.environ.copy()
     env["CARGO_NET_OFFLINE"] = "true"
-    command = [str(DESKTOP / "node_modules/.bin/tauri"), "build", "--no-bundle", "--features", "desktop", "--ci"]
+    command = [str(DESKTOP / "node_modules/.bin/tauri"), "build", "--no-bundle", "--features", "desktop-release", "--ci"]
     if subprocess.run(command, cwd=DESKTOP, env=env, check=False).returncode:
         raise RuntimeError("TAURI_RELEASE_BUILD_FAILED")
     binary = DESKTOP / "src-tauri/target/release/morgoth-desktop"

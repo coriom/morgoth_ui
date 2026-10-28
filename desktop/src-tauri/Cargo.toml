@@ -16,6 +16,7 @@ required-features = ["desktop"]
 [features]
 default = []
 desktop = ["dep:tauri", "dep:tauri-build", "dep:gtk"]
+desktop-release = ["desktop", "tauri/custom-protocol"]
 
 [dependencies]
 base64 = "0.22.1"
