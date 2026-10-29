@@ -10,9 +10,10 @@ import { CommandPalette } from "./CommandPalette";
 import { nativeNotes, type NoteTransport } from "./notes";
 import { ProjectCreationForm } from "./ProjectCreation";
 import { BackupWorkspace } from "./BackupWorkspace";
+import { ConnectionsWorkspace } from "./ConnectionsWorkspace";
 import { nativeAppearance, readTextSize, TEXT_SIZES, type AppearanceTransport, type TextSize } from "./appearance";
 
-type View = "home" | "missions" | "knowledge" | "projects" | "settings" | "backups" | "runtime" | "capabilities" | "models" | "security";
+type View = "home" | "missions" | "knowledge" | "projects" | "settings" | "connections" | "backups" | "runtime" | "capabilities" | "models" | "security";
 type NavIconName = "home" | "missions" | "knowledge" | "projects" | "settings";
 const primaryViews: ReadonlyArray<{ id: View; label: string; icon: NavIconName }> = [
   { id: "home", label: "Accueil", icon: "home" },
@@ -33,7 +34,7 @@ function NavIcon({ name }: { name: NavIconName }) {
 }
 const sectionName: Record<View, string> = { home: "Accueil", missions: "Missions", knowledge: "Connaissances",
   projects: "Projets", settings: "Réglages", backups: "Données et sauvegardes", runtime: "Runtime", capabilities: "Capacités",
-  models: "Modèles & runtime", security: "Sécurité" };
+  models: "Modèles & runtime", security: "Sécurité", connections: "Connexions et applications" };
 
 function Fact({ label, value, source = "Observé", tone = "neutral" }: {
   label: string; value: string; source?: string; tone?: "neutral" | "good" | "warn";
@@ -175,7 +176,7 @@ export function CommandCenter({ transport, research, ollama, drafts, notes, appe
       <nav aria-label="Espaces" className="nav-list">{primaryViews.filter(item=>item.id!=="settings").map(item =>
         <button key={item.id} type="button" aria-current={view===item.id ? "page" : undefined} className={view===item.id ? "nav-link active" : "nav-link"} onClick={()=>navigate(item.id)}><span aria-hidden="true"><NavIcon name={item.icon} /></span><span>{item.label}</span></button>)}</nav>
       <div className="sidebar-bottom"><div className="text-size-control" role="group" aria-label="Taille du texte"><button type="button" aria-label="Réduire le texte" disabled={textSizeBusy || textSize===90} onClick={()=>void changeTextSize(TEXT_SIZES[Math.max(0,TEXT_SIZES.indexOf(textSize)-1)])}>A−</button><button type="button" aria-label="Réinitialiser la taille du texte" title="Taille par défaut" disabled={textSizeBusy || textSize===100} onClick={()=>void changeTextSize(100)}>{textSize}%</button><button type="button" aria-label="Agrandir le texte" disabled={textSizeBusy || textSize===140} onClick={()=>void changeTextSize(TEXT_SIZES[Math.min(TEXT_SIZES.length-1,TEXT_SIZES.indexOf(textSize)+1)])}>A+</button></div>{textSizeError && <p role="alert" className="text-size-error">Taille non enregistrée.</p>}
-        <button type="button" className={view==="settings" || ["backups","runtime","models","capabilities","security"].includes(view) ? "nav-link active" : "nav-link"} aria-current={view==="settings" ? "page" : undefined} onClick={()=>navigate("settings")}><span aria-hidden="true"><NavIcon name="settings" /></span><span>Réglages</span></button>
+        <button type="button" className={view==="settings" || ["connections","backups","runtime","models","capabilities","security"].includes(view) ? "nav-link active" : "nav-link"} aria-current={view==="settings" ? "page" : undefined} onClick={()=>navigate("settings")}><span aria-hidden="true"><NavIcon name="settings" /></span><span>Réglages</span></button>
         <CommandPalette projectId={selectedId} verified={selectedInCatalog} management={transport} projects={projectData?.projects ?? []} drafts={drafts} notes={notes}
           navigate={next=>navigate(next)} chooseProject={id=>void chooseProject(id)} openDraft={openDraft} openNote={openNote} openBackend={openBackendKnowledge} openStructured={openStructuredMemory} newDraft={newDraft} newNote={newNote} /></div>
     </aside>
@@ -194,7 +195,7 @@ export function CommandCenter({ transport, research, ollama, drafts, notes, appe
       {view === "knowledge" && <KnowledgeWorkspace key={selectedId ?? "none"} projectId={selectedId} verified={selectedInCatalog}
         transport={notes} management={transport} onDirtyChange={onNoteDirtyChange} createSignal={noteCreateSignal} openNoteRequest={noteOpenRequest} openBackendRequest={backendOpenRequest} openStructuredRequest={structuredOpenRequest} refreshSignal={refreshSignal} />}
       {view === "settings" && <div className="settings-index"><h2>Votre espace, à votre rythme.</h2><p>Les observations techniques restent disponibles ici, sans commande d’exécution.</p>
-        <div className="settings-links"><button onClick={()=>navigate("backups")}>Données et sauvegardes <span>→</span></button><button onClick={()=>navigate("runtime")}>Vue générale et diagnostics <span>→</span></button>
+        <div className="settings-links"><button onClick={()=>navigate("connections")}>Connexions et applications <span>→</span></button><button onClick={()=>navigate("backups")}>Données et sauvegardes <span>→</span></button><button onClick={()=>navigate("runtime")}>Vue générale et diagnostics <span>→</span></button>
           <button onClick={()=>navigate("models")}>Modèles et runtime <span>→</span></button>
           <button onClick={()=>navigate("capabilities")}>Outils et capacités <span>→</span></button>
           <button onClick={()=>navigate("security")}>Sécurité et permissions <span>→</span></button></div>
@@ -202,6 +203,7 @@ export function CommandCenter({ transport, research, ollama, drafts, notes, appe
       {view === "backups" && <BackupWorkspace key={selectedId ?? "none"} projectId={selectedId}
         verified={selectedInCatalog && !selectedProject?.legacy && selectedProject?.configuration_valid === true}
         onRestored={() => { void queryClient.invalidateQueries(); setRefreshSignal(value => value + 1); }} />}
+      {view === "connections" && <ConnectionsWorkspace />}
       {view === "runtime" && <div className="settings-index"><div className="panel-heading"><h2>Observations disponibles</h2><button type="button" disabled={refreshBusy} onClick={refreshSources}>Actualiser les sources</button></div>
         <p className="source-stamp">Management : {managerLoading ? "lecture en cours" : connected ? "accessible" : "indisponible"}. {management.dataUpdatedAt > 0 && `${connected ? "Dernière lecture confirmée" : "Lecture précédente, non actuelle"} : ${new Date(management.dataUpdatedAt).toLocaleString("fr-FR")}.`}</p><dl className="fact-list">
         <Fact label="Management" value={connected ? "Accessible" : "Indisponible"} source="Lecture native" />

@@ -23,7 +23,12 @@ def safe_directory(path: Path, *, private: bool = False) -> None:
     for part in (path, *path.parents):
         if part.is_symlink():
             raise RuntimeError("PATH_SYMLINK_REFUSED")
-    meta = path.stat()
+    try:
+        meta = path.stat()
+    except FileNotFoundError as exc:
+        raise RuntimeError("MANAGEMENT_HOME_MISSING" if private else "BACKEND_ROOT_MISSING") from exc
+    except OSError as exc:
+        raise RuntimeError("PATH_UNAVAILABLE") from exc
     if not stat.S_ISDIR(meta.st_mode) or (private and (meta.st_uid != os.getuid() or stat.S_IMODE(meta.st_mode) & 0o077)):
         raise RuntimeError("PATH_UNSAFE")
 
@@ -42,13 +47,25 @@ def main() -> int:
     if git("branch", "--show-current") != BRANCH or git("status", "--porcelain", "--untracked-files=all"):
         raise RuntimeError("SOURCE_NOT_CLEAN")
     binary = DESKTOP / "src-tauri/target/release/morgoth-desktop"
-    receipt_path = binary.parent / "morgoth-d111-release.json"
-    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    receipt_path = binary.parent / "morgoth-d12-release.json"
+    if not binary.is_file():
+        raise RuntimeError("RELEASE_BINARY_MISSING")
+    if not receipt_path.is_file():
+        raise RuntimeError("RELEASE_RECEIPT_MISSING")
+    try:
+        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise RuntimeError("RELEASE_RECEIPT_INVALID") from exc
     if set(receipt) != {"format", "source_sha", "binary_sha256", "asset_index_sha256"} or receipt["format"] != 1 or receipt["source_sha"] != git("rev-parse", "HEAD") or receipt["binary_sha256"] != digest(binary) or receipt["asset_index_sha256"] != digest(DESKTOP / "dist/index.html"):
         raise RuntimeError("RELEASE_IDENTITY_MISMATCH")
     safe_directory(args.backend_root)
-    backend = subprocess.run(["git", "-C", str(args.backend_root), "rev-parse", "HEAD"], capture_output=True, text=True, timeout=20)
-    status = subprocess.run(["git", "-C", str(args.backend_root), "status", "--porcelain", "--untracked-files=all"], capture_output=True, text=True, timeout=20)
+    try:
+        backend = subprocess.run(["git", "-C", str(args.backend_root), "rev-parse", "HEAD"], capture_output=True, text=True, timeout=20)
+        status = subprocess.run(["git", "-C", str(args.backend_root), "status", "--porcelain", "--untracked-files=all"], capture_output=True, text=True, timeout=20)
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError("BACKEND_CHECKOUT_TIMEOUT") from exc
+    except OSError as exc:
+        raise RuntimeError("BACKEND_CHECKOUT_UNAVAILABLE") from exc
     if backend.returncode or backend.stdout.strip() != BACKEND_SHA or status.returncode or status.stdout.strip():
         raise RuntimeError("BACKEND_CHECKOUT_MISMATCH")
     if not args.python.is_absolute() or ".." in args.python.parts or not args.python.is_file() or not os.access(args.python, os.X_OK):
@@ -68,7 +85,7 @@ def main() -> int:
         if home is not None:
             safe_directory(home, private=True)
         if args.check:
-            print("D111_RELEASE_CHECK_OK")
+            print("D12_RELEASE_CHECK_OK")
             return 0
         env = os.environ.copy()
         env.pop("MORGOTH_DESKTOP_MEMORY_READ_CONFIG", None)
@@ -79,7 +96,7 @@ def main() -> int:
         if temporary:
             env["HOME"] = temporary.name
             env["XDG_DATA_HOME"] = str(Path(temporary.name) / ".local/share")
-        print("D111_RELEASE_START MODE=" + ("DISPOSABLE" if temporary else "PERSISTENT"), flush=True)
+        print("D12_RELEASE_START MODE=" + ("DISPOSABLE" if temporary else "PERSISTENT"), flush=True)
         app = subprocess.Popen([str(binary)], cwd=ROOT, env=env, start_new_session=True)
         try:
             return app.wait()
@@ -100,5 +117,5 @@ if __name__ == "__main__":
     try:
         raise SystemExit(main())
     except (OSError, RuntimeError, ValueError, KeyError, subprocess.SubprocessError) as exc:
-        print("D111_LAUNCH_BLOCKED=" + (str(exc) if isinstance(exc, RuntimeError) else "LOCAL_PREFLIGHT_FAILURE"), file=sys.stderr)
+        print("D12_LAUNCH_BLOCKED=" + (str(exc) if isinstance(exc, RuntimeError) else "LOCAL_PREFLIGHT_FAILURE"), file=sys.stderr)
         raise SystemExit(2) from None

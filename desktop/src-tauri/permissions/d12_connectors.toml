@@ -1,0 +1,19 @@
+[[permission]]
+identifier = "allow-connector-catalog"
+description = "Read the fixed local connector catalog."
+commands.allow = ["connector_catalog"]
+
+[[permission]]
+identifier = "allow-connector-connect"
+description = "Authorize the fixed synthetic MCP read-only connector for one bounded session."
+commands.allow = ["connector_connect"]
+
+[[permission]]
+identifier = "allow-connector-test"
+description = "Invoke the fixed harmless read-only MCP fixture tool."
+commands.allow = ["connector_test"]
+
+[[permission]]
+identifier = "allow-connector-disconnect"
+description = "Revoke the local connector session."
+commands.allow = ["connector_disconnect"]

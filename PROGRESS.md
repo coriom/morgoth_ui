@@ -530,3 +530,6 @@ Le candidat release réel s'est affiché sous WSLg/XWayland. Le Project synthét
 # Desktop D11.1 — retours d'acceptation utilisateur
 
 Branche Tauri isolée `fix/morgoth-desktop-d11-user-acceptance-v1`, issue de D11 `4381ce328767ce7e9936bb96735a337c6703fd1a`. Le formulaire de brief valide explicitement les champs et garde ses actions accessibles ; la taille du texte est réglable et persistante ; l'état Management détaillé est dans Diagnostics ; les états de coffre et de graphe sont clarifiés. Voir `docs/DESKTOP-D111-USER-ACCEPTANCE.md` pour la portée et les limites d'acceptation native. Aucune dépendance ajoutée, aucun changement backend ni élargissement d'autorité.
+# Desktop D12 — fondation de connecteurs locaux
+
+La branche isolée `feat/morgoth-desktop-d12-app-connectors-v1` ajoute un hub dans Réglages et une fixture MCP privée réellement interrogée par stdio. Autorisation GTK native, session de dix minutes, refus sans grant et révocation sont limités à un outil synthétique de lecture. Le lanceur release distingue désormais les absences de home et d'artefacts des erreurs génériques. Aucun accès Windows, navigateur ou compte personnel n'est revendiqué. Voir `docs/DESKTOP-D12-CONNECTOR-FOUNDATION.md`.

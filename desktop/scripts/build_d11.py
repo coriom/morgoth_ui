@@ -11,7 +11,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[2]
 DESKTOP = ROOT / "desktop"
-BRANCH = "fix/morgoth-desktop-d11-user-acceptance-v1"
+BRANCH = "feat/morgoth-desktop-d12-app-connectors-v1"
 
 
 def git(*args: str) -> str:
@@ -50,16 +50,16 @@ def main() -> None:
         raise RuntimeError("RELEASE_ASSETS_MISSING")
     receipt = {"format": 1, "source_sha": git("rev-parse", "HEAD"),
                "binary_sha256": digest(binary), "asset_index_sha256": digest(index)}
-    path = binary.parent / "morgoth-d111-release.json"
+    path = binary.parent / "morgoth-d12-release.json"
     temporary = path.with_suffix(".json.tmp")
     temporary.write_text(json.dumps(receipt, sort_keys=True) + "\n", encoding="utf-8")
     os.replace(temporary, path)
-    print("D111_RELEASE_READY SOURCE_SHA=" + receipt["source_sha"])
+    print("D12_RELEASE_READY SOURCE_SHA=" + receipt["source_sha"])
 
 
 if __name__ == "__main__":
     try:
         main()
     except (OSError, RuntimeError, subprocess.SubprocessError) as exc:
-        print("D111_BUILD_BLOCKED=" + (str(exc) if isinstance(exc, RuntimeError) else "BUILD_IO_FAILURE"), file=sys.stderr)
+        print("D12_BUILD_BLOCKED=" + (str(exc) if isinstance(exc, RuntimeError) else "BUILD_IO_FAILURE"), file=sys.stderr)
         raise SystemExit(2) from None

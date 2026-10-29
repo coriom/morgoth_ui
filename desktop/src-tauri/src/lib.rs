@@ -6,6 +6,7 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{io::Read, path::Path, time::Duration};
 
 pub mod backup;
+pub mod connector_gateway;
 pub mod drafts;
 pub mod note_import;
 pub mod notes;
@@ -1050,6 +1051,7 @@ fn safe_uuid(value: &str) -> bool {
 mod desktop {
     use super::*;
     use crate::backup::{BackupReceipt, BackupStore, EXTENSION};
+    use crate::connector_gateway::{ConnectorResult, ConnectorView, Gateway};
     use crate::drafts::{Draft, DraftInput, DraftStore, DraftUpdate};
     use crate::note_import::{ImportPlan, ImportPreview, ImportStore};
     use crate::notes::{Note, NoteInput, NoteStore, NoteUpdate};
@@ -1338,6 +1340,80 @@ mod desktop {
         } else {
             Err(NativeError::new("DENIED", "Fenêtre non autorisée."))
         }
+    }
+    fn connector_error(code: &'static str) -> NativeError {
+        NativeError::new(code, "Connecteur local indisponible ou refusé.")
+    }
+    async fn confirm_connector(app: &tauri::AppHandle) -> Result<bool, NativeError> {
+        let (sender, receiver) = std::sync::mpsc::sync_channel(1);
+        app.run_on_main_thread(move || {
+            let dialog = gtk::MessageDialog::new(
+                None::<&gtk::Window>, gtk::DialogFlags::MODAL, gtk::MessageType::Question,
+                gtk::ButtonsType::OkCancel,
+                "Autoriser pendant 10 minutes la lecture du serveur MCP synthétique intégré ? Aucun compte ni document personnel ne sera lu.",
+            );
+            dialog.set_title("Autoriser le connecteur local Morgoth");
+            let sender = std::cell::RefCell::new(Some(sender));
+            dialog.connect_response(move |dialog, response| {
+                if let Some(sender) = sender.borrow_mut().take() { let _ = sender.send(response == gtk::ResponseType::Ok); }
+                dialog.close();
+            });
+            dialog.show();
+        }).map_err(|_| connector_error("DIALOG_UNAVAILABLE"))?;
+        tauri::async_runtime::spawn_blocking(move || {
+            receiver.recv_timeout(Duration::from_secs(120))
+        })
+        .await
+        .map_err(|_| connector_error("DIALOG_UNAVAILABLE"))?
+        .map_err(|_| connector_error("DIALOG_UNAVAILABLE"))
+    }
+    #[tauri::command]
+    pub fn connector_catalog(
+        window: WebviewWindow,
+        gateway: State<'_, std::sync::Arc<Gateway>>,
+    ) -> Result<Vec<ConnectorView>, NativeError> {
+        main_only(&window)?;
+        gateway.catalog().map_err(connector_error)
+    }
+    #[tauri::command]
+    pub async fn connector_connect(
+        window: WebviewWindow,
+        app: tauri::AppHandle,
+        gateway: State<'_, std::sync::Arc<Gateway>>,
+        consent: String,
+    ) -> Result<(), NativeError> {
+        main_only(&window)?;
+        if consent != "CONNECT LOCAL FIXTURE" {
+            return Err(connector_error("CONSENT_REQUIRED"));
+        }
+        if !confirm_connector(&app).await? {
+            return Err(connector_error("CONSENT_REFUSED"));
+        }
+        let gateway = gateway.inner().clone();
+        tauri::async_runtime::spawn_blocking(move || gateway.connect(&consent))
+            .await
+            .map_err(|_| connector_error("GATEWAY_UNAVAILABLE"))?
+            .map_err(connector_error)
+    }
+    #[tauri::command]
+    pub async fn connector_test(
+        window: WebviewWindow,
+        gateway: State<'_, std::sync::Arc<Gateway>>,
+    ) -> Result<ConnectorResult, NativeError> {
+        main_only(&window)?;
+        let gateway = gateway.inner().clone();
+        tauri::async_runtime::spawn_blocking(move || gateway.test())
+            .await
+            .map_err(|_| connector_error("GATEWAY_UNAVAILABLE"))?
+            .map_err(connector_error)
+    }
+    #[tauri::command]
+    pub fn connector_disconnect(
+        window: WebviewWindow,
+        gateway: State<'_, std::sync::Arc<Gateway>>,
+    ) -> Result<(), NativeError> {
+        main_only(&window)?;
+        gateway.disconnect().map_err(connector_error)
     }
     #[tauri::command]
     pub fn management_runtime_status(
@@ -1864,6 +1940,7 @@ mod desktop {
         let app = tauri::Builder::default()
             .manage(supervisor)
             .manage(research)
+            .manage(std::sync::Arc::new(Gateway::default()))
             .manage(Mutex::new(None::<PendingRestore>))
             .manage(Mutex::new(PendingImport::default()))
             .setup(|app| {
@@ -1885,6 +1962,10 @@ mod desktop {
                 Ok(())
             })
             .invoke_handler(tauri::generate_handler![
+                connector_catalog,
+                connector_connect,
+                connector_test,
+                connector_disconnect,
                 management_runtime_status,
                 management_status,
                 list_domains,
