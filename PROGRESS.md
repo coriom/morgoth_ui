@@ -545,3 +545,7 @@ Branche Tauri isolée `fix/morgoth-desktop-d11-user-acceptance-v1`, issue de D11
 # Desktop D12 — fondation de connecteurs locaux
 
 La branche isolée `feat/morgoth-desktop-d12-app-connectors-v1` ajoute un hub dans Réglages et une fixture MCP privée réellement interrogée par stdio. Autorisation GTK native, session de dix minutes, refus sans grant et révocation sont limités à un outil synthétique de lecture. Le lanceur release distingue désormais les absences de home et d'artefacts des erreurs génériques. Aucun accès Windows, navigateur ou compte personnel n'est revendiqué. Voir `docs/DESKTOP-D12-CONNECTOR-FOUNDATION.md`.
+
+# Desktop D13 — connexion Windows UIA limitée à une application de test
+
+La branche isolée `feat/morgoth-desktop-d13-windows-companion-v1` ajoute un compagnon C# Windows et une fenêtre WinForms synthétique. Le client Rust scelle l'identité des binaires, lance le compagnon par stdio WSL sans shell ni port, et limite les opérations à la détection, l'inspection de deux contrôles et une bascule réversible approuvée séparément. Le hub affiche l'état, les consentements et la révocation ; aucun droit MCP n'est réutilisé. Le vrai binaire Tauri release a détecté la fenêtre Windows, lu les contrôles UIA, exécuté `InvokePattern` après consentement, confirmé la relecture et révoqué la session dans un affichage Xvfb jetable. Voir `docs/DESKTOP-D13-WINDOWS-COMPANION.md` pour les tests et limites. Aucune nouvelle dépendance du Desktop ni modification backend, agent ou données personnelles.
