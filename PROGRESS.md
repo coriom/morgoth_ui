@@ -1,3 +1,15 @@
+## 2026-10-29 — Desktop D13 Windows test application connector
+
+An isolated Tauri branch adds a Windows companion and a dedicated WinForms test
+application, compiled with installed Windows/.NET UI Automation components.
+The fixed WSL stdio protocol binds build artifacts, process, window and session
+identity, exposes only two known controls, and permits one reversible
+`InvokePattern` toggle after separate native approval. Direct Windows-host
+qualification observed discovery, UIA inspection and state readback; final
+sealed Desktop acceptance is reported separately after build. The D12 MCP
+fixture remains available. See `docs/DESKTOP-D13-WINDOWS-COMPANION.md`.
+No personal Windows application, browser, backend agent or model is connected.
+
 ## 2026-10-26 — Desktop D7 personal Project onboarding
 
 Branch `feat/morgoth-desktop-d7-personal-onboarding-v1` adds one explicit,

@@ -15,6 +15,8 @@ pub mod ollama_read;
 pub mod research;
 #[cfg(target_os = "linux")]
 pub mod supervisor;
+#[cfg(target_os = "linux")]
+pub mod windows_gateway;
 
 const PREFIX: &str = "/management/v1";
 const READ_PREFIX: &str = "/desktop-read/v1";
@@ -1057,6 +1059,9 @@ mod desktop {
     use crate::notes::{Note, NoteInput, NoteStore, NoteUpdate};
     use crate::research::{ProfilesResponse, ResearchEngineStatus, ResearchEngineSupervisor};
     use crate::supervisor::{ManagementRuntimeStatus, ManagementSupervisor, SupervisorConfig};
+    use crate::windows_gateway::{
+        WindowsActionReceipt, WindowsGateway, WindowsInspection, WindowsTargetView,
+    };
     use gtk::prelude::*;
     use std::{path::PathBuf, sync::Mutex, time::Duration};
     use tauri::{Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
@@ -1344,22 +1349,31 @@ mod desktop {
     fn connector_error(code: &'static str) -> NativeError {
         NativeError::new(code, "Connecteur local indisponible ou refusé.")
     }
-    async fn confirm_connector(app: &tauri::AppHandle) -> Result<bool, NativeError> {
+    async fn confirm_connector(
+        app: &tauri::AppHandle,
+        title: &'static str,
+        message: &'static str,
+    ) -> Result<bool, NativeError> {
         let (sender, receiver) = std::sync::mpsc::sync_channel(1);
         app.run_on_main_thread(move || {
             let dialog = gtk::MessageDialog::new(
-                None::<&gtk::Window>, gtk::DialogFlags::MODAL, gtk::MessageType::Question,
+                None::<&gtk::Window>,
+                gtk::DialogFlags::MODAL,
+                gtk::MessageType::Question,
                 gtk::ButtonsType::OkCancel,
-                "Autoriser pendant 10 minutes la lecture du serveur MCP synthétique intégré ? Aucun compte ni document personnel ne sera lu.",
+                message,
             );
-            dialog.set_title("Autoriser le connecteur local Morgoth");
+            dialog.set_title(title);
             let sender = std::cell::RefCell::new(Some(sender));
             dialog.connect_response(move |dialog, response| {
-                if let Some(sender) = sender.borrow_mut().take() { let _ = sender.send(response == gtk::ResponseType::Ok); }
+                if let Some(sender) = sender.borrow_mut().take() {
+                    let _ = sender.send(response == gtk::ResponseType::Ok);
+                }
                 dialog.close();
             });
             dialog.show();
-        }).map_err(|_| connector_error("DIALOG_UNAVAILABLE"))?;
+        })
+        .map_err(|_| connector_error("DIALOG_UNAVAILABLE"))?;
         tauri::async_runtime::spawn_blocking(move || {
             receiver.recv_timeout(Duration::from_secs(120))
         })
@@ -1371,9 +1385,14 @@ mod desktop {
     pub fn connector_catalog(
         window: WebviewWindow,
         gateway: State<'_, std::sync::Arc<Gateway>>,
+        windows: State<'_, std::sync::Arc<WindowsGateway>>,
     ) -> Result<Vec<ConnectorView>, NativeError> {
         main_only(&window)?;
-        gateway.catalog().map_err(connector_error)
+        let mut catalog = gateway.catalog().map_err(connector_error)?;
+        if let Some(entry) = catalog.iter_mut().find(|entry| entry.id == "windows-uia") {
+            *entry = windows.view();
+        }
+        Ok(catalog)
     }
     #[tauri::command]
     pub async fn connector_connect(
@@ -1386,7 +1405,8 @@ mod desktop {
         if consent != "CONNECT LOCAL FIXTURE" {
             return Err(connector_error("CONSENT_REQUIRED"));
         }
-        if !confirm_connector(&app).await? {
+        if !confirm_connector(&app, "Autoriser le connecteur local Morgoth",
+            "Autoriser pendant 10 minutes la lecture du serveur MCP synthétique intégré ? Aucun compte ni document personnel ne sera lu.").await? {
             return Err(connector_error("CONSENT_REFUSED"));
         }
         let gateway = gateway.inner().clone();
@@ -1411,6 +1431,72 @@ mod desktop {
     pub fn connector_disconnect(
         window: WebviewWindow,
         gateway: State<'_, std::sync::Arc<Gateway>>,
+    ) -> Result<(), NativeError> {
+        main_only(&window)?;
+        gateway.disconnect().map_err(connector_error)
+    }
+    #[tauri::command]
+    pub async fn windows_detect(
+        window: WebviewWindow,
+        gateway: State<'_, std::sync::Arc<WindowsGateway>>,
+    ) -> Result<WindowsTargetView, NativeError> {
+        main_only(&window)?;
+        let gateway = gateway.inner().clone();
+        tauri::async_runtime::spawn_blocking(move || gateway.detect())
+            .await
+            .map_err(|_| connector_error("GATEWAY_UNAVAILABLE"))?
+            .map_err(connector_error)
+    }
+    #[tauri::command]
+    pub async fn windows_authorize(
+        window: WebviewWindow,
+        app: tauri::AppHandle,
+        gateway: State<'_, std::sync::Arc<WindowsGateway>>,
+    ) -> Result<(), NativeError> {
+        main_only(&window)?;
+        if !confirm_connector(&app, "Autoriser l’inspection Windows",
+            "Autoriser pendant 10 minutes la lecture des deux contrôles de la seule fenêtre WinForms de test détectée ? Aucun autre document ou fenêtre ne sera inspecté.").await? {
+            return Err(connector_error("CONSENT_REFUSED"));
+        }
+        let gateway = gateway.inner().clone();
+        tauri::async_runtime::spawn_blocking(move || gateway.authorize_inspection())
+            .await
+            .map_err(|_| connector_error("GATEWAY_UNAVAILABLE"))?
+            .map_err(connector_error)
+    }
+    #[tauri::command]
+    pub async fn windows_inspect(
+        window: WebviewWindow,
+        gateway: State<'_, std::sync::Arc<WindowsGateway>>,
+    ) -> Result<WindowsInspection, NativeError> {
+        main_only(&window)?;
+        let gateway = gateway.inner().clone();
+        tauri::async_runtime::spawn_blocking(move || gateway.inspect())
+            .await
+            .map_err(|_| connector_error("GATEWAY_UNAVAILABLE"))?
+            .map_err(connector_error)
+    }
+    #[tauri::command]
+    pub async fn windows_invoke(
+        window: WebviewWindow,
+        app: tauri::AppHandle,
+        gateway: State<'_, std::sync::Arc<WindowsGateway>>,
+    ) -> Result<WindowsActionReceipt, NativeError> {
+        main_only(&window)?;
+        if !confirm_connector(&app, "Action réversible sur le test Windows",
+            "Basculer une fois l’état de la seule fenêtre WinForms D13 autorisée ? L’état précédent et le nouvel état seront relus. Aucune autre application ne sera modifiée.").await? {
+            return Err(connector_error("ACTION_CONSENT_REFUSED"));
+        }
+        let gateway = gateway.inner().clone();
+        tauri::async_runtime::spawn_blocking(move || gateway.invoke())
+            .await
+            .map_err(|_| connector_error("GATEWAY_UNAVAILABLE"))?
+            .map_err(connector_error)
+    }
+    #[tauri::command]
+    pub fn windows_disconnect(
+        window: WebviewWindow,
+        gateway: State<'_, std::sync::Arc<WindowsGateway>>,
     ) -> Result<(), NativeError> {
         main_only(&window)?;
         gateway.disconnect().map_err(connector_error)
@@ -1941,6 +2027,7 @@ mod desktop {
             .manage(supervisor)
             .manage(research)
             .manage(std::sync::Arc::new(Gateway::default()))
+            .manage(std::sync::Arc::new(WindowsGateway::default()))
             .manage(Mutex::new(None::<PendingRestore>))
             .manage(Mutex::new(PendingImport::default()))
             .setup(|app| {
@@ -1966,6 +2053,11 @@ mod desktop {
                 connector_connect,
                 connector_test,
                 connector_disconnect,
+                windows_detect,
+                windows_authorize,
+                windows_inspect,
+                windows_invoke,
+                windows_disconnect,
                 management_runtime_status,
                 management_status,
                 list_domains,

@@ -11,7 +11,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[2]
 DESKTOP = ROOT / "desktop"
-BRANCH = "feat/morgoth-desktop-d12-app-connectors-v1"
+BRANCH = "feat/morgoth-desktop-d13-windows-companion-v1"
 
 
 def git(*args: str) -> str:
@@ -40,6 +40,7 @@ def main() -> None:
         raise RuntimeError("BUILD_DEPENDENCIES_UNAVAILABLE")
     env = os.environ.copy()
     env["CARGO_NET_OFFLINE"] = "true"
+    env["MORGOTH_D13_SOURCE_SHA"] = git("rev-parse", "HEAD")
     command = [str(DESKTOP / "node_modules/.bin/tauri"), "build", "--no-bundle", "--features", "desktop,desktop-release", "--ci"]
     if subprocess.run(command, cwd=DESKTOP, env=env, check=False).returncode:
         raise RuntimeError("TAURI_RELEASE_BUILD_FAILED")
@@ -50,11 +51,11 @@ def main() -> None:
         raise RuntimeError("RELEASE_ASSETS_MISSING")
     receipt = {"format": 1, "source_sha": git("rev-parse", "HEAD"),
                "binary_sha256": digest(binary), "asset_index_sha256": digest(index)}
-    path = binary.parent / "morgoth-d12-release.json"
+    path = binary.parent / "morgoth-d13-release.json"
     temporary = path.with_suffix(".json.tmp")
     temporary.write_text(json.dumps(receipt, sort_keys=True) + "\n", encoding="utf-8")
     os.replace(temporary, path)
-    print("D12_RELEASE_READY SOURCE_SHA=" + receipt["source_sha"])
+    print("D13_RELEASE_READY SOURCE_SHA=" + receipt["source_sha"])
 
 
 if __name__ == "__main__":

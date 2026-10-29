@@ -17,6 +17,7 @@ describe("fixed local connector hub", () => {
       connect: vi.fn(async consent => { expect(consent).toBe("CONNECT LOCAL FIXTURE"); status="AUTHORIZED"; }),
       test: vi.fn(async () => ({ connector_id:"local-mcp-fixture", operation:"read_snapshot", status:"SUCCEEDED", fixture_items:2 })),
       disconnect: vi.fn(async () => { status="DISCONNECTED"; }),
+      windowsDetect: vi.fn(), windowsAuthorize: vi.fn(), windowsInspect: vi.fn(), windowsInvoke: vi.fn(), windowsDisconnect: vi.fn(),
     };
     render(<ConnectionsWorkspace transport={transport} />);
     expect(transport.connect).not.toHaveBeenCalled();
@@ -29,9 +30,34 @@ describe("fixed local connector hub", () => {
     expect(transport.disconnect).toHaveBeenCalledTimes(1);
   });
   it("does not claim availability after a catalog error", async () => {
-    const transport: ConnectorTransport = { catalog: async () => { throw Error("secret"); }, connect: vi.fn(), test: vi.fn(), disconnect: vi.fn() };
+    const transport: ConnectorTransport = { catalog: async () => { throw Error("secret"); }, connect: vi.fn(), test: vi.fn(), disconnect: vi.fn(),
+      windowsDetect: vi.fn(), windowsAuthorize: vi.fn(), windowsInspect: vi.fn(), windowsInvoke: vi.fn(), windowsDisconnect: vi.fn() };
     render(<ConnectionsWorkspace transport={transport} />);
     expect((await screen.findByRole("alert")).textContent).not.toContain("secret");
     expect(screen.queryByRole("button",{name:"Tester la lecture"})).toBeNull();
+  });
+  it("never inspects or invokes Windows before separate native-consent calls", async () => {
+    let status: ConnectorView["status"] = "AVAILABLE";
+    const windows = (): ConnectorView => ({ ...fixture(status), id:"windows-uia", name:"Application Windows de test", status });
+    const transport: ConnectorTransport = {
+      catalog: vi.fn(async () => [windows()]), connect: vi.fn(), test: vi.fn(), disconnect: vi.fn(),
+      windowsDetect: vi.fn(async () => { status="DISCOVERED"; return {app:"Morgoth D13 Test Target",process_id:"10",session_id:"1",operation:"toggle_test_state"}; }),
+      windowsAuthorize: vi.fn(async () => { status="AUTHORIZED"; }),
+      windowsInspect: vi.fn(async () => ({ state:"INACTIVE" as const, controls:[] })),
+      windowsInvoke: vi.fn(async () => ({ action:"toggle_test_state" as const,before:"INACTIVE" as const,after:"ACTIVE" as const,verified:true })),
+      windowsDisconnect: vi.fn(async () => { status="REVOKED"; }),
+    };
+    render(<ConnectionsWorkspace transport={transport} />);
+    expect(transport.windowsInspect).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole("button",{name:"Détecter la fenêtre test"}));
+    await waitFor(() => expect(screen.getByRole("button",{name:"Autoriser l’inspection"})).toBeTruthy());
+    expect(transport.windowsInspect).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button",{name:"Autoriser l’inspection"}));
+    await waitFor(() => expect(transport.windowsInspect).toHaveBeenCalledTimes(1));
+    expect(transport.windowsInvoke).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button",{name:"Basculer l’état test…"}));
+    await waitFor(() => expect(transport.windowsInvoke).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button",{name:"Déconnecter Windows"}));
+    await waitFor(() => expect(screen.getByRole("button",{name:"Détecter la fenêtre test"})).toBeTruthy());
   });
 });

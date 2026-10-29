@@ -17,3 +17,28 @@ commands.allow = ["connector_test"]
 identifier = "allow-connector-disconnect"
 description = "Revoke the local connector session."
 commands.allow = ["connector_disconnect"]
+
+[[permission]]
+identifier = "allow-windows-detect"
+description = "Discover only the fixed D13 Windows test application."
+commands.allow = ["windows_detect"]
+
+[[permission]]
+identifier = "allow-windows-authorize"
+description = "Require native approval for one scoped Windows test-window inspection session."
+commands.allow = ["windows_authorize"]
+
+[[permission]]
+identifier = "allow-windows-inspect"
+description = "Inspect only the two allowlisted Windows test controls."
+commands.allow = ["windows_inspect"]
+
+[[permission]]
+identifier = "allow-windows-invoke"
+description = "Require native approval for one reversible Windows test toggle."
+commands.allow = ["windows_invoke"]
+
+[[permission]]
+identifier = "allow-windows-disconnect"
+description = "Revoke the Windows test-window grant."
+commands.allow = ["windows_disconnect"]
