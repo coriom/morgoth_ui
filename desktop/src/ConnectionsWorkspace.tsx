@@ -21,6 +21,25 @@ export const nativeConnectors: ConnectorTransport = {
   windowsDisconnect: () => invoke("windows_disconnect"),
 };
 
+const windowsFailureMessages: Record<string, string> = {
+  WINDOWS_INTEROP_UNAVAILABLE: "Interop Windows indisponible dans cette session WSL.",
+  WINDOWS_COMPANION_UNAVAILABLE: "Compagnon Windows absent pour cette version.",
+  WINDOWS_ARTIFACT_UNTRUSTED: "Identité du compagnon Windows non vérifiée.",
+  WINDOWS_TIMEOUT: "Le compagnon Windows n’a pas répondu dans le délai prévu.",
+  WINDOWS_TRANSPORT_FAILED: "Transport vers le compagnon Windows interrompu.",
+  WINDOWS_PROTOCOL_INVALID: "Réponse du compagnon Windows incompatible.",
+  TARGET_UNAVAILABLE: "Fenêtre Windows de test introuvable.",
+  TARGET_AMBIGUOUS: "Plusieurs fenêtres de test sont ouvertes ; fermez les doublons.",
+  TARGET_IDENTITY_MISMATCH: "La fenêtre de test a changé ; relancez la détection.",
+  CONSENT_REFUSED: "Inspection annulée ; aucune lecture Windows autorisée.",
+  ACTION_CONSENT_REFUSED: "Action annulée ; aucun changement Windows effectué.",
+};
+
+function windowsFailure(error: unknown): string {
+  const kind = typeof error === "object" && error !== null && "kind" in error && typeof error.kind === "string" ? error.kind : "";
+  return windowsFailureMessages[kind] ?? "Connexion Windows refusée ou indisponible. Aucune autre fenêtre n’a été inspectée.";
+}
+
 /** Only fixed operations are rendered; MCP metadata never creates permissions. */
 export function ConnectionsWorkspace({ transport = nativeConnectors }: { transport?: ConnectorTransport }) {
   const [catalog, setCatalog] = useState<ConnectorView[] | null>(null);
@@ -58,7 +77,7 @@ export function ConnectionsWorkspace({ transport = nativeConnectors }: { transpo
       else if (kind === "invoke") { const receipt = await transport.windowsInvoke(); setAction(receipt); setInspection(await transport.windowsInspect()); }
       else { await transport.windowsDisconnect(); setTarget(null); setInspection(null); }
       await refresh();
-    } catch { setError("Connexion Windows refusée ou indisponible. Vérifiez la fenêtre de test et réessayez après une nouvelle détection."); }
+    } catch (cause) { setError(windowsFailure(cause)); }
     finally { setBusy(false); }
   };
   return <div className="settings-index connector-workspace">

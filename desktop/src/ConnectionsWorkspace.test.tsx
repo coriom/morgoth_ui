@@ -60,4 +60,17 @@ describe("fixed local connector hub", () => {
     fireEvent.click(screen.getByRole("button",{name:"Déconnecter Windows"}));
     await waitFor(() => expect(screen.getByRole("button",{name:"Détecter la fenêtre test"})).toBeTruthy());
   });
+  it("shows only a fixed Windows failure message, never native exception text", async () => {
+    const windows = { ...fixture("AVAILABLE"), id:"windows-uia" };
+    const transport: ConnectorTransport = {
+      catalog: async () => [windows], connect: vi.fn(), test: vi.fn(), disconnect: vi.fn(),
+      windowsDetect: vi.fn(async () => { throw { kind:"WINDOWS_TIMEOUT", message:"private window title" }; }),
+      windowsAuthorize: vi.fn(), windowsInspect: vi.fn(), windowsInvoke: vi.fn(), windowsDisconnect: vi.fn(),
+    };
+    render(<ConnectionsWorkspace transport={transport} />);
+    fireEvent.click(await screen.findByRole("button",{name:"Détecter la fenêtre test"}));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("délai prévu");
+    expect(alert.textContent).not.toContain("private window title");
+  });
 });
