@@ -22,6 +22,8 @@ pub mod supervisor;
 pub mod vscode_gateway;
 #[cfg(target_os = "linux")]
 pub mod windows_gateway;
+#[cfg(target_os = "linux")]
+pub mod workflow_runner;
 
 const PREFIX: &str = "/management/v1";
 const READ_PREFIX: &str = "/desktop-read/v1";
@@ -1069,6 +1071,7 @@ mod desktop {
     use crate::windows_gateway::{
         WindowsActionReceipt, WindowsGateway, WindowsInspection, WindowsTargetView,
     };
+    use crate::workflow_runner::{BriefFields, HandoffPreview, Preview, Receipt, WorkflowRunner};
     use gtk::prelude::*;
     use std::{path::PathBuf, sync::Mutex, time::Duration};
     use tauri::{Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
@@ -1556,6 +1559,211 @@ mod desktop {
         main_only(&window)?;
         github.disconnect().await;
         Ok(())
+    }
+    fn workflow_store(app: &tauri::AppHandle) -> Result<DraftStore, NativeError> {
+        draft_store(app)
+    }
+    fn preferred_workflow_project(store: &DraftStore, project: &str) -> Result<(), NativeError> {
+        if store.preferred()?.as_deref() != Some(project) {
+            return Err(NativeError::new(
+                "WORKFLOW_PROJECT_CHANGED",
+                "Le Project courant a changé.",
+            ));
+        }
+        Ok(())
+    }
+    async fn confirm_workflow(
+        app: &tauri::AppHandle,
+        question: String,
+    ) -> Result<bool, NativeError> {
+        let (sender, receiver) = std::sync::mpsc::sync_channel(1);
+        app.run_on_main_thread(move || {
+            let dialog = gtk::MessageDialog::new(
+                None::<&gtk::Window>,
+                gtk::DialogFlags::MODAL,
+                gtk::MessageType::Question,
+                gtk::ButtonsType::OkCancel,
+                &question,
+            );
+            dialog.set_title("Workflow local explicite");
+            let sender = std::cell::RefCell::new(Some(sender));
+            dialog.connect_response(move |dialog, response| {
+                if let Some(sender) = sender.borrow_mut().take() {
+                    let _ = sender.send(response == gtk::ResponseType::Ok);
+                }
+                dialog.close();
+            });
+            dialog.show();
+        })
+        .map_err(|_| {
+            NativeError::new(
+                "WORKFLOW_DIALOG_UNAVAILABLE",
+                "Dialogue natif indisponible.",
+            )
+        })?;
+        tauri::async_runtime::spawn_blocking(move || {
+            receiver.recv_timeout(Duration::from_secs(120))
+        })
+        .await
+        .map_err(|_| {
+            NativeError::new(
+                "WORKFLOW_DIALOG_UNAVAILABLE",
+                "Dialogue natif indisponible.",
+            )
+        })?
+        .map_err(|_| {
+            NativeError::new(
+                "WORKFLOW_DIALOG_UNAVAILABLE",
+                "Dialogue natif indisponible.",
+            )
+        })
+    }
+    #[tauri::command]
+    #[allow(clippy::too_many_arguments)] // Tauri injects four independent trusted states.
+    pub async fn workflow_prepare(
+        window: WebviewWindow,
+        app: tauri::AppHandle,
+        supervisor: State<'_, ManagementSupervisor>,
+        github: State<'_, std::sync::Arc<GithubGateway>>,
+        runner: State<'_, std::sync::Arc<WorkflowRunner>>,
+        project_id: String,
+        kind: String,
+        number: u32,
+    ) -> Result<Preview, NativeError> {
+        main_only(&window)?;
+        verified_backup_project(&supervisor, &project_id).await?;
+        preferred_workflow_project(&workflow_store(&app)?, &project_id)?;
+        runner.prepare(&github, &project_id, &kind, number).await
+    }
+    #[tauri::command]
+    #[allow(clippy::too_many_arguments)] // Tauri injects four independent trusted states.
+    pub async fn workflow_confirm(
+        window: WebviewWindow,
+        app: tauri::AppHandle,
+        supervisor: State<'_, ManagementSupervisor>,
+        github: State<'_, std::sync::Arc<GithubGateway>>,
+        runner: State<'_, std::sync::Arc<WorkflowRunner>>,
+        project_id: String,
+        workflow_id: String,
+        fields: BriefFields,
+    ) -> Result<Receipt, NativeError> {
+        main_only(&window)?;
+        workflow_runner::validate_fields(&fields)?;
+        verified_backup_project(&supervisor, &project_id).await?;
+        let store = workflow_store(&app)?;
+        preferred_workflow_project(&store, &project_id)?;
+        let preview = runner.pending(&workflow_id, &project_id).await?;
+        let private_label = if preview.source.private {
+            "PRIVÉ : une copie sera enregistrée localement et figurera dans les sauvegardes non chiffrées."
+        } else {
+            "Dépôt public."
+        };
+        let question = format!("Créer un unique brief local non soumis dans le Project {} ?\nSource : {} #{} ({})\nTitre proposé : {}\n{}\nAucune écriture GitHub ni ouverture VS Code.",
+            project_id, preview.source.repository, preview.source.number, preview.source.kind, fields.title, private_label);
+        if !confirm_workflow(&app, question).await? {
+            return Err(NativeError::new(
+                "WORKFLOW_CONSENT_REFUSED",
+                "Création annulée.",
+            ));
+        }
+        verified_backup_project(&supervisor, &project_id).await?;
+        preferred_workflow_project(&store, &project_id)?;
+        runner
+            .confirm(&github, &store, &workflow_id, &project_id, fields)
+            .await
+    }
+    #[tauri::command]
+    pub async fn workflow_cancel(
+        window: WebviewWindow,
+        app: tauri::AppHandle,
+        runner: State<'_, std::sync::Arc<WorkflowRunner>>,
+        project_id: String,
+        workflow_id: String,
+    ) -> Result<(), NativeError> {
+        main_only(&window)?;
+        preferred_workflow_project(&workflow_store(&app)?, &project_id)?;
+        runner.cancel(&workflow_id, &project_id).await
+    }
+    #[tauri::command]
+    pub async fn workflow_receipts(
+        window: WebviewWindow,
+        app: tauri::AppHandle,
+        runner: State<'_, std::sync::Arc<WorkflowRunner>>,
+        project_id: String,
+    ) -> Result<Vec<Receipt>, NativeError> {
+        main_only(&window)?;
+        let store = workflow_store(&app)?;
+        preferred_workflow_project(&store, &project_id)?;
+        runner.list(&store, &project_id)
+    }
+    #[tauri::command]
+    pub async fn workflow_status(
+        window: WebviewWindow,
+        app: tauri::AppHandle,
+        runner: State<'_, std::sync::Arc<WorkflowRunner>>,
+        project_id: String,
+        workflow_id: String,
+    ) -> Result<Receipt, NativeError> {
+        main_only(&window)?;
+        let store = workflow_store(&app)?;
+        preferred_workflow_project(&store, &project_id)?;
+        runner.status(&store, &project_id, &workflow_id)
+    }
+    #[tauri::command]
+    pub async fn workflow_handoff_preview(
+        window: WebviewWindow,
+        app: tauri::AppHandle,
+        runner: State<'_, std::sync::Arc<WorkflowRunner>>,
+        vscode: State<'_, std::sync::Arc<VsCodeGateway>>,
+        project_id: String,
+        workflow_id: String,
+    ) -> Result<HandoffPreview, NativeError> {
+        main_only(&window)?;
+        let store = workflow_store(&app)?;
+        preferred_workflow_project(&store, &project_id)?;
+        runner.handoff_preview(&store, &vscode, &project_id, &workflow_id)
+    }
+    #[tauri::command]
+    #[allow(clippy::too_many_arguments)] // Fixed IPC plus Tauri-injected gateway states.
+    pub async fn workflow_handoff(
+        window: WebviewWindow,
+        app: tauri::AppHandle,
+        runner: State<'_, std::sync::Arc<WorkflowRunner>>,
+        vscode: State<'_, std::sync::Arc<VsCodeGateway>>,
+        project_id: String,
+        workflow_id: String,
+        digest: String,
+        workspace_hash: String,
+    ) -> Result<Receipt, NativeError> {
+        main_only(&window)?;
+        let store = workflow_store(&app)?;
+        preferred_workflow_project(&store, &project_id)?;
+        let preview = runner.handoff_preview(&store, &vscode, &project_id, &workflow_id)?;
+        if preview.sha256 != digest || preview.workspace_hash != workspace_hash {
+            return Err(NativeError::new(
+                "WORKFLOW_HANDOFF_CHANGED",
+                "La destination ou le contenu a changé.",
+            ));
+        }
+        let question = format!("Ouvrir ce brief comme nouveau document Markdown NON ENREGISTRÉ dans VS Code ?\nProject : {}\nEspace VS Code : {}\nTaille : {} octets\nSHA-256 : {}\nAucun fichier existant ne sera modifié.",
+            project_id, preview.workspace, preview.bytes, digest);
+        if !confirm_workflow(&app, question).await? {
+            return Err(NativeError::new(
+                "WORKFLOW_CONSENT_REFUSED",
+                "Transfert annulé.",
+            ));
+        }
+        preferred_workflow_project(&store, &project_id)?;
+        runner
+            .handoff(
+                &store,
+                &vscode,
+                &project_id,
+                &workflow_id,
+                &digest,
+                &workspace_hash,
+            )
+            .await
     }
     #[tauri::command]
     pub fn vscode_status(
@@ -2379,6 +2587,11 @@ mod desktop {
             .manage(Mutex::new(None::<PendingRestore>))
             .manage(Mutex::new(PendingImport::default()))
             .setup(|app| {
+                let workflow_root = app
+                    .path()
+                    .app_local_data_dir()?
+                    .join("workflow-receipts-v1");
+                app.manage(std::sync::Arc::new(WorkflowRunner::new(workflow_root)));
                 let expected = if cfg!(debug_assertions) {
                     "http://127.0.0.1:5173"
                 } else {
@@ -2413,6 +2626,13 @@ mod desktop {
                 github_authorize,
                 github_read,
                 github_disconnect,
+                workflow_prepare,
+                workflow_confirm,
+                workflow_cancel,
+                workflow_receipts,
+                workflow_status,
+                workflow_handoff_preview,
+                workflow_handoff,
                 windows_detect,
                 windows_authorize,
                 windows_inspect,

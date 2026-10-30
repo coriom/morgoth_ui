@@ -49,7 +49,7 @@ def main() -> int:
     if git("branch", "--show-current") != BRANCH or git("status", "--porcelain", "--untracked-files=all"):
         raise RuntimeError("SOURCE_NOT_CLEAN")
     binary = DESKTOP / "src-tauri/target/release/morgoth-desktop"
-    receipt_path = binary.parent / "morgoth-d16-release.json"
+    receipt_path = binary.parent / "morgoth-d17-release.json"
     if not binary.is_file():
         raise RuntimeError("RELEASE_BINARY_MISSING")
     if not receipt_path.is_file():
@@ -60,7 +60,7 @@ def main() -> int:
         receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
         raise RuntimeError("RELEASE_RECEIPT_INVALID") from exc
-    vsix = DESKTOP / "connectors/vscode-extension/dist/morgoth-vscode-connector-0.1.0.vsix"
+    vsix = DESKTOP / "connectors/vscode-extension/dist/morgoth-vscode-connector-0.2.0.vsix"
     if set(receipt) != {"format", "source_sha", "binary_sha256", "asset_index_sha256", "extension_sha256", "extension_protocol_sha256", "vsix_sha256"} or receipt["format"] != 3 or receipt["source_sha"] != git("rev-parse", "HEAD") or receipt["binary_sha256"] != digest(binary) or receipt["asset_index_sha256"] != digest(DESKTOP / "dist/index.html") or receipt["extension_sha256"] != digest(DESKTOP / "connectors/vscode-extension/out/extension.js") or receipt["extension_protocol_sha256"] != digest(DESKTOP / "connectors/vscode-extension/out/protocol.js") or not vsix.is_file() or receipt["vsix_sha256"] != digest(vsix):
         raise RuntimeError("RELEASE_IDENTITY_MISMATCH")
     safe_directory(args.backend_root)
@@ -92,7 +92,7 @@ def main() -> int:
         if home is not None:
             safe_directory(home, private=True)
         if args.check:
-            print("D16_RELEASE_CHECK_OK")
+            print("D17_RELEASE_CHECK_OK")
             return 0
         env = os.environ.copy()
         env.pop("MORGOTH_DESKTOP_MEMORY_READ_CONFIG", None)
@@ -112,7 +112,7 @@ def main() -> int:
         if temporary:
             env["HOME"] = temporary.name
             env["XDG_DATA_HOME"] = str(Path(temporary.name) / ".local/share")
-        print("D16_RELEASE_START MODE=" + ("DISPOSABLE" if temporary else "PERSISTENT"), flush=True)
+        print("D17_RELEASE_START MODE=" + ("DISPOSABLE" if temporary else "PERSISTENT"), flush=True)
         app = subprocess.Popen([str(binary)], cwd=ROOT, env=env, start_new_session=True)
         try:
             return app.wait()
@@ -133,5 +133,5 @@ if __name__ == "__main__":
     try:
         raise SystemExit(main())
     except (OSError, RuntimeError, ValueError, KeyError, subprocess.SubprocessError) as exc:
-        print("D16_LAUNCH_BLOCKED=" + (str(exc) if isinstance(exc, RuntimeError) else "LOCAL_PREFLIGHT_FAILURE"), file=sys.stderr)
+        print("D17_LAUNCH_BLOCKED=" + (str(exc) if isinstance(exc, RuntimeError) else "LOCAL_PREFLIGHT_FAILURE"), file=sys.stderr)
         raise SystemExit(2) from None

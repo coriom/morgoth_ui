@@ -1,0 +1,28 @@
+[[permission]]
+identifier = "allow-workflow-prepare"
+description = "Prepare one GitHub item to Project brief preview from a current read grant."
+commands.allow = ["workflow_prepare"]
+[[permission]]
+identifier = "allow-workflow-confirm"
+description = "Create one local brief after exact Project validation and native approval."
+commands.allow = ["workflow_confirm"]
+[[permission]]
+identifier = "allow-workflow-cancel"
+description = "Cancel one pending preview and record a bounded receipt."
+commands.allow = ["workflow_cancel"]
+[[permission]]
+identifier = "allow-workflow-receipts"
+description = "List bounded Project-scoped local workflow receipts."
+commands.allow = ["workflow_receipts"]
+[[permission]]
+identifier = "allow-workflow-status"
+description = "Read one Project-scoped workflow receipt and reconcile interrupted outcomes."
+commands.allow = ["workflow_status"]
+[[permission]]
+identifier = "allow-workflow-handoff-preview"
+description = "Preview exact brief Markdown for the currently paired VS Code workspace."
+commands.allow = ["workflow_handoff_preview"]
+[[permission]]
+identifier = "allow-workflow-handoff"
+description = "Open a brief as unsaved VS Code scratch after separate native approval."
+commands.allow = ["workflow_handoff"]

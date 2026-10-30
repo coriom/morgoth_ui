@@ -41,7 +41,7 @@ def main() -> None:
         os.replace(temporary, archive)
     finally:
         temporary.unlink(missing_ok=True)
-    print("D16_VSIX_CANONICAL_OK")
+    print("D17_VSIX_CANONICAL_OK")
 
 
 if __name__ == "__main__":

@@ -4,7 +4,7 @@
   "description": "Explicit, local and bounded Morgoth workspace connection",
   "publisher": "coriom",
   "repository": { "type": "git", "url": "https://github.com/coriom/morgoth_ui.git" },
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "engines": {
     "vscode": "^1.140.0"
@@ -38,7 +38,7 @@
   "scripts": {
     "build": "../../node_modules/.bin/tsc -p .",
     "test": "node --test out/protocol.test.js",
-    "package:vsix": "npm run build && mkdir -p dist && node_modules/.bin/vsce package --no-dependencies --skip-license --no-rewrite-relative-links --out dist/morgoth-vscode-connector-0.1.0.vsix && python3 ../../scripts/canonicalize_vsix.py dist/morgoth-vscode-connector-0.1.0.vsix"
+    "package:vsix": "npm run build && mkdir -p dist && node_modules/.bin/vsce package --no-dependencies --skip-license --no-rewrite-relative-links --out dist/morgoth-vscode-connector-0.2.0.vsix && python3 ../../scripts/canonicalize_vsix.py dist/morgoth-vscode-connector-0.2.0.vsix"
   },
   "devDependencies": {
     "@vscode/vsce": "4.1.0"

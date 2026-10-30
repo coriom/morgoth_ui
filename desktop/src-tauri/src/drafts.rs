@@ -580,6 +580,15 @@ impl DraftStore {
         })
     }
     pub fn create(&self, input: DraftInput) -> Result<Draft, NativeError> {
+        self.create_with_id(input, Uuid::new_v4().to_string())
+    }
+    /// A workflow reserves this identity before dispatch so a crash can be reconciled.
+    pub(crate) fn create_with_id(
+        &self,
+        input: DraftInput,
+        draft_id: String,
+    ) -> Result<Draft, NativeError> {
+        validate_id(&draft_id)?;
         validate_text(&input.title, &input.objective, &input.verification_criteria)?;
         let dir = self.project_dir(&input.project_id)?;
         self.locked(&dir, || {
@@ -595,7 +604,7 @@ impl DraftStore {
             let stamp = now()?;
             let draft = Draft {
                 schema_version: 1,
-                draft_id: Uuid::new_v4().to_string(),
+                draft_id,
                 project_id: input.project_id,
                 title: input.title,
                 objective: input.objective,

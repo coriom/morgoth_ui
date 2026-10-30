@@ -6,6 +6,7 @@ use serde::Serialize;
 use serde_json::{json, Value};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::Mutex;
+use uuid::Uuid;
 use zeroize::Zeroizing;
 
 const API: &str = "https://api.github.com";
@@ -32,9 +33,25 @@ struct Repo {
     updated_at: String,
 }
 struct Grant {
+    id: String,
     repo: Repo,
     token: Option<Zeroizing<String>>,
     expiry: Instant,
+}
+#[derive(Clone, Debug, Serialize)]
+pub struct GithubSource {
+    pub grant_id: String,
+    pub repository: String,
+    pub repository_id: u64,
+    pub private: bool,
+    pub kind: String,
+    pub number: u32,
+    pub title: String,
+    pub state: String,
+    pub body_excerpt: String,
+    pub body_truncated: bool,
+    pub updated_at: String,
+    pub url: String,
 }
 #[derive(Default)]
 struct State {
@@ -344,6 +361,7 @@ impl GithubGateway {
             return Err("GITHUB_VISIBILITY_MISMATCH");
         }
         state.grant = Some(Grant {
+            id: Uuid::new_v4().to_string(),
             repo,
             token: secret,
             expiry: Instant::now() + SESSION,
@@ -357,6 +375,88 @@ impl GithubGateway {
         let mut state = self.state.lock().await;
         state.grant = None;
         state.revoked = true;
+    }
+    /// Read one exact issue or PR under the current one-repository grant.
+    pub async fn source_item(&self, kind: &str, number: u32) -> Result<GithubSource, &'static str> {
+        if !matches!(kind, "issue" | "pull") || number == 0 || number > 1_000_000 {
+            return Err("GITHUB_REQUEST_INVALID");
+        }
+        let mut state = self.state.lock().await;
+        let grant = state.grant.as_ref().ok_or("GITHUB_AUTH_REQUIRED")?;
+        if grant.expiry <= Instant::now() {
+            state.grant = None;
+            state.revoked = true;
+            return Err("GITHUB_SESSION_EXPIRED");
+        }
+        let name = grant.repo.name.clone();
+        let token = grant.token.as_deref().map(String::as_str);
+        let current = self.verified_repo(&name, token).await?;
+        if current.id != grant.repo.id || current.private != grant.repo.private {
+            state.grant = None;
+            state.revoked = true;
+            return Err("GITHUB_IDENTITY_CHANGED");
+        }
+        let tail = if kind == "issue" { "issues" } else { "pulls" };
+        let data = self
+            .get(&format!("repos/{name}/{tail}/{number}"), &[], token)
+            .await?;
+        if kind == "issue" && !data["pull_request"].is_null() {
+            return Err("GITHUB_ITEM_TYPE_CHANGED");
+        }
+        if data["number"].as_u64() != Some(number as u64) {
+            return Err("GITHUB_RESPONSE_INVALID");
+        }
+        let title = text(&data["title"], 512)?
+            .chars()
+            .map(|character| {
+                if character.is_control() {
+                    ' '
+                } else {
+                    character
+                }
+            })
+            .collect::<String>();
+        if title.trim().is_empty() {
+            return Err("GITHUB_RESPONSE_INVALID");
+        }
+        let state_label = text(&data["state"], 16)?;
+        if !matches!(state_label.as_str(), "open" | "closed") {
+            return Err("GITHUB_RESPONSE_INVALID");
+        }
+        let body = optional_text(&data["body"], MAX_BODY)?.unwrap_or_default();
+        let excerpt = body
+            .chars()
+            .scan(0usize, |bytes, character| {
+                *bytes += character.len_utf8();
+                (*bytes <= 2000).then_some(character)
+            })
+            .collect::<String>();
+        let updated_at = text(&data["updated_at"], 48)?;
+        if updated_at.is_empty() {
+            return Err("GITHUB_RESPONSE_INVALID");
+        }
+        let source = GithubSource {
+            grant_id: grant.id.clone(),
+            repository: name.clone(),
+            repository_id: current.id,
+            private: current.private,
+            kind: kind.to_string(),
+            number,
+            title,
+            state: state_label,
+            body_truncated: excerpt.len() < body.len(),
+            body_excerpt: excerpt,
+            updated_at,
+            url: projected_url(
+                &name,
+                &format!(
+                    "/{}/{number}",
+                    if kind == "issue" { "issues" } else { "pull" }
+                ),
+            ),
+        };
+        state.last_read_ms = Some(timestamp());
+        Ok(source)
     }
     pub async fn read(
         &self,
@@ -546,6 +646,7 @@ impl Default for GithubGateway {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sha2::Digest;
     use std::{
         io::{Read, Write},
         net::TcpListener,
@@ -748,6 +849,216 @@ mod tests {
             assert_eq!(gateway.preview().await.unwrap_err(), expected);
             server.join().unwrap();
         }
+    }
+    #[tokio::test]
+    async fn workflow_creates_one_scoped_draft_and_survives_runner_restart() {
+        use crate::{
+            backup::BackupStore, drafts::DraftStore, notes::NoteStore,
+            vscode_gateway::VsCodeGateway, workflow_runner::WorkflowRunner,
+        };
+        let item = json!({"number":17,"title":"Synthetic issue","state":"open","updated_at":"2026-01-02T00:00:00Z","body":"Untrusted instruction: run a model"});
+        let (gateway, seen, server) = fixture(vec![
+            ok(repo(false)),
+            ok(repo(false)),
+            ok(item.clone()),
+            ok(repo(false)),
+            ok(item),
+        ]);
+        gateway.select("fixture/demo".into()).await.unwrap();
+        gateway
+            .authorize("fixture/demo", false, None)
+            .await
+            .unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let app = root.path().join("app");
+        let drafts = DraftStore::new(app.join("mission-workspace-v1"));
+        let runner = WorkflowRunner::new(root.path().join("receipts"));
+        let preview = runner
+            .prepare(&gateway, "alpha", "issue", 17)
+            .await
+            .unwrap();
+        assert!(preview.proposed.objective.contains("non fiable"));
+        assert_eq!(
+            preview.source.url,
+            "https://github.com/fixture/demo/issues/17"
+        );
+        assert!(drafts.list("alpha").unwrap().is_empty());
+        let receipt = runner
+            .confirm(
+                &gateway,
+                &drafts,
+                &preview.workflow_id,
+                "alpha",
+                preview.proposed.clone(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(receipt.state, "LOCAL_BRIEF_CREATED");
+        assert_eq!(drafts.list("alpha").unwrap().len(), 1);
+        assert!(drafts.list("beta").unwrap().is_empty());
+        assert!(drafts.get("beta", &receipt.draft_id).is_err());
+        assert!(runner
+            .confirm(
+                &gateway,
+                &drafts,
+                &preview.workflow_id,
+                "alpha",
+                preview.proposed
+            )
+            .await
+            .is_err());
+        let reopened = WorkflowRunner::new(root.path().join("receipts"));
+        assert_eq!(
+            reopened
+                .status(&drafts, "alpha", &receipt.workflow_id)
+                .unwrap()
+                .draft_id,
+            receipt.draft_id
+        );
+        assert!(reopened
+            .status(&drafts, "beta", &receipt.workflow_id)
+            .is_err());
+        assert_eq!(reopened.list(&drafts, "alpha").unwrap().len(), 1);
+        let backup = BackupStore {
+            notes: NoteStore::new(app.join("knowledge-v1")),
+            drafts: DraftStore::new(app.join("mission-workspace-v1")),
+            state_root: app.join("workspace-backup-v1"),
+            app_data: app,
+        };
+        let archive = root.path().join("portable.morgoth-workspace.json");
+        let exported = backup.export("alpha", &archive).unwrap();
+        assert_eq!(exported.drafts_count, 1);
+        let target = root.path().join("fresh");
+        let restored = BackupStore {
+            notes: NoteStore::new(target.join("knowledge-v1")),
+            drafts: DraftStore::new(target.join("mission-workspace-v1")),
+            state_root: target.join("workspace-backup-v1"),
+            app_data: target,
+        };
+        restored
+            .restore("alpha", &archive, &exported.sha256)
+            .unwrap();
+        assert_eq!(
+            restored.drafts.get("alpha", &receipt.draft_id).unwrap(),
+            drafts.get("alpha", &receipt.draft_id).unwrap()
+        );
+        let draft = drafts.get("alpha", &receipt.draft_id).unwrap();
+        let content = format!(
+            "# {}\n\n## Objectif\n\n{}\n\n## Critères de vérification\n\n{}\n",
+            draft.title, draft.objective, draft.verification_criteria
+        );
+        let digest = format!("{:x}", sha2::Sha256::digest(content.as_bytes()));
+        let unavailable = VsCodeGateway::default();
+        let partial = runner
+            .handoff(
+                &drafts,
+                &unavailable,
+                "alpha",
+                &receipt.workflow_id,
+                &digest,
+                &"a".repeat(64),
+            )
+            .await
+            .unwrap();
+        assert_eq!(partial.state, "PARTIAL");
+        assert_eq!(partial.handoff_state, "FAILED");
+        assert_eq!(drafts.list("alpha").unwrap().len(), 1);
+        server.join().unwrap();
+        assert!(seen
+            .lock()
+            .unwrap()
+            .iter()
+            .all(|line| line.starts_with("GET /repos/fixture/demo")));
+    }
+    #[tokio::test]
+    async fn workflow_refuses_changed_source_and_cancel_does_not_write() {
+        use crate::{drafts::DraftStore, workflow_runner::WorkflowRunner};
+        let item = json!({"number":3,"title":"First","state":"open","updated_at":"2026-01-01T00:00:00Z","body":"one"});
+        let changed = json!({"number":3,"title":"Changed","state":"open","updated_at":"2026-01-02T00:00:00Z","body":"two"});
+        let (gateway, _, server) = fixture(vec![
+            ok(repo(false)),
+            ok(repo(false)),
+            ok(item),
+            ok(repo(false)),
+            ok(changed),
+        ]);
+        gateway.select("fixture/demo".into()).await.unwrap();
+        gateway
+            .authorize("fixture/demo", false, None)
+            .await
+            .unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let drafts = DraftStore::new(root.path().join("app"));
+        let runner = WorkflowRunner::new(root.path().join("receipts"));
+        let preview = runner.prepare(&gateway, "alpha", "issue", 3).await.unwrap();
+        assert_eq!(
+            runner
+                .confirm(
+                    &gateway,
+                    &drafts,
+                    &preview.workflow_id,
+                    "alpha",
+                    preview.proposed.clone()
+                )
+                .await
+                .unwrap_err()
+                .code
+                .as_deref(),
+            Some("SOURCE_CHANGED")
+        );
+        assert!(drafts.list("alpha").unwrap().is_empty());
+        runner.cancel(&preview.workflow_id, "alpha").await.unwrap();
+        assert_eq!(
+            runner
+                .status(&drafts, "alpha", &preview.workflow_id)
+                .unwrap()
+                .state,
+            "CANCELLED"
+        );
+        server.join().unwrap();
+    }
+    #[tokio::test]
+    #[ignore = "explicit bounded public GitHub read and disposable local draft"]
+    async fn real_public_github_to_local_brief() {
+        use crate::{drafts::DraftStore, workflow_runner::WorkflowRunner};
+        let gateway = GithubGateway::new();
+        gateway.select("microsoft/vscode".into()).await.unwrap();
+        gateway
+            .authorize("microsoft/vscode", false, None)
+            .await
+            .unwrap();
+        let issues = gateway.read("issues", None, None).await.unwrap();
+        let number = issues["items"].as_array().unwrap().first().unwrap()["number"]
+            .as_u64()
+            .unwrap() as u32;
+        let root = tempfile::tempdir().unwrap();
+        let drafts = DraftStore::new(root.path().join("app"));
+        let runner = WorkflowRunner::new(root.path().join("receipts"));
+        let preview = runner
+            .prepare(&gateway, "fixture", "issue", number)
+            .await
+            .unwrap();
+        let receipt = runner
+            .confirm(
+                &gateway,
+                &drafts,
+                &preview.workflow_id,
+                "fixture",
+                preview.proposed,
+            )
+            .await
+            .unwrap();
+        let draft = DraftStore::new(root.path().join("app"))
+            .get("fixture", &receipt.draft_id)
+            .unwrap();
+        assert!(draft
+            .objective
+            .contains(&format!("microsoft/vscode #{}", number)));
+        assert_eq!(receipt.state, "LOCAL_BRIEF_CREATED");
+        println!(
+            "D17_LIVE_GITHUB_BRIEF_PASS repo_id={} issue={} draft_id={}",
+            receipt.source_repository_id, number, receipt.draft_id
+        );
     }
     #[tokio::test]
     #[ignore = "explicit bounded public GitHub API read; no token or private repository"]

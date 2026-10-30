@@ -11,7 +11,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[2]
 DESKTOP = ROOT / "desktop"
-BRANCH = "feat/morgoth-desktop-d16-github-connector-v1"
+BRANCH = "feat/morgoth-desktop-d17-controlled-workflows-v1"
 
 
 def git(*args: str) -> str:
@@ -41,7 +41,7 @@ def main() -> None:
     extension = DESKTOP / "connectors/vscode-extension"
     if subprocess.run(["npm", "run", "package:vsix"], cwd=extension, check=False).returncode or not (extension / "out/extension.js").is_file() or not (extension / "out/protocol.js").is_file():
         raise RuntimeError("VSCODE_EXTENSION_BUILD_FAILED")
-    vsix = extension / "dist/morgoth-vscode-connector-0.1.0.vsix"
+    vsix = extension / "dist/morgoth-vscode-connector-0.2.0.vsix"
     if not vsix.is_file():
         raise RuntimeError("VSCODE_VSIX_MISSING")
     env = os.environ.copy()
@@ -60,16 +60,16 @@ def main() -> None:
                "extension_sha256": digest(extension / "out/extension.js"),
                "extension_protocol_sha256": digest(extension / "out/protocol.js"),
                "vsix_sha256": digest(vsix)}
-    path = binary.parent / "morgoth-d16-release.json"
+    path = binary.parent / "morgoth-d17-release.json"
     temporary = path.with_suffix(".json.tmp")
     temporary.write_text(json.dumps(receipt, sort_keys=True) + "\n", encoding="utf-8")
     os.replace(temporary, path)
-    print("D16_RELEASE_READY SOURCE_SHA=" + receipt["source_sha"])
+    print("D17_RELEASE_READY SOURCE_SHA=" + receipt["source_sha"])
 
 
 if __name__ == "__main__":
     try:
         main()
     except (OSError, RuntimeError, subprocess.SubprocessError) as exc:
-        print("D12_BUILD_BLOCKED=" + (str(exc) if isinstance(exc, RuntimeError) else "BUILD_IO_FAILURE"), file=sys.stderr)
+        print("D17_BUILD_BLOCKED=" + (str(exc) if isinstance(exc, RuntimeError) else "BUILD_IO_FAILURE"), file=sys.stderr)
         raise SystemExit(2) from None

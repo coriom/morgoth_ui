@@ -80,6 +80,29 @@ export async function run(): Promise<void> {
     if (installed) await vscode.commands.executeCommand("morgoth.disconnectWorkspace"); else deactivate();
     return;
   }
+  if (process.env.MORGOTH_D17_RUST_PROBE) {
+    const executable = process.env.MORGOTH_D17_RUST_PROBE;
+    assert.ok(path.isAbsolute(executable));
+    const exitCode = await new Promise<number>((resolve, reject) => {
+      const child = spawn(executable, ["vscode_gateway::tests::real_d17_cross_application_host", "--exact", "--ignored", "--nocapture"], {
+        env: { HOME: process.env.HOME ?? "", MORGOTH_D15_SOCKET_DIR: dir, MORGOTH_D15_TEST_PAIR_CODE: code,
+          MORGOTH_D15_EXTENSION_SHA256: createHash("sha256").update(fs.readFileSync(path.join(extension.extensionPath,"out","extension.js"))).digest("hex"),
+          MORGOTH_D15_PROTOCOL_SHA256: createHash("sha256").update(fs.readFileSync(path.join(extension.extensionPath,"out","protocol.js"))).digest("hex") },
+        stdio: ["ignore", "pipe", "pipe"], timeout: 60_000,
+      });
+      let output = "";
+      let errors = "";
+      child.stdout.on("data", chunk => { output += String(chunk).slice(0, 2048); });
+      child.stderr.on("data", chunk => { errors += String(chunk).slice(0, 2048); });
+      child.once("error", reject);
+      child.once("close", value => { if (value !== 0) console.error("D17_RUST_PROBE_FAILED", (output + errors).slice(0, 2048)); else console.log(output.match(/D17_REAL_CROSS_APP_PASS[^\n]*/)?.[0]); resolve(value ?? -1); });
+    });
+    assert.equal(exitCode, 0);
+    assert.match(vscode.window.activeTextEditor?.document.getText() ?? "", /^# GitHub · microsoft\/vscode/);
+    assert.equal(vscode.window.activeTextEditor?.document.uri.scheme, "untitled");
+    if (installed) await vscode.commands.executeCommand("morgoth.disconnectWorkspace"); else deactivate();
+    return;
+  }
   const socket = net.createConnection(path.join(dir, "bridge.sock"));
   await new Promise<void>((resolve, reject) => { socket.once("connect", resolve); socket.once("error", reject); });
   const paired = await request(socket, 1, "pair", {code});
@@ -95,9 +118,16 @@ export async function run(): Promise<void> {
   assert.equal(scratch.text, SCRATCH);
   assert.equal(scratch.unsaved, true);
   assert.equal(vscode.window.activeTextEditor?.document.getText(), SCRATCH);
-  const receipt = await request(socket, 5, "disconnect", {session});
+  const briefText = "# Morgoth D17\n\nSynthetic GitHub brief; no personal workspace data.\n";
+  const briefDigest = createHash("sha256").update(briefText).digest("hex");
+  const brief = await request(socket, 5, "brief_scratch", {session, content:briefText, digest:briefDigest});
+  assert.equal(brief.digest, briefDigest);
+  assert.equal(brief.unsaved, true);
+  assert.equal(vscode.window.activeTextEditor?.document.getText(), briefText);
+  assert.equal(vscode.window.activeTextEditor?.document.uri.scheme, "untitled");
+  const receipt = await request(socket, 6, "disconnect", {session});
   assert.equal(receipt.revoked, true);
   socket.destroy();
   if (installed) await vscode.commands.executeCommand("morgoth.disconnectWorkspace"); else deactivate();
-  console.log("D15_REAL_VSCODE_API_PASS workspace=synthetic metadata=pass selection=pass scratch=pass disconnect=pass");
+  console.log("D17_REAL_VSCODE_API_PASS workspace=synthetic metadata=pass selection=pass brief_scratch=pass disconnect=pass");
 }

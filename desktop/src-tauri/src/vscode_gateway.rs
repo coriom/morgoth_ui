@@ -2,6 +2,7 @@
 use crate::connector_gateway::ConnectorView;
 use serde::Serialize;
 use serde_json::{json, Value};
+use sha2::Digest;
 use std::{
     fs,
     io::{Read, Write},
@@ -14,7 +15,7 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
-const MAX_LINE: usize = 4096;
+const MAX_LINE: usize = 16384;
 const TIMEOUT: Duration = Duration::from_secs(5);
 const LIFE: Duration = Duration::from_secs(600);
 
@@ -303,7 +304,7 @@ impl VsCodeGateway {
             .ok_or("VSCODE_PROTOCOL_INVALID")?;
         let host = data["host"].as_str().ok_or("VSCODE_PROTOCOL_INVALID")?;
         if data["extension"] != "coriom.morgoth-vscode-connector"
-            || data["version"] != "0.1.0"
+            || data["version"] != "0.2.0"
             || data["extension_sha256"] != extension_sha
             || data["extension_protocol_sha256"] != protocol_sha
             || data["trusted"] != true
@@ -394,6 +395,67 @@ impl VsCodeGateway {
             }
         }
     }
+    /// Send only an approved Markdown brief to the already paired workspace.
+    pub fn call_brief(
+        &self,
+        content: &str,
+        digest: &str,
+        expected_workspace: &str,
+    ) -> Result<(), &'static str> {
+        if content.is_empty()
+            || content.len() > 12_000
+            || format!("{:x}", sha2::Sha256::digest(content.as_bytes())) != digest
+        {
+            return Err("VSCODE_REQUEST_INVALID");
+        }
+        let mut state = self.0.lock().map_err(|_| "VSCODE_UNAVAILABLE")?;
+        let session = state
+            .session
+            .as_mut()
+            .ok_or("VSCODE_AUTHORIZATION_REQUIRED")?;
+        if session.expiry <= Instant::now() {
+            state.session = None;
+            state.revoked = true;
+            return Err("VSCODE_AUTHORIZATION_EXPIRED");
+        }
+        if session.workspace_hash != expected_workspace {
+            return Err("VSCODE_WORKSPACE_CHANGED");
+        }
+        session.next_id += 1;
+        let result = exchange(
+            &mut session.stream,
+            session.next_id,
+            "brief_scratch",
+            json!({"session":session.secret,"content":content,"digest":digest}),
+        );
+        match result {
+            Ok(value)
+                if value["operation"] == "open_brief_scratch"
+                    && value["status"] == "VERIFIED"
+                    && value["digest"] == digest
+                    && value["bytes"] == content.len()
+                    && value["workspace_hash"] == expected_workspace
+                    && value["unsaved"] == true =>
+            {
+                state.last_verified_ms = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .ok()
+                    .map(|v| v.as_millis() as u64);
+                state.last_verified_action = Some("brief_scratch");
+                Ok(())
+            }
+            Ok(_) => {
+                state.session = None;
+                state.revoked = true;
+                Err("VSCODE_PROTOCOL_INVALID")
+            }
+            Err(code) => {
+                state.session = None;
+                state.revoked = true;
+                Err(code)
+            }
+        }
+    }
     pub fn disconnect(&self) -> Result<(), &'static str> {
         let mut state = self.0.lock().map_err(|_| "VSCODE_UNAVAILABLE")?;
         if let Some(mut session) = state.session.take() {
@@ -441,7 +503,8 @@ mod tests {
                 (2, "metadata"),
                 (3, "selection"),
                 (4, "scratch"),
-                (5, "disconnect"),
+                (5, "brief_scratch"),
+                (6, "disconnect"),
             ] {
                 let mut line = String::new();
                 reader.read_line(&mut line).unwrap();
@@ -450,7 +513,7 @@ mod tests {
                 assert_eq!(request["op"], op);
                 let data = match op {
                     "pair" => {
-                        json!({"extension":"coriom.morgoth-vscode-connector","version":"0.1.0","extension_sha256":"d".repeat(64),"extension_protocol_sha256":"e".repeat(64),"host":"wsl","workspace":"synthetic","workspace_hash":"a".repeat(64),"trusted":true,"folders":1,"session":"b".repeat(32),"expires_in_seconds":600})
+                        json!({"extension":"coriom.morgoth-vscode-connector","version":"0.2.0","extension_sha256":"d".repeat(64),"extension_protocol_sha256":"e".repeat(64),"host":"wsl","workspace":"synthetic","workspace_hash":"a".repeat(64),"trusted":true,"folders":1,"session":"b".repeat(32),"expires_in_seconds":600})
                     }
                     "metadata" => {
                         json!({"workspace_hash":"a".repeat(64),"editor":{"document":"sample.md","version":1}})
@@ -460,6 +523,10 @@ mod tests {
                     }
                     "scratch" => {
                         json!({"operation":"open_scratch","status":"VERIFIED","text":"Morgoth D15 integration verified.","unsaved":true})
+                    }
+                    "brief_scratch" => {
+                        assert_eq!(request["content"], "# Synthetic brief");
+                        json!({"operation":"open_brief_scratch","status":"VERIFIED","digest":request["digest"],"bytes":17,"workspace_hash":"a".repeat(64),"unsaved":true})
                     }
                     _ => json!({"revoked":true}),
                 };
@@ -490,6 +557,16 @@ mod tests {
             "Synthetic"
         );
         assert_eq!(gateway.call("scratch").unwrap()["status"], "VERIFIED");
+        let digest = format!("{:x}", sha2::Sha256::digest(b"# Synthetic brief"));
+        assert_eq!(
+            gateway
+                .call_brief("# Synthetic brief", &digest, &"b".repeat(64))
+                .unwrap_err(),
+            "VSCODE_WORKSPACE_CHANGED"
+        );
+        gateway
+            .call_brief("# Synthetic brief", &digest, &"a".repeat(64))
+            .unwrap();
         gateway.disconnect().unwrap();
         assert_eq!(
             gateway.call("metadata").unwrap_err(),
@@ -527,6 +604,69 @@ mod tests {
         assert_eq!(
             gateway.call("metadata").unwrap_err(),
             "VSCODE_AUTHORIZATION_REQUIRED"
+        );
+    }
+    #[tokio::test]
+    #[ignore = "requires public GitHub, isolated installed VSIX and real Linux VS Code host"]
+    async fn real_d17_cross_application_host() {
+        use crate::{
+            drafts::DraftStore, github_gateway::GithubGateway, workflow_runner::WorkflowRunner,
+        };
+        let code = std::env::var("MORGOTH_D15_TEST_PAIR_CODE").unwrap();
+        let vscode = VsCodeGateway::default();
+        assert_eq!(vscode.pair(&code).unwrap().status, "AUTHORIZED");
+        let github = GithubGateway::new();
+        github.select("microsoft/vscode".into()).await.unwrap();
+        github
+            .authorize("microsoft/vscode", false, None)
+            .await
+            .unwrap();
+        let items = github.read("issues", None, None).await.unwrap();
+        let number = items["items"].as_array().unwrap().first().unwrap()["number"]
+            .as_u64()
+            .unwrap() as u32;
+        let temp = tempfile::tempdir().unwrap();
+        let drafts = DraftStore::new(temp.path().join("app/mission-workspace-v1"));
+        let runner = WorkflowRunner::new(temp.path().join("app/workflow-receipts-v1"));
+        let preview = runner
+            .prepare(&github, "fixture", "issue", number)
+            .await
+            .unwrap();
+        let receipt = runner
+            .confirm(
+                &github,
+                &drafts,
+                &preview.workflow_id,
+                "fixture",
+                preview.proposed,
+            )
+            .await
+            .unwrap();
+        let outgoing = runner
+            .handoff_preview(&drafts, &vscode, "fixture", &receipt.workflow_id)
+            .unwrap();
+        assert!(outgoing.markdown.starts_with("# GitHub · microsoft/vscode"));
+        let done = runner
+            .handoff(
+                &drafts,
+                &vscode,
+                "fixture",
+                &receipt.workflow_id,
+                &outgoing.sha256,
+                &outgoing.workspace_hash,
+            )
+            .await
+            .unwrap();
+        assert_eq!(done.state, "COMPLETED");
+        assert_eq!(done.handoff_state, "VERIFIED");
+        vscode.disconnect().unwrap();
+        assert_eq!(
+            vscode.call("metadata").unwrap_err(),
+            "VSCODE_AUTHORIZATION_REQUIRED"
+        );
+        println!(
+            "D17_REAL_CROSS_APP_PASS repo_id={} issue={} draft_id={} handoff=VERIFIED",
+            receipt.source_repository_id, number, receipt.draft_id
         );
     }
 }

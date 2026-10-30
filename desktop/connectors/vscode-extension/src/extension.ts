@@ -114,7 +114,7 @@ function onConnection(socket: net.Socket): void {
         if (!extensionRoot) throw Error("EXTENSION_UNAVAILABLE");
         const extensionSha = createHash("sha256").update(fs.readFileSync(path.join(extensionRoot, "out", "extension.js"))).digest("hex");
         const protocolSha = createHash("sha256").update(fs.readFileSync(path.join(extensionRoot, "out", "protocol.js"))).digest("hex");
-        reply(socket, req.id, { extension: EXTENSION_ID, version: "0.1.0", host: vscode.env.remoteName ?? "linux-local",
+        reply(socket, req.id, { extension: EXTENSION_ID, version: "0.2.0", host: vscode.env.remoteName ?? "linux-local",
           extension_sha256: extensionSha, extension_protocol_sha256: protocolSha,
           workspace: current.label, workspace_hash: current.hash, trusted: true, folders: 1, session, expires_in_seconds: 600 });
       } else {
@@ -127,11 +127,19 @@ function onConnection(socket: net.Socket): void {
           await vscode.window.showTextDocument(document, { preview: false });
           if (vscode.window.activeTextEditor?.document !== document || document.getText() !== SCRATCH) throw Error("SCRATCH_READBACK_FAILED");
           reply(socket, req.id, { operation: "open_scratch", status: "VERIFIED", text: SCRATCH, unsaved: document.uri.scheme === "untitled" });
+        } else if (req.op === "brief_scratch") {
+          const current = checkedWorkspace();
+          if (!req.content || !req.digest || createHash("sha256").update(req.content).digest("hex") !== req.digest) throw Error("CONTENT_CHANGED");
+          const document = await vscode.workspace.openTextDocument({ language: "markdown", content: req.content });
+          await vscode.window.showTextDocument(document, { preview: false });
+          if (vscode.window.activeTextEditor?.document !== document || document.getText() !== req.content || document.uri.scheme !== "untitled") throw Error("SCRATCH_READBACK_FAILED");
+          reply(socket, req.id, { operation: "open_brief_scratch", status: "VERIFIED", digest: createHash("sha256").update(document.getText()).digest("hex"),
+            bytes: Buffer.byteLength(document.getText(), "utf8"), workspace_hash: current.hash, unsaved: true });
         } else if (req.op === "disconnect") { reply(socket, req.id, { revoked: true }); session = undefined; socket.end(); }
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "OPERATION_REFUSED";
-      reply(socket, req.id, fail(["PAIR_REFUSED", "AUTHORIZATION_REQUIRED", "WORKSPACE_CHANGED", "WORKSPACE_REFUSED", "HOST_REFUSED", "DOCUMENT_REFUSED", "SELECTION_TOO_LARGE", "SCRATCH_READBACK_FAILED"].includes(message) ? message : "OPERATION_REFUSED"), true);
+      reply(socket, req.id, fail(["PAIR_REFUSED", "AUTHORIZATION_REQUIRED", "WORKSPACE_CHANGED", "WORKSPACE_REFUSED", "HOST_REFUSED", "DOCUMENT_REFUSED", "SELECTION_TOO_LARGE", "SCRATCH_READBACK_FAILED", "CONTENT_CHANGED"].includes(message) ? message : "OPERATION_REFUSED"), true);
       if (req.op === "pair" || ["WORKSPACE_CHANGED", "WORKSPACE_REFUSED", "HOST_REFUSED", "AUTHORIZATION_REQUIRED"].includes(message)) stop();
     }
   });

@@ -560,3 +560,7 @@ The isolated D15 branch adds a real VS Code workspace extension and fixed Unix-s
 ## 2026-10-30 — Desktop D16 GitHub connector and installable VSIX
 
 The isolated D16 branch adds one explicitly selected GitHub repository through fixed native Rust GET reads, a ten-minute read grant, optional session-only native token input and bounded overview/branch/commit/issue/PR views. A real public `microsoft/vscode` API read passed without a token; private access remains operator-authorized and fixture-tested only. The D15 VS Code extension is packaged with pinned `@vscode/vsce` 4.1.0 as a deterministic VSIX. Native release receipts now seal the VSIX alongside the binary and extension JavaScript. No backend, autonomous-agent authority, personal storage schema or existing connector grant changes. See `docs/DESKTOP-D16-GITHUB-VSIX.md`.
+
+## 2026-10-30 — Desktop D17 controlled GitHub brief workflow
+
+The isolated D17 Tauri branch adds a native GitHub issue/PR-to-local-brief recipe with a five-minute preview, exact source revalidation, separate GTK write consent, Project-scoped durable receipts and crash reconciliation. A second consent can open the saved brief as an unsaved Markdown tab in a paired VS Code extension host; extension/VSIX version 0.2.0 adds only this bounded operation. Existing D4 drafts, D8 backups, other connectors and backend authority stay unchanged. See `docs/DESKTOP-D17-CONTROLLED-WORKFLOWS.md` for usage, security and acceptance limits. No new runtime dependency or backend change.

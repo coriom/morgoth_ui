@@ -4,6 +4,7 @@ import type { ManagementTransport } from "./transport";
 import { readMission, readMissionPage } from "./readModels";
 import type { DraftTransport, LocalDraft } from "./drafts";
 import { readDraft, readDraftList } from "./drafts";
+import { GithubBriefWorkflow } from "./GithubBriefWorkflow";
 
 const stamp = (value: number) => new Date(value).toLocaleString("fr-FR");
 const clean = (value: string, limit: number) => value.trim().length > 0 && [...value].length <= limit && !value.includes("\0");
@@ -129,6 +130,10 @@ export function MissionWorkspace({ projectId, verified, connected, transport, dr
   if (!projectId) return <section className="panel"><h2>Aucun Project sélectionné</h2>
     <p>Choisissez un Project dans le sélecteur global pour retrouver vos briefs locaux.</p></section>;
   return <div className="mission-page">
+    <GithubBriefWorkflow key={projectId} projectId={projectId} verified={verified} onCreated={async draftId => {
+      await cache.invalidateQueries({ queryKey: ["d4", "drafts", projectId] });
+      await openDraft(draftId);
+    }} />
     <div className="mission-workspace">
       <aside className="panel mission-index" aria-label="Liste des missions et brouillons">
         <div className="panel-heading"><h2>Vos briefs</h2><button type="button" onClick={() => newDraft()}>＋ Nouveau brief</button></div>

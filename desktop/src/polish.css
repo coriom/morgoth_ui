@@ -275,3 +275,12 @@ html[data-text-scale="140"] .palette-launch kbd { display: none; }
   .home-grid { grid-template-columns: 1fr; }
   .home-context { border-left: 0; border-top: 1px solid var(--line); padding: 22px 0; }
 }
+
+.github-workflow { margin: 0 0 1.25rem; padding: .85rem 1rem; background: var(--surface); border-radius: 6px; }
+.github-workflow summary { cursor: pointer; font-weight: 600; }
+.github-workflow > p { color: var(--muted); }
+.github-workflow .editor-actions { flex-wrap: wrap; }
+.github-workflow input { min-width: 8rem; }
+.workflow-preview { display: grid; gap: .55rem; max-width: 54rem; margin-top: 1rem; }
+.workflow-preview h3, .workflow-preview p { margin: .2rem 0; }
+.workflow-preview textarea { width: 100%; max-height: 15rem; resize: vertical; }
