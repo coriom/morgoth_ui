@@ -80,6 +80,7 @@ export async function run(): Promise<void> {
   assert.equal(paired.extension, "coriom.morgoth-vscode-connector");
   assert.equal(paired.trusted, true);
   const session = paired.session as string;
+  await new Promise(resolve => setTimeout(resolve, 16_000));
   const metadata = await request(socket, 2, "metadata", {session});
   assert.equal((metadata.editor as Record<string, unknown>).document, "sample.md");
   const selection = await request(socket, 3, "selection", {session});

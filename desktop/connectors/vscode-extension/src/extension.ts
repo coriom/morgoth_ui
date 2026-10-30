@@ -106,6 +106,10 @@ function onConnection(socket: net.Socket): void {
         workspaceHash = current.hash; workspaceRoot = current.root;
         session = randomBytes(16).toString("hex"); code = undefined; until = Date.now() + LIFE_MS;
         if (pendingTimer) clearTimeout(pendingTimer);
+        // The short socket timeout protects an unpaired peer only. The
+        // authenticated session has its own fixed lifetime and may be idle
+        // while the user reviews a separate Desktop consent dialog.
+        socket.setTimeout(0);
         sessionTimer = setTimeout(stop, LIFE_MS);
         if (!extensionRoot) throw Error("EXTENSION_UNAVAILABLE");
         const extensionSha = createHash("sha256").update(fs.readFileSync(path.join(extensionRoot, "out", "extension.js"))).digest("hex");
