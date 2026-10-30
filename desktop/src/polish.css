@@ -138,6 +138,24 @@ button { line-height: 1.25; }
 button:focus-visible, select:focus-visible { outline-offset: 2px; }
 .recent-row, .settings-links button { transition: background-color 100ms ease; }
 
+.connector-workspace #vscode-pair-code {
+  width: min(100%, 21rem);
+  min-width: 0;
+  background: var(--control);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 6px 9px;
+  font: 500 calc(13px * var(--text-scale)) "Source Sans 3", sans-serif;
+}
+.connector-selected-text {
+  display: inline-block;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-width: 100%;
+  color: var(--ink);
+}
+
 @media (max-width: 1150px) {
   .knowledge-list { max-height: calc(100vh - 170px); }
   .note-document { padding-inline: clamp(24px, 3.5vw, 55px); }

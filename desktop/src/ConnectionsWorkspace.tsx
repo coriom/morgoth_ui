@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { VsCodeConnector } from "./VsCodeConnector";
 
 export interface ConnectorView { id: string; name: string; kind: string; target: string;
   operation: string; scope: string; risk: string; permission: string;
@@ -142,6 +143,7 @@ export function ConnectionsWorkspace({ transport = nativeConnectors }: { transpo
       {browserPage && <div className="connector-browser-result"><h4>{browserPage.title}</h4><p className="read-stamp">{browserPage.url}</p><p>{browserPage.text}</p><ul>{browserPage.elements.map(element => <li key={element.ref}>{element.kind} · {element.name} {browser?.status === "AUTHORIZED" && element.kind === "textbox" && <button type="button" disabled={busy} onClick={() => void actBrowser("fill", element.ref)}>Saisir le code test…</button>}{browser?.status === "AUTHORIZED" && element.kind === "button" && <button type="button" disabled={busy} onClick={() => void actBrowser("click", element.ref)}>Activer ce bouton…</button>}</li>)}</ul></div>}
       {browser?.status === "UNAVAILABLE" && <p className="read-stamp">Playwright et Chromium doivent être disponibles localement ; Morgoth reste utilisable sans navigateur.</p>}
     </section>
+    <VsCodeConnector onRefresh={refresh} />
     <section><h3>Autres applications</h3><p>Les comptes API et les profils personnels du navigateur ne sont pas connectés. La découverte d’une catégorie ne donne aucun droit d’action.</p></section>
   </div>;
 }

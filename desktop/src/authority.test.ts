@@ -20,6 +20,7 @@ describe("Tauri D5 authority declaration", () => {
       "allow-research-engine-status", "allow-research-profiles", "allow-ollama-status-read",
       "allow-preferred-project-read", "allow-preferred-project-set", "allow-text-size-read", "allow-text-size-set",
       "allow-connector-catalog", "allow-connector-connect", "allow-connector-test", "allow-connector-disconnect",
+      "allow-vscode-status", "allow-vscode-pair", "allow-vscode-metadata", "allow-vscode-selection", "allow-vscode-scratch", "allow-vscode-disconnect",
       "allow-windows-detect", "allow-windows-authorize", "allow-windows-inspect", "allow-windows-invoke", "allow-windows-disconnect",
       "allow-browser-status", "allow-browser-start", "allow-browser-navigate", "allow-browser-inspect", "allow-browser-fill", "allow-browser-click", "allow-browser-disconnect", "allow-local-drafts-list",
       "allow-local-draft-get", "allow-local-draft-create", "allow-local-draft-update", "allow-local-draft-delete",
@@ -35,6 +36,7 @@ describe("Tauri D5 authority declaration", () => {
     const registered = native.match(/\.invoke_handler\(tauri::generate_handler!\[([\s\S]*?)\]\)/)?.[1];
     expect(registered?.replace(/\s/g, "").split(",").filter(Boolean)).toEqual([
       "connector_catalog", "connector_connect", "connector_test", "connector_disconnect",
+      "vscode_status", "vscode_pair", "vscode_metadata", "vscode_selection", "vscode_scratch", "vscode_disconnect",
       "windows_detect", "windows_authorize", "windows_inspect", "windows_invoke", "windows_disconnect",
       "browser_status", "browser_start", "browser_navigate", "browser_inspect", "browser_fill", "browser_click", "browser_disconnect",
       "management_runtime_status", "management_status", "list_domains", "list_projects", "create_project",

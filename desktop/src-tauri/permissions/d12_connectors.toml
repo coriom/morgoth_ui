@@ -19,6 +19,31 @@ description = "Revoke the local connector session."
 commands.allow = ["connector_disconnect"]
 
 [[permission]]
+identifier = "allow-vscode-status"
+description = "Read the fixed VS Code connector state only."
+commands.allow = ["vscode_status"]
+[[permission]]
+identifier = "allow-vscode-pair"
+description = "Pair one same-user VS Code extension after native approval."
+commands.allow = ["vscode_pair"]
+[[permission]]
+identifier = "allow-vscode-metadata"
+description = "Approve bounded active editor metadata."
+commands.allow = ["vscode_metadata"]
+[[permission]]
+identifier = "allow-vscode-selection"
+description = "Approve one bounded selected passage."
+commands.allow = ["vscode_selection"]
+[[permission]]
+identifier = "allow-vscode-scratch"
+description = "Approve one fixed unsaved scratch document."
+commands.allow = ["vscode_scratch"]
+[[permission]]
+identifier = "allow-vscode-disconnect"
+description = "Revoke the VS Code extension connection."
+commands.allow = ["vscode_disconnect"]
+
+[[permission]]
 identifier = "allow-windows-detect"
 description = "Discover only the fixed D13 Windows test application."
 commands.allow = ["windows_detect"]

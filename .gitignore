@@ -9,3 +9,6 @@ tsconfig.tsbuildinfo
 
 # Development worktrees may use a symlink to an existing dependency tree.
 /desktop/node_modules
+# Disposable official VS Code Linux Extension Development Host.
+desktop/connectors/vscode-extension/.vscode-test/
+desktop/connectors/vscode-extension/out/

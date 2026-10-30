@@ -18,6 +18,8 @@ pub mod research;
 #[cfg(target_os = "linux")]
 pub mod supervisor;
 #[cfg(target_os = "linux")]
+pub mod vscode_gateway;
+#[cfg(target_os = "linux")]
 pub mod windows_gateway;
 
 const PREFIX: &str = "/management/v1";
@@ -1061,6 +1063,7 @@ mod desktop {
     use crate::notes::{Note, NoteInput, NoteStore, NoteUpdate};
     use crate::research::{ProfilesResponse, ResearchEngineStatus, ResearchEngineSupervisor};
     use crate::supervisor::{ManagementRuntimeStatus, ManagementSupervisor, SupervisorConfig};
+    use crate::vscode_gateway::VsCodeGateway;
     use crate::windows_gateway::{
         WindowsActionReceipt, WindowsGateway, WindowsInspection, WindowsTargetView,
     };
@@ -1389,6 +1392,7 @@ mod desktop {
         gateway: State<'_, std::sync::Arc<Gateway>>,
         windows: State<'_, std::sync::Arc<WindowsGateway>>,
         browser: State<'_, std::sync::Arc<crate::browser_gateway::BrowserGateway>>,
+        vscode: State<'_, std::sync::Arc<VsCodeGateway>>,
     ) -> Result<Vec<ConnectorView>, NativeError> {
         main_only(&window)?;
         let mut catalog = gateway.catalog().map_err(connector_error)?;
@@ -1406,7 +1410,81 @@ mod desktop {
             entry.status = view.status;
             entry.expires_in_seconds = view.expires_in_seconds;
         }
+        catalog.push(vscode.catalog());
         Ok(catalog)
+    }
+    #[tauri::command]
+    pub fn vscode_status(
+        window: WebviewWindow,
+        vscode: State<'_, std::sync::Arc<VsCodeGateway>>,
+    ) -> Result<crate::vscode_gateway::VsCodeView, NativeError> {
+        main_only(&window)?;
+        Ok(vscode.view())
+    }
+    #[tauri::command]
+    pub async fn vscode_pair(
+        window: WebviewWindow,
+        app: tauri::AppHandle,
+        vscode: State<'_, std::sync::Arc<VsCodeGateway>>,
+        code: String,
+    ) -> Result<crate::vscode_gateway::VsCodeView, NativeError> {
+        main_only(&window)?;
+        if !confirm_connector(&app, "Associer VS Code", "Autoriser uniquement cette instance VS Code et son espace de travail fiable pour dix minutes ? Les lectures et actions demanderont des accords séparés.").await? { return Err(connector_error("CONSENT_REFUSED")); }
+        let gateway = vscode.inner().clone();
+        tauri::async_runtime::spawn_blocking(move || gateway.pair(&code))
+            .await
+            .map_err(|_| connector_error("VSCODE_UNAVAILABLE"))?
+            .map_err(connector_error)
+    }
+    #[tauri::command]
+    pub async fn vscode_metadata(
+        window: WebviewWindow,
+        app: tauri::AppHandle,
+        vscode: State<'_, std::sync::Arc<VsCodeGateway>>,
+    ) -> Result<serde_json::Value, NativeError> {
+        main_only(&window)?;
+        if !confirm_connector(&app, "Inspecter VS Code", "Lire uniquement l’identité de l’espace approuvé et les métadonnées bornées de l’éditeur actif ?").await? { return Err(connector_error("CONSENT_REFUSED")); }
+        let gateway = vscode.inner().clone();
+        tauri::async_runtime::spawn_blocking(move || gateway.call("metadata"))
+            .await
+            .map_err(|_| connector_error("VSCODE_UNAVAILABLE"))?
+            .map_err(connector_error)
+    }
+    #[tauri::command]
+    pub async fn vscode_selection(
+        window: WebviewWindow,
+        app: tauri::AppHandle,
+        vscode: State<'_, std::sync::Arc<VsCodeGateway>>,
+    ) -> Result<serde_json::Value, NativeError> {
+        main_only(&window)?;
+        if !confirm_connector(&app, "Lire une sélection", "Lire uniquement le passage actuellement sélectionné dans l’éditeur du même espace VS Code (au plus 1 Kio) ?").await? { return Err(connector_error("CONSENT_REFUSED")); }
+        let gateway = vscode.inner().clone();
+        tauri::async_runtime::spawn_blocking(move || gateway.call("selection"))
+            .await
+            .map_err(|_| connector_error("VSCODE_UNAVAILABLE"))?
+            .map_err(connector_error)
+    }
+    #[tauri::command]
+    pub async fn vscode_scratch(
+        window: WebviewWindow,
+        app: tauri::AppHandle,
+        vscode: State<'_, std::sync::Arc<VsCodeGateway>>,
+    ) -> Result<serde_json::Value, NativeError> {
+        main_only(&window)?;
+        if !confirm_connector(&app, "Ouvrir un brouillon VS Code", "Créer un nouvel onglet non enregistré contenant seulement « Morgoth D15 integration verified. » ? Aucun fichier existant ne sera modifié.").await? { return Err(connector_error("CONSENT_REFUSED")); }
+        let gateway = vscode.inner().clone();
+        tauri::async_runtime::spawn_blocking(move || gateway.call("scratch"))
+            .await
+            .map_err(|_| connector_error("VSCODE_UNAVAILABLE"))?
+            .map_err(connector_error)
+    }
+    #[tauri::command]
+    pub fn vscode_disconnect(
+        window: WebviewWindow,
+        vscode: State<'_, std::sync::Arc<VsCodeGateway>>,
+    ) -> Result<(), NativeError> {
+        main_only(&window)?;
+        vscode.disconnect().map_err(connector_error)
     }
     #[tauri::command]
     pub fn browser_status(
@@ -2149,6 +2227,7 @@ mod desktop {
             .manage(research)
             .manage(std::sync::Arc::new(Gateway::default()))
             .manage(std::sync::Arc::new(WindowsGateway::default()))
+            .manage(std::sync::Arc::new(VsCodeGateway::default()))
             .manage(std::sync::Arc::new(
                 crate::browser_gateway::BrowserGateway::default(),
             ))
@@ -2177,6 +2256,12 @@ mod desktop {
                 connector_connect,
                 connector_test,
                 connector_disconnect,
+                vscode_status,
+                vscode_pair,
+                vscode_metadata,
+                vscode_selection,
+                vscode_scratch,
+                vscode_disconnect,
                 windows_detect,
                 windows_authorize,
                 windows_inspect,
