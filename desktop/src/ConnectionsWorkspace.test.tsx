@@ -73,4 +73,26 @@ describe("fixed local connector hub", () => {
     expect(alert.textContent).toContain("délai prévu");
     expect(alert.textContent).not.toContain("private window title");
   });
+  it("keeps the real browser session separate from discovery and exposes only fixed fixture actions", async () => {
+    let status: ConnectorView["status"] = "AVAILABLE";
+    const browser = (): ConnectorView => ({ ...fixture(status), id:"browser-test", name:"Navigateur isolé", status });
+    const page = { url:"http://127.0.0.1:12345/", origin:"http://127.0.0.1:12345", title:"Atelier D14", text:"En attente", state:"En attente", headings:["Atelier navigateur"], elements:[{ref:"E1-1",kind:"textbox",name:"Code synthétique"}] };
+    const transport: ConnectorTransport = {
+      catalog: vi.fn(async () => [browser()]), connect: vi.fn(), test: vi.fn(), disconnect: vi.fn(),
+      windowsDetect: vi.fn(), windowsAuthorize: vi.fn(), windowsInspect: vi.fn(), windowsInvoke: vi.fn(), windowsDisconnect: vi.fn(),
+      browserStart: vi.fn(async () => { status="AUTHORIZED"; return { status, origin:page.origin, url:page.url, expires_in_seconds:600 }; }),
+      browserInspect: vi.fn(async () => page), browserNavigate: vi.fn(), browserFill: vi.fn(async () => page), browserClick: vi.fn(),
+      browserDisconnect: vi.fn(async () => { status="REVOKED"; }),
+    };
+    render(<ConnectionsWorkspace transport={transport} />);
+    expect(transport.browserStart).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole("button", {name:"Ouvrir une session de test…"}));
+    expect(await screen.findByText("Atelier D14")).toBeTruthy();
+    expect(transport.browserStart).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", {name:"Saisir le code test…"}));
+    await waitFor(() => expect(transport.browserFill).toHaveBeenCalledWith("E1-1"));
+    fireEvent.click(screen.getByRole("button", {name:"Déconnecter le navigateur"}));
+    await waitFor(() => expect(screen.getByRole("button", {name:"Ouvrir une session de test…"})).toBeTruthy());
+    expect(transport.browserDisconnect).toHaveBeenCalledTimes(1);
+  });
 });

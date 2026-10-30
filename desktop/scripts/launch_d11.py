@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 from pathlib import Path
 import stat
 import subprocess
@@ -47,7 +48,7 @@ def main() -> int:
     if git("branch", "--show-current") != BRANCH or git("status", "--porcelain", "--untracked-files=all"):
         raise RuntimeError("SOURCE_NOT_CLEAN")
     binary = DESKTOP / "src-tauri/target/release/morgoth-desktop"
-    receipt_path = binary.parent / "morgoth-d13-release.json"
+    receipt_path = binary.parent / "morgoth-d14-release.json"
     if not binary.is_file():
         raise RuntimeError("RELEASE_BINARY_MISSING")
     if not receipt_path.is_file():
@@ -85,18 +86,23 @@ def main() -> int:
         if home is not None:
             safe_directory(home, private=True)
         if args.check:
-            print("D13_RELEASE_CHECK_OK")
+            print("D14_RELEASE_CHECK_OK")
             return 0
         env = os.environ.copy()
         env.pop("MORGOTH_DESKTOP_MEMORY_READ_CONFIG", None)
         env.update({"MORGOTH_DESKTOP_BACKEND_ROOT": str(args.backend_root),
                     "MORGOTH_DESKTOP_PYTHON": str(args.python), "MORGOTH_DESKTOP_HOME": str(home)})
+        node = shutil.which("node")
+        cache = Path.home() / ".cache/ms-playwright"
+        if node and Path(node).is_file() and cache.is_dir():
+            env["MORGOTH_DESKTOP_BROWSER_NODE"] = str(Path(node).resolve())
+            env["MORGOTH_DESKTOP_BROWSER_CACHE"] = str(cache)
         if args.memory_read_config is not None:
             env["MORGOTH_DESKTOP_MEMORY_READ_CONFIG"] = str(args.memory_read_config)
         if temporary:
             env["HOME"] = temporary.name
             env["XDG_DATA_HOME"] = str(Path(temporary.name) / ".local/share")
-        print("D13_RELEASE_START MODE=" + ("DISPOSABLE" if temporary else "PERSISTENT"), flush=True)
+        print("D14_RELEASE_START MODE=" + ("DISPOSABLE" if temporary else "PERSISTENT"), flush=True)
         app = subprocess.Popen([str(binary)], cwd=ROOT, env=env, start_new_session=True)
         try:
             return app.wait()
@@ -117,5 +123,5 @@ if __name__ == "__main__":
     try:
         raise SystemExit(main())
     except (OSError, RuntimeError, ValueError, KeyError, subprocess.SubprocessError) as exc:
-        print("D13_LAUNCH_BLOCKED=" + (str(exc) if isinstance(exc, RuntimeError) else "LOCAL_PREFLIGHT_FAILURE"), file=sys.stderr)
+        print("D14_LAUNCH_BLOCKED=" + (str(exc) if isinstance(exc, RuntimeError) else "LOCAL_PREFLIGHT_FAILURE"), file=sys.stderr)
         raise SystemExit(2) from None

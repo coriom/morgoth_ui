@@ -6,6 +6,8 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{io::Read, path::Path, time::Duration};
 
 pub mod backup;
+#[cfg(target_os = "linux")]
+pub mod browser_gateway;
 pub mod connector_gateway;
 pub mod drafts;
 pub mod note_import;
@@ -1386,13 +1388,132 @@ mod desktop {
         window: WebviewWindow,
         gateway: State<'_, std::sync::Arc<Gateway>>,
         windows: State<'_, std::sync::Arc<WindowsGateway>>,
+        browser: State<'_, std::sync::Arc<crate::browser_gateway::BrowserGateway>>,
     ) -> Result<Vec<ConnectorView>, NativeError> {
         main_only(&window)?;
         let mut catalog = gateway.catalog().map_err(connector_error)?;
         if let Some(entry) = catalog.iter_mut().find(|entry| entry.id == "windows-uia") {
             *entry = windows.view();
         }
+        if let Some(entry) = catalog.iter_mut().find(|entry| entry.id == "browser-test") {
+            let view = browser.view();
+            entry.name = "Navigateur isolé de test";
+            entry.target = "Atelier D14 local";
+            entry.operation = "navigate; inspect; fill_test; click_test";
+            entry.scope = "Une origine locale jetable, sans profil personnel";
+            entry.risk = "EXPLICIT_TEST_ACTION";
+            entry.permission = "READ_LOCAL_FIXTURE; APPROVED_TEST_CHANGE";
+            entry.status = view.status;
+            entry.expires_in_seconds = view.expires_in_seconds;
+        }
         Ok(catalog)
+    }
+    #[tauri::command]
+    pub fn browser_status(
+        window: WebviewWindow,
+        browser: State<'_, std::sync::Arc<crate::browser_gateway::BrowserGateway>>,
+    ) -> Result<crate::browser_gateway::BrowserView, NativeError> {
+        main_only(&window)?;
+        Ok(browser.view())
+    }
+    #[tauri::command]
+    pub async fn browser_start(
+        window: WebviewWindow,
+        app: tauri::AppHandle,
+        browser: State<'_, std::sync::Arc<crate::browser_gateway::BrowserGateway>>,
+    ) -> Result<crate::browser_gateway::BrowserView, NativeError> {
+        main_only(&window)?;
+        if !confirm_connector(&app, "Ouvrir le navigateur de test", "Autoriser une session Chromium jetable de dix minutes limitée à l'atelier local D14 ? Aucun profil, compte ou site public ne sera ouvert.").await? { return Err(connector_error("CONSENT_REFUSED")); }
+        let gateway = browser.inner().clone();
+        let started = tauri::async_runtime::spawn_blocking({
+            let gateway = gateway.clone();
+            move || gateway.start()
+        })
+        .await
+        .map_err(|_| connector_error("BROWSER_UNAVAILABLE"))?
+        .map_err(connector_error)?;
+        tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_secs(601)).await;
+            gateway.expire_due();
+        });
+        Ok(started)
+    }
+    #[tauri::command]
+    pub async fn browser_navigate(
+        window: WebviewWindow,
+        browser: State<'_, std::sync::Arc<crate::browser_gateway::BrowserGateway>>,
+        path: String,
+    ) -> Result<serde_json::Value, NativeError> {
+        main_only(&window)?;
+        if path != "/" && path != "/second" {
+            return Err(connector_error("BROWSER_URL_REFUSED"));
+        }
+        let gateway = browser.inner().clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            gateway.operation("navigate", serde_json::json!({"path":path}))
+        })
+        .await
+        .map_err(|_| connector_error("BROWSER_UNAVAILABLE"))?
+        .map_err(connector_error)
+    }
+    #[tauri::command]
+    pub async fn browser_inspect(
+        window: WebviewWindow,
+        browser: State<'_, std::sync::Arc<crate::browser_gateway::BrowserGateway>>,
+    ) -> Result<serde_json::Value, NativeError> {
+        main_only(&window)?;
+        let gateway = browser.inner().clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            gateway.operation("inspect", serde_json::json!({}))
+        })
+        .await
+        .map_err(|_| connector_error("BROWSER_UNAVAILABLE"))?
+        .map_err(connector_error)
+    }
+    #[tauri::command]
+    pub async fn browser_fill(
+        window: WebviewWindow,
+        app: tauri::AppHandle,
+        browser: State<'_, std::sync::Arc<crate::browser_gateway::BrowserGateway>>,
+        element_ref: String,
+    ) -> Result<serde_json::Value, NativeError> {
+        main_only(&window)?;
+        if !confirm_connector(&app, "Saisie dans l'atelier D14", "Entrer uniquement le code synthétique D14-CHECK dans le champ sélectionné de l'atelier local ?").await? { return Err(connector_error("ACTION_CONSENT_REFUSED")); }
+        let gateway = browser.inner().clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            gateway.operation(
+                "fill",
+                serde_json::json!({"ref":element_ref,"value":"D14-CHECK"}),
+            )
+        })
+        .await
+        .map_err(|_| connector_error("BROWSER_UNAVAILABLE"))?
+        .map_err(connector_error)
+    }
+    #[tauri::command]
+    pub async fn browser_click(
+        window: WebviewWindow,
+        app: tauri::AppHandle,
+        browser: State<'_, std::sync::Arc<crate::browser_gateway::BrowserGateway>>,
+        element_ref: String,
+    ) -> Result<serde_json::Value, NativeError> {
+        main_only(&window)?;
+        if !confirm_connector(&app, "Action dans l'atelier D14", "Activer une fois le bouton sélectionné de l'atelier local, puis relire son état visible ?").await? { return Err(connector_error("ACTION_CONSENT_REFUSED")); }
+        let gateway = browser.inner().clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            gateway.operation("click", serde_json::json!({"ref":element_ref,"value":""}))
+        })
+        .await
+        .map_err(|_| connector_error("BROWSER_UNAVAILABLE"))?
+        .map_err(connector_error)
+    }
+    #[tauri::command]
+    pub fn browser_disconnect(
+        window: WebviewWindow,
+        browser: State<'_, std::sync::Arc<crate::browser_gateway::BrowserGateway>>,
+    ) -> Result<(), NativeError> {
+        main_only(&window)?;
+        browser.disconnect().map_err(connector_error)
     }
     #[tauri::command]
     pub async fn connector_connect(
@@ -2028,6 +2149,9 @@ mod desktop {
             .manage(research)
             .manage(std::sync::Arc::new(Gateway::default()))
             .manage(std::sync::Arc::new(WindowsGateway::default()))
+            .manage(std::sync::Arc::new(
+                crate::browser_gateway::BrowserGateway::default(),
+            ))
             .manage(Mutex::new(None::<PendingRestore>))
             .manage(Mutex::new(PendingImport::default()))
             .setup(|app| {
@@ -2058,6 +2182,13 @@ mod desktop {
                 windows_inspect,
                 windows_invoke,
                 windows_disconnect,
+                browser_status,
+                browser_start,
+                browser_navigate,
+                browser_inspect,
+                browser_fill,
+                browser_click,
+                browser_disconnect,
                 management_runtime_status,
                 management_status,
                 list_domains,

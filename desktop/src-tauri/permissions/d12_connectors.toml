@@ -42,3 +42,32 @@ commands.allow = ["windows_invoke"]
 identifier = "allow-windows-disconnect"
 description = "Revoke the Windows test-window grant."
 commands.allow = ["windows_disconnect"]
+
+[[permission]]
+identifier = "allow-browser-status"
+description = "Read only the D14 isolated browser session status."
+commands.allow = ["browser_status"]
+[[permission]]
+identifier = "allow-browser-start"
+description = "Approve one temporary Chromium session for the fixed local fixture."
+commands.allow = ["browser_start"]
+[[permission]]
+identifier = "allow-browser-navigate"
+description = "Navigate only between the two fixed local fixture pages."
+commands.allow = ["browser_navigate"]
+[[permission]]
+identifier = "allow-browser-inspect"
+description = "Inspect bounded visible content in the authorized local fixture."
+commands.allow = ["browser_inspect"]
+[[permission]]
+identifier = "allow-browser-fill"
+description = "Approve a fixed synthetic value in an inspected fixture field."
+commands.allow = ["browser_fill"]
+[[permission]]
+identifier = "allow-browser-click"
+description = "Approve one inspected fixture button action."
+commands.allow = ["browser_click"]
+[[permission]]
+identifier = "allow-browser-disconnect"
+description = "Revoke and terminate the owned Chromium session."
+commands.allow = ["browser_disconnect"]

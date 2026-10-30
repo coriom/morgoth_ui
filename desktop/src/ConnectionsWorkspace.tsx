@@ -9,16 +9,25 @@ export interface ConnectorResult { connector_id: string; operation: string; stat
 export interface WindowsTarget { app: string; process_id: string; session_id: string; operation: string }
 export interface WindowsInspection { state: "ACTIVE" | "INACTIVE"; controls: Array<{ automation_id: string; control_type: string; name: string; enabled: boolean; invoke: boolean }> }
 export interface WindowsActionReceipt { action: "toggle_test_state"; before: "ACTIVE" | "INACTIVE"; after: "ACTIVE" | "INACTIVE"; verified: boolean }
+export interface BrowserPage { url: string; origin: string; title: string; text: string; state: string | null; headings: string[]; elements: Array<{ ref: string; kind: string; name: string }> }
+export interface BrowserSession { status: string; origin: string | null; url: string | null; expires_in_seconds: number | null }
 export interface ConnectorTransport { catalog(): Promise<ConnectorView[]>; connect(consent: string): Promise<void>;
   test(): Promise<ConnectorResult>; disconnect(): Promise<void>;
   windowsDetect(): Promise<WindowsTarget>; windowsAuthorize(): Promise<void>; windowsInspect(): Promise<WindowsInspection>;
-  windowsInvoke(): Promise<WindowsActionReceipt>; windowsDisconnect(): Promise<void> }
+  windowsInvoke(): Promise<WindowsActionReceipt>; windowsDisconnect(): Promise<void>;
+  browserStart?(): Promise<BrowserSession>; browserStatus?(): Promise<BrowserSession>; browserNavigate?(path: string): Promise<unknown>;
+  browserInspect?(): Promise<BrowserPage>; browserFill?(elementRef: string): Promise<BrowserPage>;
+  browserClick?(elementRef: string): Promise<BrowserPage>; browserDisconnect?(): Promise<void> }
 export const nativeConnectors: ConnectorTransport = {
   catalog: () => invoke("connector_catalog"), connect: consent => invoke("connector_connect", { consent }),
   test: () => invoke("connector_test"), disconnect: () => invoke("connector_disconnect"),
   windowsDetect: () => invoke("windows_detect"), windowsAuthorize: () => invoke("windows_authorize"),
   windowsInspect: () => invoke("windows_inspect"), windowsInvoke: () => invoke("windows_invoke"),
   windowsDisconnect: () => invoke("windows_disconnect"),
+  browserStart: () => invoke("browser_start"), browserStatus: () => invoke("browser_status"),
+  browserNavigate: path => invoke("browser_navigate", { path }), browserInspect: () => invoke("browser_inspect"),
+  browserFill: elementRef => invoke("browser_fill", { elementRef }), browserClick: elementRef => invoke("browser_click", { elementRef }),
+  browserDisconnect: () => invoke("browser_disconnect"),
 };
 
 const windowsFailureMessages: Record<string, string> = {
@@ -49,6 +58,8 @@ export function ConnectionsWorkspace({ transport = nativeConnectors }: { transpo
   const [target, setTarget] = useState<WindowsTarget | null>(null);
   const [inspection, setInspection] = useState<WindowsInspection | null>(null);
   const [action, setAction] = useState<WindowsActionReceipt | null>(null);
+  const [browserSession, setBrowserSession] = useState<BrowserSession | null>(null);
+  const [browserPage, setBrowserPage] = useState<BrowserPage | null>(null);
   const refresh = async () => { try { setCatalog(await transport.catalog()); setError(null); }
     catch { setError("Catalogue local indisponible. Aucun connecteur n’est présumé accessible."); } };
   useEffect(() => { void refresh(); /* No background discovery. */
@@ -67,6 +78,21 @@ export function ConnectionsWorkspace({ transport = nativeConnectors }: { transpo
   };
   const item = catalog?.find(value => value.id === "local-mcp-fixture");
   const windows = catalog?.find(value => value.id === "windows-uia");
+  const browser = catalog?.find(value => value.id === "browser-test");
+  const actBrowser = async (kind: "start" | "inspect" | "second" | "first" | "fill" | "click" | "disconnect", ref?: string) => {
+    if (busy) return;
+    setBusy(true); setError(null);
+    try {
+      if (kind === "start") { setBrowserSession(await transport.browserStart!()); setBrowserPage(await transport.browserInspect!()); }
+      else if (kind === "disconnect") { await transport.browserDisconnect!(); setBrowserSession(null); setBrowserPage(null); }
+      else if (kind === "second" || kind === "first") { await transport.browserNavigate!(kind === "second" ? "/second" : "/"); setBrowserPage(await transport.browserInspect!()); }
+      else if (kind === "fill") setBrowserPage(await transport.browserFill!(ref!));
+      else if (kind === "click") setBrowserPage(await transport.browserClick!(ref!));
+      else setBrowserPage(await transport.browserInspect!());
+      await refresh();
+    } catch { setError("Navigateur local indisponible ou opération refusée. Aucun autre site n’a été autorisé."); }
+    finally { setBusy(false); }
+  };
   const actWindows = async (kind: "detect" | "authorize" | "inspect" | "invoke" | "disconnect") => {
     if (busy) return;
     setBusy(true); setError(null); setAction(null);
@@ -108,6 +134,14 @@ export function ConnectionsWorkspace({ transport = nativeConnectors }: { transpo
       </>}
       {windows?.status === "UNAVAILABLE" && <p className="read-stamp">Construisez et scellez le compagnon Windows pour cette version ; le Desktop reste utilisable sans lui.</p>}
     </section>
-    <section><h3>Autres applications</h3><p>Le navigateur et les comptes API ne sont pas connectés dans cette version. La découverte d’une catégorie ne donne aucun droit d’action.</p></section>
+    <section aria-label="Navigateur isolé"><div className="panel-heading"><h3>Navigateur isolé</h3><span>{browser?.status === "AUTHORIZED" ? "Session autorisée" : browser?.status === "AVAILABLE" ? "Disponible" : browser?.status === "REVOKED" ? "Révoqué" : "Indisponible"}</span></div>
+      <p>Chromium jetable · un atelier local de test. Aucun profil personnel, compte ou site public n’est accessible.</p>
+      {browserSession?.origin && <p className="read-stamp">Origine autorisée : {browserSession.origin} · session de dix minutes.</p>}
+      {browser?.status === "AVAILABLE" || browser?.status === "REVOKED" ? <button type="button" disabled={busy || !transport.browserStart} onClick={() => void actBrowser("start")}>Ouvrir une session de test…</button> : null}
+      {browser?.status === "AUTHORIZED" && <div className="editor-actions"><button type="button" disabled={busy} onClick={() => void actBrowser("inspect")}>Relire la page</button><button type="button" disabled={busy} onClick={() => void actBrowser("second")}>Page suivante</button><button type="button" disabled={busy} onClick={() => void actBrowser("first")}>Première page</button><button type="button" disabled={busy} onClick={() => void actBrowser("disconnect")}>Déconnecter le navigateur</button></div>}
+      {browserPage && <div className="connector-browser-result"><h4>{browserPage.title}</h4><p className="read-stamp">{browserPage.url}</p><p>{browserPage.text}</p><ul>{browserPage.elements.map(element => <li key={element.ref}>{element.kind} · {element.name} {browser?.status === "AUTHORIZED" && element.kind === "textbox" && <button type="button" disabled={busy} onClick={() => void actBrowser("fill", element.ref)}>Saisir le code test…</button>}{browser?.status === "AUTHORIZED" && element.kind === "button" && <button type="button" disabled={busy} onClick={() => void actBrowser("click", element.ref)}>Activer ce bouton…</button>}</li>)}</ul></div>}
+      {browser?.status === "UNAVAILABLE" && <p className="read-stamp">Playwright et Chromium doivent être disponibles localement ; Morgoth reste utilisable sans navigateur.</p>}
+    </section>
+    <section><h3>Autres applications</h3><p>Les comptes API et les profils personnels du navigateur ne sont pas connectés. La découverte d’une catégorie ne donne aucun droit d’action.</p></section>
   </div>;
 }

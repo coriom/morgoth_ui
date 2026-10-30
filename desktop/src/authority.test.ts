@@ -20,7 +20,8 @@ describe("Tauri D5 authority declaration", () => {
       "allow-research-engine-status", "allow-research-profiles", "allow-ollama-status-read",
       "allow-preferred-project-read", "allow-preferred-project-set", "allow-text-size-read", "allow-text-size-set",
       "allow-connector-catalog", "allow-connector-connect", "allow-connector-test", "allow-connector-disconnect",
-      "allow-windows-detect", "allow-windows-authorize", "allow-windows-inspect", "allow-windows-invoke", "allow-windows-disconnect", "allow-local-drafts-list",
+      "allow-windows-detect", "allow-windows-authorize", "allow-windows-inspect", "allow-windows-invoke", "allow-windows-disconnect",
+      "allow-browser-status", "allow-browser-start", "allow-browser-navigate", "allow-browser-inspect", "allow-browser-fill", "allow-browser-click", "allow-browser-disconnect", "allow-local-drafts-list",
       "allow-local-draft-get", "allow-local-draft-create", "allow-local-draft-update", "allow-local-draft-delete",
       "allow-local-notes-list", "allow-local-note-get", "allow-local-note-create", "allow-local-note-update", "allow-local-note-delete", "allow-local-note-export",
       "allow-local-notes-import-preview", "allow-local-notes-import-apply",
@@ -35,6 +36,7 @@ describe("Tauri D5 authority declaration", () => {
     expect(registered?.replace(/\s/g, "").split(",").filter(Boolean)).toEqual([
       "connector_catalog", "connector_connect", "connector_test", "connector_disconnect",
       "windows_detect", "windows_authorize", "windows_inspect", "windows_invoke", "windows_disconnect",
+      "browser_status", "browser_start", "browser_navigate", "browser_inspect", "browser_fill", "browser_click", "browser_disconnect",
       "management_runtime_status", "management_status", "list_domains", "list_projects", "create_project",
       "get_project", "validate_project", "list_mission_reads", "get_mission_read", "list_capability_reads", "list_knowledge_reads", "get_knowledge_read", "list_structured_theses", "get_structured_thesis", "list_structured_contradictions", "get_structured_contradiction", "research_engine_status", "research_profiles", "ollama_status_read",
       "preferred_project_read", "preferred_project_set", "text_size_read", "text_size_set", "local_drafts_list", "local_draft_get",

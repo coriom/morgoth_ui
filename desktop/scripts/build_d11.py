@@ -11,7 +11,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[2]
 DESKTOP = ROOT / "desktop"
-BRANCH = "feat/morgoth-desktop-d13-windows-companion-v1"
+BRANCH = "feat/morgoth-desktop-d14-browser-connector-v1"
 
 
 def git(*args: str) -> str:
@@ -51,11 +51,11 @@ def main() -> None:
         raise RuntimeError("RELEASE_ASSETS_MISSING")
     receipt = {"format": 1, "source_sha": git("rev-parse", "HEAD"),
                "binary_sha256": digest(binary), "asset_index_sha256": digest(index)}
-    path = binary.parent / "morgoth-d13-release.json"
+    path = binary.parent / "morgoth-d14-release.json"
     temporary = path.with_suffix(".json.tmp")
     temporary.write_text(json.dumps(receipt, sort_keys=True) + "\n", encoding="utf-8")
     os.replace(temporary, path)
-    print("D13_RELEASE_READY SOURCE_SHA=" + receipt["source_sha"])
+    print("D14_RELEASE_READY SOURCE_SHA=" + receipt["source_sha"])
 
 
 if __name__ == "__main__":
