@@ -33,7 +33,7 @@ describe("fixed local connector hub", () => {
     const transport: ConnectorTransport = { catalog: async () => { throw Error("secret"); }, connect: vi.fn(), test: vi.fn(), disconnect: vi.fn(),
       windowsDetect: vi.fn(), windowsAuthorize: vi.fn(), windowsInspect: vi.fn(), windowsInvoke: vi.fn(), windowsDisconnect: vi.fn() };
     render(<ConnectionsWorkspace transport={transport} />);
-    expect((await screen.findByRole("alert")).textContent).not.toContain("secret");
+    expect((await screen.findByText(/Catalogue local indisponible/)).textContent).not.toContain("secret");
     expect(screen.queryByRole("button",{name:"Tester la lecture"})).toBeNull();
   });
   it("never inspects or invokes Windows before separate native-consent calls", async () => {
@@ -69,7 +69,7 @@ describe("fixed local connector hub", () => {
     };
     render(<ConnectionsWorkspace transport={transport} />);
     fireEvent.click(await screen.findByRole("button",{name:"Détecter la fenêtre test"}));
-    const alert = await screen.findByRole("alert");
+    const alert = await screen.findByText(/délai prévu/);
     expect(alert.textContent).toContain("délai prévu");
     expect(alert.textContent).not.toContain("private window title");
   });

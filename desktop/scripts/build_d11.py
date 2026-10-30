@@ -11,7 +11,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[2]
 DESKTOP = ROOT / "desktop"
-BRANCH = "feat/morgoth-desktop-d15-vscode-connector-v1"
+BRANCH = "feat/morgoth-desktop-d16-github-connector-v1"
 
 
 def git(*args: str) -> str:
@@ -39,8 +39,11 @@ def main() -> None:
     if not (DESKTOP / "node_modules/.bin/tauri").is_file():
         raise RuntimeError("BUILD_DEPENDENCIES_UNAVAILABLE")
     extension = DESKTOP / "connectors/vscode-extension"
-    if subprocess.run(["npm", "run", "build"], cwd=extension, check=False).returncode or not (extension / "out/extension.js").is_file() or not (extension / "out/protocol.js").is_file():
+    if subprocess.run(["npm", "run", "package:vsix"], cwd=extension, check=False).returncode or not (extension / "out/extension.js").is_file() or not (extension / "out/protocol.js").is_file():
         raise RuntimeError("VSCODE_EXTENSION_BUILD_FAILED")
+    vsix = extension / "dist/morgoth-vscode-connector-0.1.0.vsix"
+    if not vsix.is_file():
+        raise RuntimeError("VSCODE_VSIX_MISSING")
     env = os.environ.copy()
     env["CARGO_NET_OFFLINE"] = "true"
     env["MORGOTH_D13_SOURCE_SHA"] = git("rev-parse", "HEAD")
@@ -52,15 +55,16 @@ def main() -> None:
     fonts = list((DESKTOP / "dist").rglob("*.woff2"))
     if not binary.is_file() or not index.is_file() or not fonts:
         raise RuntimeError("RELEASE_ASSETS_MISSING")
-    receipt = {"format": 2, "source_sha": git("rev-parse", "HEAD"),
+    receipt = {"format": 3, "source_sha": git("rev-parse", "HEAD"),
                "binary_sha256": digest(binary), "asset_index_sha256": digest(index),
                "extension_sha256": digest(extension / "out/extension.js"),
-               "extension_protocol_sha256": digest(extension / "out/protocol.js")}
-    path = binary.parent / "morgoth-d15-release.json"
+               "extension_protocol_sha256": digest(extension / "out/protocol.js"),
+               "vsix_sha256": digest(vsix)}
+    path = binary.parent / "morgoth-d16-release.json"
     temporary = path.with_suffix(".json.tmp")
     temporary.write_text(json.dumps(receipt, sort_keys=True) + "\n", encoding="utf-8")
     os.replace(temporary, path)
-    print("D15_RELEASE_READY SOURCE_SHA=" + receipt["source_sha"])
+    print("D16_RELEASE_READY SOURCE_SHA=" + receipt["source_sha"])
 
 
 if __name__ == "__main__":

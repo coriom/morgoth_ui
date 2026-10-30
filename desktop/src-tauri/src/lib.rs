@@ -10,6 +10,7 @@ pub mod backup;
 pub mod browser_gateway;
 pub mod connector_gateway;
 pub mod drafts;
+pub mod github_gateway;
 pub mod note_import;
 pub mod notes;
 pub mod ollama_read;
@@ -1059,6 +1060,7 @@ mod desktop {
     use crate::backup::{BackupReceipt, BackupStore, EXTENSION};
     use crate::connector_gateway::{ConnectorResult, ConnectorView, Gateway};
     use crate::drafts::{Draft, DraftInput, DraftStore, DraftUpdate};
+    use crate::github_gateway::GithubGateway;
     use crate::note_import::{ImportPlan, ImportPreview, ImportStore};
     use crate::notes::{Note, NoteInput, NoteStore, NoteUpdate};
     use crate::research::{ProfilesResponse, ResearchEngineStatus, ResearchEngineSupervisor};
@@ -1387,12 +1389,13 @@ mod desktop {
         .map_err(|_| connector_error("DIALOG_UNAVAILABLE"))
     }
     #[tauri::command]
-    pub fn connector_catalog(
+    pub async fn connector_catalog(
         window: WebviewWindow,
         gateway: State<'_, std::sync::Arc<Gateway>>,
         windows: State<'_, std::sync::Arc<WindowsGateway>>,
         browser: State<'_, std::sync::Arc<crate::browser_gateway::BrowserGateway>>,
         vscode: State<'_, std::sync::Arc<VsCodeGateway>>,
+        github: State<'_, std::sync::Arc<GithubGateway>>,
     ) -> Result<Vec<ConnectorView>, NativeError> {
         main_only(&window)?;
         let mut catalog = gateway.catalog().map_err(connector_error)?;
@@ -1411,7 +1414,148 @@ mod desktop {
             entry.expires_in_seconds = view.expires_in_seconds;
         }
         catalog.push(vscode.catalog());
+        catalog.push(github.catalog().await);
         Ok(catalog)
+    }
+    async fn github_token_dialog(app: &tauri::AppHandle) -> Result<Option<String>, NativeError> {
+        let (sender, receiver) = std::sync::mpsc::sync_channel(1);
+        app.run_on_main_thread(move || {
+            let dialog = gtk::MessageDialog::new(None::<&gtk::Window>, gtk::DialogFlags::MODAL,
+                gtk::MessageType::Question, gtk::ButtonsType::OkCancel,
+                "Jeton GitHub finement limité à ce dépôt, en lecture seule. Il restera uniquement en mémoire pour cette session.");
+            dialog.set_title("Autoriser un dépôt GitHub privé");
+            let entry = gtk::Entry::new();
+            entry.set_visibility(false);
+            entry.set_max_length(255);
+            entry.set_input_purpose(gtk::InputPurpose::Password);
+            dialog.content_area().add(&entry);
+            let sender = std::cell::RefCell::new(Some(sender));
+            dialog.connect_response(move |dialog, response| {
+                if let Some(sender) = sender.borrow_mut().take() {
+                    let value = if response == gtk::ResponseType::Ok { Some(entry.text().to_string()) } else { None };
+                    entry.set_text("");
+                    let _ = sender.send(value);
+                }
+                dialog.close();
+            });
+            dialog.show_all();
+        }).map_err(|_| connector_error("GITHUB_DIALOG_UNAVAILABLE"))?;
+        tauri::async_runtime::spawn_blocking(move || {
+            receiver.recv_timeout(Duration::from_secs(120))
+        })
+        .await
+        .map_err(|_| connector_error("GITHUB_DIALOG_UNAVAILABLE"))?
+        .map_err(|_| connector_error("GITHUB_DIALOG_UNAVAILABLE"))
+    }
+    #[tauri::command]
+    pub async fn github_status(
+        window: WebviewWindow,
+        github: State<'_, std::sync::Arc<GithubGateway>>,
+    ) -> Result<crate::github_gateway::GithubView, NativeError> {
+        main_only(&window)?;
+        Ok(github.view().await)
+    }
+    #[tauri::command]
+    pub async fn github_select(
+        window: WebviewWindow,
+        github: State<'_, std::sync::Arc<GithubGateway>>,
+        repository: String,
+    ) -> Result<crate::github_gateway::GithubView, NativeError> {
+        main_only(&window)?;
+        github.select(repository).await.map_err(connector_error)
+    }
+    #[tauri::command]
+    pub async fn github_preview(
+        window: WebviewWindow,
+        github: State<'_, std::sync::Arc<GithubGateway>>,
+    ) -> Result<serde_json::Value, NativeError> {
+        main_only(&window)?;
+        github.preview().await.map_err(connector_error)
+    }
+    #[tauri::command]
+    pub async fn github_authorize(
+        window: WebviewWindow,
+        app: tauri::AppHandle,
+        github: State<'_, std::sync::Arc<GithubGateway>>,
+        private: bool,
+    ) -> Result<crate::github_gateway::GithubView, NativeError> {
+        main_only(&window)?;
+        let selected = github
+            .view()
+            .await
+            .repository
+            .ok_or_else(|| connector_error("GITHUB_REPOSITORY_REQUIRED"))?;
+        let question = if private {
+            format!("Autoriser la lecture du seul dépôt {selected} pour dix minutes avec un jeton fourni dans ce dialogue natif ?")
+        } else {
+            format!("Autoriser la lecture publique du seul dépôt {selected} pour dix minutes ?")
+        };
+        let approved = confirm_github(&app, question).await?;
+        if !approved {
+            return Err(connector_error("CONSENT_REFUSED"));
+        }
+        let token = if private {
+            github_token_dialog(&app)
+                .await?
+                .ok_or_else(|| connector_error("CONSENT_REFUSED"))?
+        } else {
+            String::new()
+        };
+        github
+            .authorize(&selected, private, if private { Some(token) } else { None })
+            .await
+            .map_err(connector_error)
+    }
+    async fn confirm_github(app: &tauri::AppHandle, question: String) -> Result<bool, NativeError> {
+        let (sender, receiver) = std::sync::mpsc::sync_channel(1);
+        app.run_on_main_thread(move || {
+            let dialog = gtk::MessageDialog::new(
+                None::<&gtk::Window>,
+                gtk::DialogFlags::MODAL,
+                gtk::MessageType::Question,
+                gtk::ButtonsType::OkCancel,
+                &question,
+            );
+            dialog.set_title("Portée GitHub");
+            let sender = std::cell::RefCell::new(Some(sender));
+            dialog.connect_response(move |dialog, response| {
+                if let Some(sender) = sender.borrow_mut().take() {
+                    let _ = sender.send(response == gtk::ResponseType::Ok);
+                }
+                dialog.close();
+            });
+            dialog.show();
+        })
+        .map_err(|_| connector_error("GITHUB_DIALOG_UNAVAILABLE"))?;
+        tauri::async_runtime::spawn_blocking(move || {
+            receiver.recv_timeout(Duration::from_secs(120))
+        })
+        .await
+        .map_err(|_| connector_error("GITHUB_DIALOG_UNAVAILABLE"))?
+        .map_err(|_| connector_error("GITHUB_DIALOG_UNAVAILABLE"))
+    }
+    #[tauri::command]
+    pub async fn github_read(
+        window: WebviewWindow,
+        github: State<'_, std::sync::Arc<GithubGateway>>,
+        operation: String,
+        number: Option<u32>,
+        branch: Option<String>,
+    ) -> Result<serde_json::Value, NativeError> {
+        main_only(&window)?;
+        github
+            .read(&operation, number, branch.as_deref())
+            .await
+            .map_err(connector_error)
+    }
+    #[tauri::command]
+    pub async fn github_disconnect(
+        window: WebviewWindow,
+        github: State<'_, std::sync::Arc<GithubGateway>>,
+    ) -> Result<(), NativeError> {
+        main_only(&window)?;
+        github.disconnect().await;
+        Ok(())
     }
     #[tauri::command]
     pub fn vscode_status(
@@ -2228,6 +2372,7 @@ mod desktop {
             .manage(std::sync::Arc::new(Gateway::default()))
             .manage(std::sync::Arc::new(WindowsGateway::default()))
             .manage(std::sync::Arc::new(VsCodeGateway::default()))
+            .manage(std::sync::Arc::new(GithubGateway::default()))
             .manage(std::sync::Arc::new(
                 crate::browser_gateway::BrowserGateway::default(),
             ))
@@ -2262,6 +2407,12 @@ mod desktop {
                 vscode_selection,
                 vscode_scratch,
                 vscode_disconnect,
+                github_status,
+                github_select,
+                github_preview,
+                github_authorize,
+                github_read,
+                github_disconnect,
                 windows_detect,
                 windows_authorize,
                 windows_inspect,

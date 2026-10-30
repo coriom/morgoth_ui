@@ -35,7 +35,13 @@ export async function run(): Promise<void> {
   const extension = vscode.extensions.getExtension("coriom.morgoth-vscode-connector");
   assert.ok(extension);
   await extension.activate();
-  const code = await connectWorkspace();
+  // The installed-VSIX path calls the module loaded from the actual package.
+  // It does not use the source module imported by this disposable runner.
+  const installed = process.env.MORGOTH_D16_INSTALLED_VSIX === "1";
+  const code = installed
+    ? await (require(path.join(extension.extensionPath, "out", "extension.js")) as typeof import("./extension")).connectWorkspace()
+    : await connectWorkspace();
+  assert.match(code, /^[a-f0-9]{32}$/);
   const dir = process.env.MORGOTH_D15_SOCKET_DIR;
   assert.ok(dir);
   if (process.env.MORGOTH_D15_EXTERNAL_PAIR_FILE) {
@@ -48,7 +54,7 @@ export async function run(): Promise<void> {
     assert.ok(Date.now() < until, "Desktop did not disconnect within test deadline");
     assert.equal(vscode.window.activeTextEditor?.document.getText(), SCRATCH);
     console.log("D15_NATIVE_VSCODE_API_PASS workspace=synthetic scratch=visible disconnect=pass");
-    deactivate();
+    if (installed) await vscode.commands.executeCommand("morgoth.disconnectWorkspace"); else deactivate();
     return;
   }
   if (process.env.MORGOTH_D15_RUST_PROBE) {
@@ -71,7 +77,7 @@ export async function run(): Promise<void> {
     assert.equal(exitCode, 0);
     assert.equal(vscode.window.activeTextEditor?.document.getText(), SCRATCH);
     console.log("D15_REAL_RUST_VSCODE_PASS workspace=synthetic pair=pass metadata=pass selection=pass scratch=pass disconnect=pass");
-    deactivate();
+    if (installed) await vscode.commands.executeCommand("morgoth.disconnectWorkspace"); else deactivate();
     return;
   }
   const socket = net.createConnection(path.join(dir, "bridge.sock"));
@@ -92,6 +98,6 @@ export async function run(): Promise<void> {
   const receipt = await request(socket, 5, "disconnect", {session});
   assert.equal(receipt.revoked, true);
   socket.destroy();
-  deactivate();
+  if (installed) await vscode.commands.executeCommand("morgoth.disconnectWorkspace"); else deactivate();
   console.log("D15_REAL_VSCODE_API_PASS workspace=synthetic metadata=pass selection=pass scratch=pass disconnect=pass");
 }

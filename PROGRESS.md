@@ -556,3 +556,7 @@ La branche Tauri isolée `feat/morgoth-desktop-d14-browser-connector-v1` ajoute 
 ## 2026-10-30 — Desktop D15 VS Code workspace connector
 
 The isolated D15 branch adds a real VS Code workspace extension and fixed Unix-socket gateway with same-user peer checks, two-sided short-lived pairing, scoped metadata/selection reads, a fixed unsaved scratch action and revocation. A disposable official VS Code 1.140.0 Extension Development Host verified actual editor APIs; a second run verified Rust → socket → real extension → VS Code. The Windows VS Code installation lacks Remote-WSL in the inspected profile. MCP, Windows, browser, personal stores and autonomous-agent protections remain unchanged. See `docs/DESKTOP-D15-VSCODE-CONNECTOR.md`.
+
+## 2026-10-30 — Desktop D16 GitHub connector and installable VSIX
+
+The isolated D16 branch adds one explicitly selected GitHub repository through fixed native Rust GET reads, a ten-minute read grant, optional session-only native token input and bounded overview/branch/commit/issue/PR views. A real public `microsoft/vscode` API read passed without a token; private access remains operator-authorized and fixture-tested only. The D15 VS Code extension is packaged with pinned `@vscode/vsce` 4.1.0 as a deterministic VSIX. Native release receipts now seal the VSIX alongside the binary and extension JavaScript. No backend, autonomous-agent authority, personal storage schema or existing connector grant changes. See `docs/DESKTOP-D16-GITHUB-VSIX.md`.

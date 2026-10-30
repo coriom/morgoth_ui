@@ -3,16 +3,44 @@
   "displayName": "Morgoth Workspace Connector",
   "description": "Explicit, local and bounded Morgoth workspace connection",
   "publisher": "coriom",
+  "repository": { "type": "git", "url": "https://github.com/coriom/morgoth_ui.git" },
   "version": "0.1.0",
   "private": true,
-  "engines": { "vscode": "^1.140.0" },
-  "extensionKind": ["workspace"],
+  "engines": {
+    "vscode": "^1.140.0"
+  },
+  "extensionKind": [
+    "workspace"
+  ],
   "main": "./out/extension.js",
-  "activationEvents": ["onCommand:morgoth.connectWorkspace", "onCommand:morgoth.disconnectWorkspace"],
-  "capabilities": { "untrustedWorkspaces": { "supported": false } },
-  "contributes": { "commands": [
-    { "command": "morgoth.connectWorkspace", "title": "Morgoth: Connect Workspace" },
-    { "command": "morgoth.disconnectWorkspace", "title": "Morgoth: Disconnect" }
-  ] },
-  "scripts": { "build": "../../node_modules/.bin/tsc -p .", "test": "node --test out/protocol.test.js" }
+  "files": ["out/extension.js", "out/protocol.js", "README.md"],
+  "activationEvents": [
+    "onCommand:morgoth.connectWorkspace",
+    "onCommand:morgoth.disconnectWorkspace"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false
+    }
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "morgoth.connectWorkspace",
+        "title": "Morgoth: Connect Workspace"
+      },
+      {
+        "command": "morgoth.disconnectWorkspace",
+        "title": "Morgoth: Disconnect"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "../../node_modules/.bin/tsc -p .",
+    "test": "node --test out/protocol.test.js",
+    "package:vsix": "npm run build && mkdir -p dist && node_modules/.bin/vsce package --no-dependencies --skip-license --no-rewrite-relative-links --out dist/morgoth-vscode-connector-0.1.0.vsix && python3 ../../scripts/canonicalize_vsix.py dist/morgoth-vscode-connector-0.1.0.vsix"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "4.1.0"
+  }
 }

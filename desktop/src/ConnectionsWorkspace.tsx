@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { VsCodeConnector } from "./VsCodeConnector";
+import { GithubConnector } from "./GithubConnector";
 
 export interface ConnectorView { id: string; name: string; kind: string; target: string;
   operation: string; scope: string; risk: string; permission: string;
@@ -144,6 +145,7 @@ export function ConnectionsWorkspace({ transport = nativeConnectors }: { transpo
       {browser?.status === "UNAVAILABLE" && <p className="read-stamp">Playwright et Chromium doivent être disponibles localement ; Morgoth reste utilisable sans navigateur.</p>}
     </section>
     <VsCodeConnector onRefresh={refresh} />
+    <GithubConnector onRefresh={refresh} />
     <section><h3>Autres applications</h3><p>Les comptes API et les profils personnels du navigateur ne sont pas connectés. La découverte d’une catégorie ne donne aucun droit d’action.</p></section>
   </div>;
 }

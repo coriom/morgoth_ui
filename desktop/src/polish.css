@@ -264,6 +264,13 @@ h1 { font-size: clamp(calc(28px * var(--text-scale)), 3vw, calc(38px * var(--tex
 @media(max-width:630px) { .mission-page .mission-editor.editing { height: calc(100dvh - 300px); min-height: 280px; } }
 html[data-text-scale="130"] .palette-launch kbd,
 html[data-text-scale="140"] .palette-launch kbd { display: none; }
+.github-connector input#github-repository { min-width: 16rem; }
+.github-connector input#github-pr-number { width: 5rem; min-width: 5rem; }
+.github-result { max-width: 54rem; padding-top: .8rem; }
+.github-list { list-style: none; padding: 0; margin: .5rem 0 0; }
+.github-list li { padding: .65rem 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.github-list li strong, .github-list li span { display: block; }
+.github-list li span { color: var(--muted); font-size: .92em; }
 @media(max-width:1000px) {
   .home-grid { grid-template-columns: 1fr; }
   .home-context { border-left: 0; border-top: 1px solid var(--line); padding: 22px 0; }

@@ -44,6 +44,31 @@ description = "Revoke the VS Code extension connection."
 commands.allow = ["vscode_disconnect"]
 
 [[permission]]
+identifier = "allow-github-status"
+description = "Read only the one-repository GitHub connector state."
+commands.allow = ["github_status"]
+[[permission]]
+identifier = "allow-github-select"
+description = "Select one canonical GitHub repository; revoke any previous grant."
+commands.allow = ["github_select"]
+[[permission]]
+identifier = "allow-github-preview"
+description = "Inspect only public metadata for the explicitly selected repository."
+commands.allow = ["github_preview"]
+[[permission]]
+identifier = "allow-github-authorize"
+description = "Authorize one repository for a bounded read-only session after native consent."
+commands.allow = ["github_authorize"]
+[[permission]]
+identifier = "allow-github-read"
+description = "Read one of six fixed bounded GET projections from the authorized repository."
+commands.allow = ["github_read"]
+[[permission]]
+identifier = "allow-github-disconnect"
+description = "Revoke the GitHub grant and session-only credential."
+commands.allow = ["github_disconnect"]
+
+[[permission]]
 identifier = "allow-windows-detect"
 description = "Discover only the fixed D13 Windows test application."
 commands.allow = ["windows_detect"]
