@@ -1,0 +1,36 @@
+[[permission]]
+identifier = "allow-supervised-prepare"
+description = "Prepare one bounded, Project-scoped, already-authorized GitHub read session."
+commands.allow = ["supervised_prepare"]
+[[permission]]
+identifier = "allow-supervised-start"
+description = "Start the reviewed read-only scope after native human consent."
+commands.allow = ["supervised_start"]
+[[permission]]
+identifier = "allow-supervised-step"
+description = "Run at most one model proposal and one reviewed GitHub read per call."
+commands.allow = ["supervised_step"]
+[[permission]]
+identifier = "allow-supervised-status"
+description = "Read current bounded supervised-session state."
+commands.allow = ["supervised_status"]
+[[permission]]
+identifier = "allow-supervised-receipts"
+description = "Read bounded, Project-scoped non-sensitive session metadata after restart."
+commands.allow = ["supervised_receipts"]
+[[permission]]
+identifier = "allow-supervised-stop"
+description = "Revoke an active supervised session."
+commands.allow = ["supervised_stop"]
+[[permission]]
+identifier = "allow-supervised-brief-preview"
+description = "Prepare a local-brief preview without writing."
+commands.allow = ["supervised_brief_preview"]
+[[permission]]
+identifier = "allow-supervised-adopt-local"
+description = "Write one generic brief after separate native consent."
+commands.allow = ["supervised_adopt_local"]
+[[permission]]
+identifier = "allow-supervised-handoff-github"
+description = "Hand an observed issue to D17 for fresh source validation and separate write consent."
+commands.allow = ["supervised_handoff_github"]

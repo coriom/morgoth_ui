@@ -294,3 +294,6 @@ html[data-text-scale="140"] .palette-launch kbd { display: none; }
 .planner-assistant ol, .planner-assistant ul { margin: .2rem 0 .65rem; padding-left: 1.4rem; }
 .planner-assistant li { margin: .3rem 0; }
 .planner-assistant h4 { margin: .55rem 0 .15rem; }
+.supervised-assistant .supervised-observation { padding: .7rem 0; border-top: 1px solid var(--border); }
+.supervised-assistant .supervised-observation p { overflow-wrap: anywhere; }
+.supervised-assistant .supervised-observation li { overflow-wrap: anywhere; }

@@ -6,6 +6,7 @@ import type { DraftTransport, LocalDraft } from "./drafts";
 import { readDraft, readDraftList } from "./drafts";
 import { GithubBriefWorkflow, type GithubWorkflowTransfer } from "./GithubBriefWorkflow";
 import { MissionAssistant } from "./MissionAssistant";
+import { SupervisedAssistant } from "./SupervisedAssistant";
 
 const stamp = (value: number) => new Date(value).toLocaleString("fr-FR");
 const clean = (value: string, limit: number) => value.trim().length > 0 && [...value].length <= limit && !value.includes("\0");
@@ -135,6 +136,11 @@ export function MissionWorkspace({ projectId, verified, connected, transport, dr
   return <div className="mission-page">
     <MissionAssistant key={"assistant-" + projectId} projectId={projectId} verified={verified}
       drafts={list.isSuccess ? list.data : []} onGithubReady={setGithubTransfer} onCreated={async draftId => {
+        await cache.invalidateQueries({ queryKey: ["d4", "drafts", projectId] });
+        await openDraft(draftId);
+      }} />
+    <SupervisedAssistant key={"supervised-" + projectId} projectId={projectId} verified={verified}
+      onGithubReady={setGithubTransfer} onCreated={async draftId => {
         await cache.invalidateQueries({ queryKey: ["d4", "drafts", projectId] });
         await openDraft(draftId);
       }} />

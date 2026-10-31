@@ -11,7 +11,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[2]
 DESKTOP = ROOT / "desktop"
-BRANCH = "feat/morgoth-desktop-d18-ai-mission-planner-v1"
+BRANCH = "feat/morgoth-desktop-d19-supervised-agent-loop-v1"
 
 
 def git(*args: str) -> str:
@@ -60,16 +60,16 @@ def main() -> None:
                "extension_sha256": digest(extension / "out/extension.js"),
                "extension_protocol_sha256": digest(extension / "out/protocol.js"),
                "vsix_sha256": digest(vsix)}
-    path = binary.parent / "morgoth-d18-release.json"
+    path = binary.parent / "morgoth-d19-release.json"
     temporary = path.with_suffix(".json.tmp")
     temporary.write_text(json.dumps(receipt, sort_keys=True) + "\n", encoding="utf-8")
     os.replace(temporary, path)
-    print("D18_RELEASE_READY SOURCE_SHA=" + receipt["source_sha"])
+    print("D19_RELEASE_READY SOURCE_SHA=" + receipt["source_sha"])
 
 
 if __name__ == "__main__":
     try:
         main()
     except (OSError, RuntimeError, subprocess.SubprocessError) as exc:
-        print("D18_BUILD_BLOCKED=" + (str(exc) if isinstance(exc, RuntimeError) else "BUILD_IO_FAILURE"), file=sys.stderr)
+        print("D19_BUILD_BLOCKED=" + (str(exc) if isinstance(exc, RuntimeError) else "BUILD_IO_FAILURE"), file=sys.stderr)
         raise SystemExit(2) from None

@@ -175,6 +175,15 @@ fn decode_generate(bytes: &[u8], model: &str) -> Result<String, NativeError> {
     }
     let envelope: GenerateEnvelope =
         serde_json::from_slice(bytes).map_err(|_| error("PROVIDER_RESPONSE_INVALID"))?;
+    #[cfg(test)]
+    if std::env::var("D19_ALLOW_LIVE_CANARY").as_deref() == Ok("1") {
+        eprintln!(
+            "D19_PROVIDER_ENVELOPE done={} reason={} response_bytes={}",
+            envelope.done,
+            envelope.done_reason.as_deref().unwrap_or("none"),
+            envelope.response.len()
+        );
+    }
     if envelope.model != model
         || !envelope.done
         || envelope.done_reason.as_deref() != Some("stop")
@@ -201,6 +210,7 @@ pub struct MissionPlanner {
     port: u16,
     http: reqwest::Client,
     state: Mutex<State>,
+    inference_gate: Mutex<()>,
 }
 impl MissionPlanner {
     pub fn from_environment() -> Result<Self, NativeError> {
@@ -236,6 +246,7 @@ impl MissionPlanner {
                 proposal: None,
                 active: None,
             }),
+            inference_gate: Mutex::new(()),
         })
     }
     async fn observed(&self) -> Result<OllamaStatusRead, NativeError> {
@@ -416,6 +427,7 @@ impl MissionPlanner {
         prompt: &str,
         cancel: Arc<Notify>,
     ) -> Result<String, NativeError> {
+        let _gate = self.inference_gate.lock().await;
         let url = format!("http://127.0.0.1:{}/api/generate", self.port);
         let payload = serde_json::json!({
             "model": model, "prompt": prompt, "stream": false, "format": plan_schema(),
@@ -467,6 +479,75 @@ impl MissionPlanner {
             _ = cancel.notified() => Err(error("CANCELLED")),
             value = request => value,
         }
+    }
+    /// One proposal-only JSON request shared with the supervised loop. No tool is
+    /// passed to Ollama; the caller must validate and authorize its response.
+    pub async fn infer_supervised(
+        &self,
+        model: &str,
+        prompt: &str,
+        schema: serde_json::Value,
+        cancel: Arc<Notify>,
+    ) -> Result<String, NativeError> {
+        if !self.enabled || prompt.len() > 12_000 {
+            return Err(error("PLANNER_DISABLED"));
+        }
+        let _gate = tokio::select! {
+            _ = cancel.notified() => return Err(error("CANCELLED")),
+            gate = self.inference_gate.lock() => gate,
+        };
+        let observed = tokio::select! {
+            _ = cancel.notified() => return Err(error("CANCELLED")),
+            value = self.observed() => value?,
+        };
+        Self::fitness(&observed, model)?;
+        let url = format!("http://127.0.0.1:{}/api/generate", self.port);
+        let request = async {
+            let response = self
+                .http
+                .post(url)
+                .header(header::ACCEPT, "application/json")
+                .json(
+                    &serde_json::json!({"model":model,"prompt":prompt,"stream":false,
+                    "format":schema,"think":false,"keep_alive":"60s",
+                    "options":{"temperature":0,"num_predict":500,"num_ctx":2048}}),
+                )
+                .send()
+                .await
+                .map_err(|e| transport_error(&e))?;
+            if response.status() != reqwest::StatusCode::OK || response.status().is_redirection() {
+                return Err(error("PROVIDER_STATUS"));
+            }
+            if !response
+                .headers()
+                .get(header::CONTENT_TYPE)
+                .and_then(|v| v.to_str().ok())
+                .is_some_and(|v| {
+                    v.split(';')
+                        .next()
+                        .is_some_and(|t| t.trim().eq_ignore_ascii_case("application/json"))
+                })
+            {
+                return Err(error("PROVIDER_RESPONSE_INVALID"));
+            }
+            if response
+                .content_length()
+                .is_some_and(|n| n > MAX_RESPONSE as u64)
+            {
+                return Err(error("PROVIDER_RESPONSE_TOO_LARGE"));
+            }
+            let mut body = Vec::new();
+            let mut stream = response.bytes_stream();
+            while let Some(chunk) = stream.next().await {
+                let chunk = chunk.map_err(|e| transport_error(&e))?;
+                if body.len().saturating_add(chunk.len()) > MAX_RESPONSE {
+                    return Err(error("PROVIDER_RESPONSE_TOO_LARGE"));
+                }
+                body.extend_from_slice(&chunk);
+            }
+            decode_generate(&body, model)
+        };
+        tokio::select! { _ = cancel.notified() => Err(error("CANCELLED")), value = request => value }
     }
     pub async fn generate(
         &self,

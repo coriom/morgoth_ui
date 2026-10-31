@@ -53,6 +53,14 @@ pub struct GithubSource {
     pub updated_at: String,
     pub url: String,
 }
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GithubGrantIdentity {
+    pub grant_id: String,
+    pub repository: String,
+    pub repository_id: u64,
+    pub private: bool,
+}
 #[derive(Default)]
 struct State {
     selected: Option<String>,
@@ -164,7 +172,7 @@ impl GithubGateway {
     pub fn new() -> Self {
         Self::with_base(Url::parse(API).expect("fixed GitHub API URL"))
     }
-    fn with_base(base: Url) -> Self {
+    pub(crate) fn with_base(base: Url) -> Self {
         let http = Client::builder()
             .redirect(reqwest::redirect::Policy::none())
             .connect_timeout(Duration::from_secs(5))
@@ -288,6 +296,21 @@ impl GithubGateway {
                 .map(|g| g.expiry.saturating_duration_since(Instant::now()).as_secs()),
             last_read_ms: state.last_read_ms,
         }
+    }
+    /// Native-only identity for binding a supervised read grant to the exact
+    /// already authorized GitHub connector session.
+    pub async fn grant_identity(&self) -> Result<GithubGrantIdentity, &'static str> {
+        let state = self.state.lock().await;
+        let grant = state.grant.as_ref().ok_or("GITHUB_AUTH_REQUIRED")?;
+        if grant.expiry <= Instant::now() {
+            return Err("GITHUB_SESSION_EXPIRED");
+        }
+        Ok(GithubGrantIdentity {
+            grant_id: grant.id.clone(),
+            repository: grant.repo.name.clone(),
+            repository_id: grant.repo.id,
+            private: grant.repo.private,
+        })
     }
     pub async fn catalog(&self) -> ConnectorView {
         let view = self.view().await;

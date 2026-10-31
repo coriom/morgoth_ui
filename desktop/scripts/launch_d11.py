@@ -49,7 +49,7 @@ def main() -> int:
     if git("branch", "--show-current") != BRANCH or git("status", "--porcelain", "--untracked-files=all"):
         raise RuntimeError("SOURCE_NOT_CLEAN")
     binary = DESKTOP / "src-tauri/target/release/morgoth-desktop"
-    receipt_path = binary.parent / "morgoth-d18-release.json"
+    receipt_path = binary.parent / "morgoth-d19-release.json"
     if not binary.is_file():
         raise RuntimeError("RELEASE_BINARY_MISSING")
     if not receipt_path.is_file():
@@ -92,7 +92,7 @@ def main() -> int:
         if home is not None:
             safe_directory(home, private=True)
         if args.check:
-            print("D18_RELEASE_CHECK_OK")
+            print("D19_RELEASE_CHECK_OK")
             return 0
         env = os.environ.copy()
         env.pop("MORGOTH_DESKTOP_MEMORY_READ_CONFIG", None)
@@ -112,7 +112,7 @@ def main() -> int:
         if temporary:
             env["HOME"] = temporary.name
             env["XDG_DATA_HOME"] = str(Path(temporary.name) / ".local/share")
-        print("D18_RELEASE_START MODE=" + ("DISPOSABLE" if temporary else "PERSISTENT"), flush=True)
+        print("D19_RELEASE_START MODE=" + ("DISPOSABLE" if temporary else "PERSISTENT"), flush=True)
         app = subprocess.Popen([str(binary)], cwd=ROOT, env=env, start_new_session=True)
         try:
             return app.wait()
@@ -133,5 +133,5 @@ if __name__ == "__main__":
     try:
         raise SystemExit(main())
     except (OSError, RuntimeError, ValueError, KeyError, subprocess.SubprocessError) as exc:
-        print("D18_LAUNCH_BLOCKED=" + (str(exc) if isinstance(exc, RuntimeError) else "LOCAL_PREFLIGHT_FAILURE"), file=sys.stderr)
+        print("D19_LAUNCH_BLOCKED=" + (str(exc) if isinstance(exc, RuntimeError) else "LOCAL_PREFLIGHT_FAILURE"), file=sys.stderr)
         raise SystemExit(2) from None

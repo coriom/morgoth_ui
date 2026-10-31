@@ -18,6 +18,8 @@ pub mod ollama_read;
 #[cfg(target_os = "linux")]
 pub mod research;
 #[cfg(target_os = "linux")]
+pub mod supervised_loop;
+#[cfg(target_os = "linux")]
 pub mod supervisor;
 #[cfg(target_os = "linux")]
 pub mod vscode_gateway;
@@ -1070,6 +1072,7 @@ mod desktop {
     use crate::note_import::{ImportPlan, ImportPreview, ImportStore};
     use crate::notes::{Note, NoteInput, NoteStore, NoteUpdate};
     use crate::research::{ProfilesResponse, ResearchEngineStatus, ResearchEngineSupervisor};
+    use crate::supervised_loop::{SessionPreview, SessionReceipt, SessionView, SupervisedLoop};
     use crate::supervisor::{ManagementRuntimeStatus, ManagementSupervisor, SupervisorConfig};
     use crate::vscode_gateway::VsCodeGateway;
     use crate::windows_gateway::{
@@ -1621,6 +1624,192 @@ mod desktop {
                 "Dialogue natif indisponible.",
             )
         })
+    }
+    #[tauri::command]
+    #[allow(clippy::too_many_arguments)]
+    pub async fn supervised_prepare(
+        window: WebviewWindow,
+        app: tauri::AppHandle,
+        supervisor: State<'_, ManagementSupervisor>,
+        github: State<'_, std::sync::Arc<GithubGateway>>,
+        planner: State<'_, std::sync::Arc<MissionPlanner>>,
+        runner: State<'_, std::sync::Arc<SupervisedLoop>>,
+        project_id: String,
+        model: String,
+        objective: String,
+    ) -> Result<SessionPreview, NativeError> {
+        main_only(&window)?;
+        verified_backup_project(&supervisor, &project_id).await?;
+        preferred_workflow_project(&workflow_store(&app)?, &project_id)?;
+        runner
+            .prepare(&planner, &github, &project_id, model, objective)
+            .await
+    }
+    #[tauri::command]
+    #[allow(clippy::too_many_arguments)]
+    pub async fn supervised_start(
+        window: WebviewWindow,
+        app: tauri::AppHandle,
+        supervisor: State<'_, ManagementSupervisor>,
+        github: State<'_, std::sync::Arc<GithubGateway>>,
+        runner: State<'_, std::sync::Arc<SupervisedLoop>>,
+        project_id: String,
+        preview_id: String,
+        context_digest: String,
+    ) -> Result<SessionView, NativeError> {
+        main_only(&window)?;
+        verified_backup_project(&supervisor, &project_id).await?;
+        preferred_workflow_project(&workflow_store(&app)?, &project_id)?;
+        let preview = runner.pending(&project_id, &preview_id).await?;
+        if preview.context_digest != context_digest {
+            return Err(NativeError::new(
+                "SUPERVISED_CONTEXT_CHANGED",
+                "Contexte modifié.",
+            ));
+        }
+        let question = format!("Autoriser une session supervisée de dix minutes ?\nProject : {}\nGitHub : {} (id {}, {})\nModèle local : {}\nAu plus 3 lectures d'issues GitHub et 3 tours de modèle. Aucune écriture.\nContexte SHA-256 : {}",
+            project_id, preview.repository, preview.repository_id,
+            if preview.repository_private { "privé" } else { "public" }, preview.model, preview.context_digest);
+        if !confirm_workflow(&app, question).await? {
+            return Err(NativeError::new(
+                "SUPERVISED_CONSENT_REFUSED",
+                "Session annulée.",
+            ));
+        }
+        verified_backup_project(&supervisor, &project_id).await?;
+        preferred_workflow_project(&workflow_store(&app)?, &project_id)?;
+        runner.start(&github, &project_id, &preview_id).await
+    }
+    #[tauri::command]
+    #[allow(clippy::too_many_arguments)]
+    pub async fn supervised_step(
+        window: WebviewWindow,
+        app: tauri::AppHandle,
+        supervisor: State<'_, ManagementSupervisor>,
+        github: State<'_, std::sync::Arc<GithubGateway>>,
+        planner: State<'_, std::sync::Arc<MissionPlanner>>,
+        runner: State<'_, std::sync::Arc<SupervisedLoop>>,
+        project_id: String,
+        session_id: String,
+    ) -> Result<SessionView, NativeError> {
+        main_only(&window)?;
+        verified_backup_project(&supervisor, &project_id).await?;
+        preferred_workflow_project(&workflow_store(&app)?, &project_id)?;
+        let result = runner
+            .step(&planner, &github, &project_id, &session_id)
+            .await?;
+        if verified_backup_project(&supervisor, &project_id)
+            .await
+            .is_err()
+            || preferred_workflow_project(&workflow_store(&app)?, &project_id).is_err()
+        {
+            let _ = runner.stop(&project_id).await;
+            return Err(NativeError::new(
+                "SUPERVISED_PROJECT_CHANGED",
+                "Project changé.",
+            ));
+        }
+        Ok(result)
+    }
+    #[tauri::command]
+    pub async fn supervised_status(
+        window: WebviewWindow,
+        runner: State<'_, std::sync::Arc<SupervisedLoop>>,
+        project_id: String,
+    ) -> Result<Option<SessionView>, NativeError> {
+        main_only(&window)?;
+        runner.view(&project_id).await
+    }
+    #[tauri::command]
+    pub async fn supervised_receipts(
+        window: WebviewWindow,
+        app: tauri::AppHandle,
+        supervisor: State<'_, ManagementSupervisor>,
+        runner: State<'_, std::sync::Arc<SupervisedLoop>>,
+        project_id: String,
+    ) -> Result<Vec<SessionReceipt>, NativeError> {
+        main_only(&window)?;
+        verified_backup_project(&supervisor, &project_id).await?;
+        preferred_workflow_project(&workflow_store(&app)?, &project_id)?;
+        runner.receipts(&project_id)
+    }
+    #[tauri::command]
+    pub async fn supervised_stop(
+        window: WebviewWindow,
+        runner: State<'_, std::sync::Arc<SupervisedLoop>>,
+        project_id: String,
+    ) -> Result<SessionView, NativeError> {
+        main_only(&window)?;
+        runner.stop(&project_id).await
+    }
+    #[tauri::command]
+    pub async fn supervised_brief_preview(
+        window: WebviewWindow,
+        runner: State<'_, std::sync::Arc<SupervisedLoop>>,
+        project_id: String,
+        session_id: String,
+    ) -> Result<BriefFields, NativeError> {
+        main_only(&window)?;
+        runner.brief_fields(&project_id, &session_id).await
+    }
+    #[tauri::command]
+    #[allow(clippy::too_many_arguments)]
+    pub async fn supervised_adopt_local(
+        window: WebviewWindow,
+        app: tauri::AppHandle,
+        supervisor: State<'_, ManagementSupervisor>,
+        github: State<'_, std::sync::Arc<GithubGateway>>,
+        runner: State<'_, std::sync::Arc<SupervisedLoop>>,
+        project_id: String,
+        session_id: String,
+        fields: BriefFields,
+    ) -> Result<Draft, NativeError> {
+        main_only(&window)?;
+        workflow_runner::validate_fields(&fields)?;
+        verified_backup_project(&supervisor, &project_id).await?;
+        let store = workflow_store(&app)?;
+        preferred_workflow_project(&store, &project_id)?;
+        if runner
+            .exact_issue(&project_id, &session_id)
+            .await?
+            .is_some()
+        {
+            return Err(NativeError::new(
+                "SUPERVISED_USE_D17",
+                "Issue précise : passer par D17.",
+            ));
+        }
+        let question = format!("Créer un seul brief local non soumis dans le Project {} ?\nTitre : {}\nLa session de lecture ne donnait aucun droit d'écriture. Un backup D8 non chiffré peut contenir ce brief.", project_id, fields.title);
+        if !confirm_workflow(&app, question).await? {
+            return Err(NativeError::new(
+                "SUPERVISED_CONSENT_REFUSED",
+                "Création annulée.",
+            ));
+        }
+        verified_backup_project(&supervisor, &project_id).await?;
+        preferred_workflow_project(&store, &project_id)?;
+        runner
+            .adopt_local(&store, &github, &project_id, &session_id, fields)
+            .await
+    }
+    #[tauri::command]
+    #[allow(clippy::too_many_arguments)]
+    pub async fn supervised_handoff_github(
+        window: WebviewWindow,
+        app: tauri::AppHandle,
+        supervisor: State<'_, ManagementSupervisor>,
+        github: State<'_, std::sync::Arc<GithubGateway>>,
+        runner: State<'_, std::sync::Arc<SupervisedLoop>>,
+        workflows: State<'_, std::sync::Arc<WorkflowRunner>>,
+        project_id: String,
+        session_id: String,
+    ) -> Result<Preview, NativeError> {
+        main_only(&window)?;
+        verified_backup_project(&supervisor, &project_id).await?;
+        preferred_workflow_project(&workflow_store(&app)?, &project_id)?;
+        runner
+            .handoff_github(&workflows, &github, &project_id, &session_id)
+            .await
     }
     #[tauri::command]
     pub async fn planner_status(
@@ -2762,6 +2951,11 @@ mod desktop {
                     .app_local_data_dir()?
                     .join("workflow-receipts-v1");
                 app.manage(std::sync::Arc::new(WorkflowRunner::new(workflow_root)));
+                let supervised_root = app
+                    .path()
+                    .app_local_data_dir()?
+                    .join("supervised-receipts-v1");
+                app.manage(std::sync::Arc::new(SupervisedLoop::new(supervised_root)));
                 let expected = if cfg!(debug_assertions) {
                     "http://127.0.0.1:5173"
                 } else {
@@ -2810,6 +3004,15 @@ mod desktop {
                 planner_reject,
                 planner_adopt_local,
                 planner_handoff_github,
+                supervised_prepare,
+                supervised_start,
+                supervised_step,
+                supervised_status,
+                supervised_receipts,
+                supervised_stop,
+                supervised_brief_preview,
+                supervised_adopt_local,
+                supervised_handoff_github,
                 windows_detect,
                 windows_authorize,
                 windows_inspect,
