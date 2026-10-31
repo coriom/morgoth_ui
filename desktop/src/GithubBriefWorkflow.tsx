@@ -3,9 +3,12 @@ import { invoke } from "@tauri-apps/api/core";
 
 type Source = { repository: string; repository_id: number; private: boolean; kind: "issue" | "pull"; number: number;
   title: string; state: string; body_excerpt: string; body_truncated: boolean; updated_at: string; url: string };
-type Fields = { title: string; objective: string; verification_criteria: string };
-type Preview = { schema_version: 1; workflow_id: string; project_id: string; source: Source; source_digest: string;
-  proposed: Fields; expires_at_ms: number; effect: string };
+export type BriefFields = { title: string; objective: string; verification_criteria: string };
+export type GithubWorkflowPreview = { schema_version: 1; workflow_id: string; project_id: string; source: Source; source_digest: string;
+  proposed: BriefFields; expires_at_ms: number; effect: string };
+type Fields = BriefFields;
+type Preview = GithubWorkflowPreview;
+export type GithubWorkflowTransfer = { preview: GithubWorkflowPreview; fields: BriefFields; nonce: number };
 type Receipt = { schema_version: 1; workflow_id: string; project_id: string; source_repository: string;
   source_kind: string; source_number: number; draft_id: string; state: string; handoff_state: string;
   updated_at_ms: number; error_code: string | null };
@@ -39,7 +42,7 @@ function validPreview(value: Preview, project: string): boolean { return value.s
   value.source_digest.length === 64 && value.proposed.title.length > 0 && value.proposed.objective.length > 0; }
 
 /** One fixed recipe; external source text is displayed as inert text, never an instruction. */
-export function GithubBriefWorkflow({ projectId, verified, onCreated }: { projectId: string; verified: boolean; onCreated: (draftId: string) => Promise<void> }) {
+export function GithubBriefWorkflow({ projectId, verified, onCreated, transfer }: { projectId: string; verified: boolean; onCreated: (draftId: string) => Promise<void>; transfer?: GithubWorkflowTransfer | null }) {
   const [status, setStatus] = useState<GithubStatus | null>(null);
   const [kind, setKind] = useState<"issue" | "pull">("issue");
   const [number, setNumber] = useState("");
@@ -51,6 +54,13 @@ export function GithubBriefWorkflow({ projectId, verified, onCreated }: { projec
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const titleRef = useRef<HTMLInputElement>(null);
+  const detailsRef = useRef<HTMLDetailsElement>(null);
+  useEffect(() => {
+    if (!transfer || transfer.preview.project_id !== projectId) return;
+    setPreview(transfer.preview); setFields(transfer.fields); setReceipt(null); setHandoff(null); setError(null);
+    detailsRef.current?.setAttribute("open", "");
+    window.setTimeout(() => titleRef.current?.focus(), 0);
+  }, [transfer?.nonce, projectId]);
   const refresh = async () => {
     setStatus(await invoke<GithubStatus>("github_status"));
     const values = await invoke<Receipt[]>("workflow_receipts", {projectId});
@@ -86,7 +96,7 @@ export function GithubBriefWorkflow({ projectId, verified, onCreated }: { projec
     } catch (cause) { setError(failure(cause)); }
     finally { setBusy(false); }
   };
-  return <details className="github-workflow" onToggle={event => { if (event.currentTarget.open) void refresh().catch(() => undefined); }}>
+  return <details ref={detailsRef} className="github-workflow" onToggle={event => { if (event.currentTarget.open) void refresh().catch(() => undefined); }}>
     <summary>Depuis GitHub · créer un brief local</summary>
     <p>Une issue ou PR autorisée devient un brouillon non soumis. Aucun modèle et aucune écriture GitHub.</p>
     {!verified && <p role="status">Project géré non vérifié : préparation indisponible.</p>}

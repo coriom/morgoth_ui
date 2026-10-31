@@ -1,0 +1,28 @@
+[[permission]]
+identifier = "allow-planner-status"
+description = "Observe optional local proposal model availability without inference."
+commands.allow = ["planner_status"]
+[[permission]]
+identifier = "allow-planner-prepare"
+description = "Prepare one bounded Project-scoped model context from explicitly selected sources."
+commands.allow = ["planner_prepare"]
+[[permission]]
+identifier = "allow-planner-generate"
+description = "Generate one proposal only after native human consent."
+commands.allow = ["planner_generate"]
+[[permission]]
+identifier = "allow-planner-cancel"
+description = "Cancel a pending or active proposal request."
+commands.allow = ["planner_cancel"]
+[[permission]]
+identifier = "allow-planner-reject"
+description = "Reject a proposal without local writes."
+commands.allow = ["planner_reject"]
+[[permission]]
+identifier = "allow-planner-adopt-local"
+description = "Create one local non-GitHub brief after separate native consent."
+commands.allow = ["planner_adopt_local"]
+[[permission]]
+identifier = "allow-planner-handoff-github"
+description = "Prepare the existing D17 GitHub workflow after source revalidation."
+commands.allow = ["planner_handoff_github"]

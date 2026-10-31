@@ -4,7 +4,8 @@ import type { ManagementTransport } from "./transport";
 import { readMission, readMissionPage } from "./readModels";
 import type { DraftTransport, LocalDraft } from "./drafts";
 import { readDraft, readDraftList } from "./drafts";
-import { GithubBriefWorkflow } from "./GithubBriefWorkflow";
+import { GithubBriefWorkflow, type GithubWorkflowTransfer } from "./GithubBriefWorkflow";
+import { MissionAssistant } from "./MissionAssistant";
 
 const stamp = (value: number) => new Date(value).toLocaleString("fr-FR");
 const clean = (value: string, limit: number) => value.trim().length > 0 && [...value].length <= limit && !value.includes("\0");
@@ -27,6 +28,8 @@ export function MissionWorkspace({ projectId, verified, connected, transport, dr
   const [busy, setBusy] = useState(false);
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [githubTransfer, setGithubTransfer] = useState<GithubWorkflowTransfer | null>(null);
+  useEffect(() => { setGithubTransfer(null); }, [projectId]);
   const titleRef = useRef<HTMLInputElement>(null);
   const objectiveRef = useRef<HTMLTextAreaElement>(null);
   const criteriaRef = useRef<HTMLTextAreaElement>(null);
@@ -130,7 +133,12 @@ export function MissionWorkspace({ projectId, verified, connected, transport, dr
   if (!projectId) return <section className="panel"><h2>Aucun Project sélectionné</h2>
     <p>Choisissez un Project dans le sélecteur global pour retrouver vos briefs locaux.</p></section>;
   return <div className="mission-page">
-    <GithubBriefWorkflow key={projectId} projectId={projectId} verified={verified} onCreated={async draftId => {
+    <MissionAssistant key={"assistant-" + projectId} projectId={projectId} verified={verified}
+      drafts={list.isSuccess ? list.data : []} onGithubReady={setGithubTransfer} onCreated={async draftId => {
+        await cache.invalidateQueries({ queryKey: ["d4", "drafts", projectId] });
+        await openDraft(draftId);
+      }} />
+    <GithubBriefWorkflow key={"github-" + projectId} projectId={projectId} verified={verified} transfer={githubTransfer} onCreated={async draftId => {
       await cache.invalidateQueries({ queryKey: ["d4", "drafts", projectId] });
       await openDraft(draftId);
     }} />

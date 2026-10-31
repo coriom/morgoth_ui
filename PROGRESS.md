@@ -564,3 +564,7 @@ The isolated D16 branch adds one explicitly selected GitHub repository through f
 ## 2026-10-30 — Desktop D17 controlled GitHub brief workflow
 
 The isolated D17 Tauri branch adds a native GitHub issue/PR-to-local-brief recipe with a five-minute preview, exact source revalidation, separate GTK write consent, Project-scoped durable receipts and crash reconciliation. A second consent can open the saved brief as an unsaved Markdown tab in a paired VS Code extension host; extension/VSIX version 0.2.0 adds only this bounded operation. Existing D4 drafts, D8 backups, other connectors and backend authority stay unchanged. See `docs/DESKTOP-D17-CONTROLLED-WORKFLOWS.md` for usage, security and acceptance limits. No new runtime dependency or backend change.
+
+## 2026-10-31 — Desktop D18 proposal-only mission planner
+
+The isolated D18 Tauri branch adds a disabled-by-default local Ollama proposal path inside Missions. A native context preview binds one explicit Project, optional local draft or authorized GitHub item, observed installed model and exact prompt. A separate native consent starts one bounded inference. Closed-schema Rust validation rejects invented references and unsupported steps. Generic adoption uses the existing DraftStore after another native confirmation; GitHub adoption transfers into D17's independent source revalidation and write consent. Proposals are ephemeral. No research-engine START, model tool, connector call or backend change is introduced. See `docs/DESKTOP-D18-AI-PLANNER.md` for usage and qualification evidence.

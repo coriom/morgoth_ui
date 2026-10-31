@@ -284,3 +284,13 @@ html[data-text-scale="140"] .palette-launch kbd { display: none; }
 .workflow-preview { display: grid; gap: .55rem; max-width: 54rem; margin-top: 1rem; }
 .workflow-preview h3, .workflow-preview p { margin: .2rem 0; }
 .workflow-preview textarea { width: 100%; max-height: 15rem; resize: vertical; }
+.planner-assistant { margin: 0 0 1rem; padding: .85rem 1rem; background: var(--surface); border-radius: 6px; }
+.planner-assistant summary { cursor: pointer; font-weight: 600; }
+.planner-assistant > p { color: var(--muted); }
+.planner-fields { display: grid; gap: .5rem; max-width: 54rem; margin-top: .8rem; }
+.planner-fields > label { margin-top: .45rem; }
+.planner-fields textarea, .planner-fields select { width: 100%; }
+.planner-assistant .editor-actions { flex-wrap: wrap; }
+.planner-assistant ol, .planner-assistant ul { margin: .2rem 0 .65rem; padding-left: 1.4rem; }
+.planner-assistant li { margin: .3rem 0; }
+.planner-assistant h4 { margin: .55rem 0 .15rem; }

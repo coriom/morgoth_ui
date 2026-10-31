@@ -11,6 +11,7 @@ pub mod browser_gateway;
 pub mod connector_gateway;
 pub mod drafts;
 pub mod github_gateway;
+pub mod mission_planner;
 pub mod note_import;
 pub mod notes;
 pub mod ollama_read;
@@ -1063,6 +1064,9 @@ mod desktop {
     use crate::connector_gateway::{ConnectorResult, ConnectorView, Gateway};
     use crate::drafts::{Draft, DraftInput, DraftStore, DraftUpdate};
     use crate::github_gateway::GithubGateway;
+    use crate::mission_planner::{
+        ContextPreview, ContextSelection, MissionPlanner, PlannerStatus, Proposal,
+    };
     use crate::note_import::{ImportPlan, ImportPreview, ImportStore};
     use crate::notes::{Note, NoteInput, NoteStore, NoteUpdate};
     use crate::research::{ProfilesResponse, ResearchEngineStatus, ResearchEngineSupervisor};
@@ -1617,6 +1621,164 @@ mod desktop {
                 "Dialogue natif indisponible.",
             )
         })
+    }
+    #[tauri::command]
+    pub async fn planner_status(
+        window: WebviewWindow,
+        planner: State<'_, std::sync::Arc<MissionPlanner>>,
+    ) -> Result<PlannerStatus, NativeError> {
+        main_only(&window)?;
+        planner.status().await
+    }
+    #[tauri::command]
+    #[allow(clippy::too_many_arguments)]
+    pub async fn planner_prepare(
+        window: WebviewWindow,
+        app: tauri::AppHandle,
+        supervisor: State<'_, ManagementSupervisor>,
+        github: State<'_, std::sync::Arc<GithubGateway>>,
+        planner: State<'_, std::sync::Arc<MissionPlanner>>,
+        project_id: String,
+        objective: String,
+        context: ContextSelection,
+        model: String,
+    ) -> Result<ContextPreview, NativeError> {
+        main_only(&window)?;
+        verified_backup_project(&supervisor, &project_id).await?;
+        let store = workflow_store(&app)?;
+        preferred_workflow_project(&store, &project_id)?;
+        planner
+            .prepare(&store, &github, &project_id, objective, context, model)
+            .await
+    }
+    #[tauri::command]
+    #[allow(clippy::too_many_arguments)]
+    pub async fn planner_generate(
+        window: WebviewWindow,
+        app: tauri::AppHandle,
+        supervisor: State<'_, ManagementSupervisor>,
+        github: State<'_, std::sync::Arc<GithubGateway>>,
+        planner: State<'_, std::sync::Arc<MissionPlanner>>,
+        project_id: String,
+        preview_id: String,
+        context_digest: String,
+    ) -> Result<Proposal, NativeError> {
+        main_only(&window)?;
+        verified_backup_project(&supervisor, &project_id).await?;
+        let store = workflow_store(&app)?;
+        preferred_workflow_project(&store, &project_id)?;
+        let preview = planner.pending(&project_id, &preview_id).await?;
+        if preview.context_digest != context_digest {
+            return Err(NativeError::new(
+                "PLANNER_CONTEXT_CHANGED",
+                "Le contexte a changé.",
+            ));
+        }
+        let question = format!("Autoriser une seule inférence locale de PROPOSITION, sans outil ni action ?\nProject : {}\nModèle Ollama installé : {}\nSource : {}{}\nContexte SHA-256 : {}\nAucun brief ne sera écrit par cette étape.",
+            project_id, preview.model, preview.source_label,
+            if preview.source_private { "\nContenu privé sélectionné : transmission au modèle local." } else { "" },
+            preview.context_digest);
+        if !confirm_workflow(&app, question).await? {
+            return Err(NativeError::new(
+                "PLANNER_CONSENT_REFUSED",
+                "Analyse annulée.",
+            ));
+        }
+        verified_backup_project(&supervisor, &project_id).await?;
+        preferred_workflow_project(&store, &project_id)?;
+        let generated = planner
+            .generate(&store, &github, &project_id, &preview_id)
+            .await?;
+        if verified_backup_project(&supervisor, &project_id)
+            .await
+            .is_err()
+            || preferred_workflow_project(&store, &project_id).is_err()
+        {
+            planner.cancel(&project_id).await;
+            return Err(NativeError::new(
+                "PLANNER_PROJECT_CHANGED",
+                "Le Project a changé pendant l’analyse.",
+            ));
+        }
+        Ok(generated)
+    }
+    #[tauri::command]
+    pub async fn planner_cancel(
+        window: WebviewWindow,
+        planner: State<'_, std::sync::Arc<MissionPlanner>>,
+        project_id: String,
+    ) -> Result<(), NativeError> {
+        main_only(&window)?;
+        planner.cancel(&project_id).await;
+        Ok(())
+    }
+    #[tauri::command]
+    pub async fn planner_reject(
+        window: WebviewWindow,
+        planner: State<'_, std::sync::Arc<MissionPlanner>>,
+        project_id: String,
+        proposal_id: String,
+    ) -> Result<(), NativeError> {
+        main_only(&window)?;
+        planner.proposal(&project_id, &proposal_id).await?;
+        planner.cancel(&project_id).await;
+        Ok(())
+    }
+    #[tauri::command]
+    #[allow(clippy::too_many_arguments)]
+    pub async fn planner_adopt_local(
+        window: WebviewWindow,
+        app: tauri::AppHandle,
+        supervisor: State<'_, ManagementSupervisor>,
+        planner: State<'_, std::sync::Arc<MissionPlanner>>,
+        project_id: String,
+        proposal_id: String,
+        fields: BriefFields,
+    ) -> Result<Draft, NativeError> {
+        main_only(&window)?;
+        workflow_runner::validate_fields(&fields)?;
+        verified_backup_project(&supervisor, &project_id).await?;
+        let store = workflow_store(&app)?;
+        preferred_workflow_project(&store, &project_id)?;
+        let (proposal, github) = planner.proposal(&project_id, &proposal_id).await?;
+        if github {
+            return Err(NativeError::new(
+                "PLANNER_USE_D17",
+                "La source GitHub doit passer par le workflow D17.",
+            ));
+        }
+        let question = format!("Créer un seul brief LOCAL non soumis dans le Project {} ?\nProposition : {}\nTitre : {}\nAucun agent, GitHub ou VS Code ne sera appelé. Une sauvegarde D8 non chiffrée peut inclure ce texte.",
+            project_id, proposal.proposal_id, fields.title);
+        if !confirm_workflow(&app, question).await? {
+            return Err(NativeError::new(
+                "PLANNER_CONSENT_REFUSED",
+                "Création annulée.",
+            ));
+        }
+        verified_backup_project(&supervisor, &project_id).await?;
+        preferred_workflow_project(&store, &project_id)?;
+        planner
+            .adopt_local(&store, &project_id, &proposal_id, fields)
+            .await
+    }
+    #[tauri::command]
+    #[allow(clippy::too_many_arguments)]
+    pub async fn planner_handoff_github(
+        window: WebviewWindow,
+        app: tauri::AppHandle,
+        supervisor: State<'_, ManagementSupervisor>,
+        github: State<'_, std::sync::Arc<GithubGateway>>,
+        runner: State<'_, std::sync::Arc<WorkflowRunner>>,
+        planner: State<'_, std::sync::Arc<MissionPlanner>>,
+        project_id: String,
+        proposal_id: String,
+    ) -> Result<Preview, NativeError> {
+        main_only(&window)?;
+        verified_backup_project(&supervisor, &project_id).await?;
+        preferred_workflow_project(&workflow_store(&app)?, &project_id)?;
+        planner
+            .handoff_github(&github, &runner, &project_id, &proposal_id)
+            .await
     }
     #[tauri::command]
     #[allow(clippy::too_many_arguments)] // Tauri injects four independent trusted states.
@@ -2569,6 +2731,13 @@ mod desktop {
         result
     }
     pub fn run() {
+        let planner = match MissionPlanner::from_environment() {
+            Ok(value) => value,
+            Err(_) => {
+                eprintln!("PLANNER_CONFIG_REJECTED");
+                return;
+            }
+        };
         let config = SupervisorConfig::from_environment();
         let supervisor = ManagementSupervisor::start(config.clone());
         let research = ResearchEngineSupervisor::new(config, supervisor.clone());
@@ -2581,6 +2750,7 @@ mod desktop {
             .manage(std::sync::Arc::new(WindowsGateway::default()))
             .manage(std::sync::Arc::new(VsCodeGateway::default()))
             .manage(std::sync::Arc::new(GithubGateway::default()))
+            .manage(std::sync::Arc::new(planner))
             .manage(std::sync::Arc::new(
                 crate::browser_gateway::BrowserGateway::default(),
             ))
@@ -2633,6 +2803,13 @@ mod desktop {
                 workflow_status,
                 workflow_handoff_preview,
                 workflow_handoff,
+                planner_status,
+                planner_prepare,
+                planner_generate,
+                planner_cancel,
+                planner_reject,
+                planner_adopt_local,
+                planner_handoff_github,
                 windows_detect,
                 windows_authorize,
                 windows_inspect,
