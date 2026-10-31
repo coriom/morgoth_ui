@@ -1667,7 +1667,7 @@ mod desktop {
                 "Contexte modifié.",
             ));
         }
-        let question = format!("Autoriser une session supervisée de dix minutes ?\nProject : {}\nGitHub : {} (id {}, {})\nModèle local : {}\nAu plus 3 lectures d'issues GitHub et 3 tours de modèle. Aucune écriture.\nContexte SHA-256 : {}",
+        let question = format!("Autoriser une session supervisée de dix minutes ?\nProject : {}\nGitHub : {} (id {}, {})\nModèle local : {}\nAu plus 3 lectures GitHub (aperçu du dépôt ou issues) et 3 tours de modèle. Aucune écriture.\nContexte SHA-256 : {}",
             project_id, preview.repository, preview.repository_id,
             if preview.repository_private { "privé" } else { "public" }, preview.model, preview.context_digest);
         if !confirm_workflow(&app, question).await? {
