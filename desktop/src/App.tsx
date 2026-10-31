@@ -103,7 +103,9 @@ export function CommandCenter({ transport, research, ollama, drafts, notes, appe
       restoreSelectorFocus.current = false;
     }
   }, [selectedId]);
-  const runtime = useQuery({ queryKey: ["d1", "management-runtime"], queryFn: async () => readRuntimeStatus(await transport.runtimeStatus()) });
+  const runtime = useQuery({ queryKey: ["d1", "management-runtime"], queryFn: async () => readRuntimeStatus(await transport.runtimeStatus()),
+    refetchInterval: query => query.state.data?.state === "STARTING" ? 1000 : false,
+    refetchIntervalInBackground: true });
   const ready = runtime.isSuccess && runtime.data.state === "READY";
   const management = useQuery({ queryKey: ["d1", "management-status"], queryFn: async () => readManagementStatus(await transport.status()), enabled: ready });
   const connected = ready && management.isSuccess && management.data.management_available === true;

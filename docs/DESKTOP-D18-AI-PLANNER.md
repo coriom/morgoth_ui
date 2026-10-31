@@ -8,6 +8,9 @@ numéro exact d'une issue/PR du dépôt GitHub déjà autorisé. L'Assistant mon
 le texte exact transmis à Ollama, le modèle, la provenance et le caractère
 privé de la source. Une confirmation native distincte autorise une seule
 inférence. Le plan affiché est une **proposition**, jamais un travail accompli.
+Le modèle est choisi explicitement dans la liste observée ; aucun modèle n'est
+présélectionné. L'état `STARTING` du Management est relu automatiquement au
+démarrage jusqu'à disponibilité ou échec, sans lancer de recherche.
 
 L'opérateur active ce chemin séparé uniquement pour la session de lancement :
 

@@ -118,6 +118,15 @@ describe("read-only command center", () => {
     expect(transport.projects).not.toHaveBeenCalled();
     expect(screen.queryByText("Mission en cours")).toBeNull();
   });
+  it("refreshes a starting Management supervisor until its Project catalog is ready", async () => {
+    let calls = 0;
+    const runtimeStatus = vi.fn(async () => ({ state: (++calls === 1 ? "STARTING" : "READY") as "STARTING" | "READY", diagnostic: null }));
+    const transport = management({ runtimeStatus });
+    render(<TestedApp drafts={drafts()} transport={transport} research={research()} />);
+    expect(transport.projects).not.toHaveBeenCalled();
+    expect(await screen.findByRole("option", {name:"alpha · alpha"}, {timeout:3500})).toBeTruthy();
+    expect(runtimeStatus).toHaveBeenCalledTimes(2);
+  });
   it("keeps disconnected state truthful and does not fetch downstream data", async () => {
     const transport = management({ status: vi.fn(async () => { throw new Error("secret failure text"); }) });
     render(<TestedApp drafts={drafts()} transport={transport} research={research()} />);

@@ -82,13 +82,13 @@ export function MissionAssistant({ projectId, verified, drafts, onCreated, onGit
     const value = await invoke<PlannerStatus>("planner_status");
     if (value.schema_version !== 1 || !Array.isArray(value.installed_models)) throw Error("INVALID_PLANNER_STATUS");
     setStatus(value);
-    setModel(current => value.installed_models.some(item => item.id === current) ? current : value.installed_models[0]?.id ?? "");
+    setModel(current => value.installed_models.some(item => item.id === current) ? current : "");
   };
   useEffect(() => {
     let live = true;
     setPreview(null); setProposal(null); setFields(null); setResult(null); setError(null);
     void invoke<PlannerStatus>("planner_status").then(value => {
-      if (live && value.schema_version === 1) { setStatus(value); setModel(value.installed_models[0]?.id ?? ""); }
+      if (live && value.schema_version === 1) { setStatus(value); setModel(""); }
     }).catch(() => { if (live) setError("État local Ollama indisponible."); });
     return () => { live = false; void invoke("planner_cancel", { projectId }).catch(() => undefined); };
   }, [projectId]);
@@ -182,8 +182,9 @@ export function MissionAssistant({ projectId, verified, drafts, onCreated, onGit
         <input id="planner-github-number" inputMode="numeric" value={number} onChange={event => setNumber(event.target.value)} /></div>}
       <label htmlFor="planner-model">Modèle local installé</label>
       <select id="planner-model" value={model} onChange={event => { setModel(event.target.value); setPreview(null); setProposal(null); }}>
+        <option value="">Choisir un modèle installé</option>
         {status?.installed_models.length ? status.installed_models.map(item =>
-          <option key={item.id} value={item.id}>{item.id}</option>) : <option value="">Aucun modèle observé</option>}
+          <option key={item.id} value={item.id}>{item.id}</option>) : null}
       </select>
       <div className="editor-actions"><button type="button" onClick={() => void refresh().catch(cause => setError(message(cause)))}>Actualiser les modèles</button>
         <button type="button" disabled={!verified || !status?.enabled || status.service_state !== "REACHABLE" ||

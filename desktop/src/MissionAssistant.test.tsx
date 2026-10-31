@@ -35,6 +35,7 @@ describe("proposal-only mission assistant", () => {
     expect(call).not.toHaveBeenCalledWith("planner_generate", expect.anything());
     fireEvent.change(screen.getByLabelText("Votre objectif"), {target:{value:"Préparer un test"}});
     await screen.findByRole("option", {name:"qwen3:4b-instruct"});
+    fireEvent.change(screen.getByLabelText("Modèle local installé"), {target:{value:"qwen3:4b-instruct"}});
     fireEvent.click(screen.getByRole("button", {name:"Prévoir le contexte envoyé"}));
     expect((await screen.findByLabelText("Prompt exact envoyé au modèle local") as HTMLTextAreaElement).value).toBe(preview.prompt);
     expect(call).not.toHaveBeenCalledWith("planner_generate", expect.anything());
@@ -63,6 +64,7 @@ describe("proposal-only mission assistant", () => {
     fireEvent.click(screen.getByText("Assistant · proposer un plan"));
     fireEvent.change(screen.getByLabelText("Votre objectif"), {target:{value:"Préparer un test"}});
     await screen.findByRole("option", {name:"qwen3:4b-instruct"});
+    fireEvent.change(screen.getByLabelText("Modèle local installé"), {target:{value:"qwen3:4b-instruct"}});
     fireEvent.click(screen.getByRole("button", {name:"Prévoir le contexte envoyé"}));
     await screen.findByLabelText("Prompt exact envoyé au modèle local");
     view.rerender(<MissionAssistant projectId="beta" verified drafts={[]}
