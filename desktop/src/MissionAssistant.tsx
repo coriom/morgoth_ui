@@ -31,11 +31,25 @@ const messages: Record<string, string> = {
   WORKFLOW_PROJECT_CHANGED: "Le Project a changé. Reprenez depuis le nouveau Project.",
   GITHUB_AUTH_REQUIRED: "Autorisez d’abord le dépôt dans Réglages → Connexions et applications.",
   PROPOSAL_EXPIRED: "La proposition a expiré. Une nouvelle analyse est nécessaire.",
+  PLANNER_PROJECT_CHANGED: "Le Project n’est plus vérifié après l’analyse. Recommencez dans le Project courant.",
+  PREVIEW_MISSING: "L’aperçu n’est plus disponible. Préparez-le de nouveau.",
+  PREVIEW_MISMATCH: "L’aperçu ne correspond plus à cette demande.",
+  GENERATION_BUSY: "Une analyse locale est déjà en cours.",
+  MODEL_TIMEOUT: "Le modèle local a dépassé le délai. Aucun brief créé.",
+  PROVIDER_STATUS: "Ollama a refusé la génération locale. Aucun brief créé.",
+  PROVIDER_RESPONSE_TOO_LARGE: "La réponse du modèle dépasse la limite autorisée.",
+  PLANNER_CONTEXT_CHANGED: "Le contexte soumis ne correspond plus à l’aperçu.",
+  WORKFLOW_DIALOG_UNAVAILABLE: "Le dialogue natif n’a pas confirmé l’action. Aucun modèle invoqué.",
 };
 function message(error: unknown): string {
-  const value = error && typeof error === "object" ? error as { code?: unknown } : {};
-  return messages[typeof value.code === "string" ? value.code : ""] ??
-    "Opération refusée ou résultat incertain. Aucune action autonome n’a été lancée.";
+  let value: { code?: unknown; kind?: unknown } = error && typeof error === "object" ? error as { code?: unknown; kind?: unknown } : {};
+  if (typeof error === "string" && error.length < 512) {
+    try { value = JSON.parse(error) as { code?: unknown; kind?: unknown }; } catch { /* Tauri may return a plain error. */ }
+  }
+  const candidate = typeof value.code === "string" ? value.code : value.kind;
+  const code = typeof candidate === "string" && /^[A-Z][A-Z0-9_]{2,80}$/.test(candidate) ? candidate : "";
+  return messages[code] ?? (code ? `Opération refusée (${code}). Aucun effet autonome.` :
+    "Opération refusée ou résultat incertain. Aucune action autonome n’a été lancée.");
 }
 const uuid = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 const clipped = (value: string, count: number) => [...value].slice(0, count).join("");
