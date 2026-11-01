@@ -90,11 +90,17 @@ autoriser les deux dialogues, lancer l’enquête, approuver le brief, fermer et
 redémarrer Morgoth avec les mêmes données, puis rouvrir le même UUID. Tester
 l’envoi VS Code dans un dernier dialogue distinct.
 
-Dans l’environnement de qualification du 1er novembre 2026, le service
-Ollama 0.20.6 lancé sur le port de test répondait avec `models: []` ; aucune
-inférence D21 n’a donc été exécutée. Le VS Code Windows installé répond en
-version 1.140.0 via WSL interop après une première erreur de socket dans le
-sandbox, mais aucun hôte d’extensions Linux/Remote-WSL isolé n’est disponible
-pour le test du socket Unix. La lecture publique GitHub par le gateway natif
-est passée séparément. Ces limites ne doivent pas être présentées comme une
-acceptation du parcours combiné dans la fenêtre Tauri.
+Dans l’environnement de qualification du 1er novembre 2026, un premier
+service Ollama 0.20.6 jetable, lancé avec un répertoire de modèles vide,
+répondait `models: []`. Le service local habituel exposait bien le modèle déjà
+installé `qwen3:4b-instruct`. Un relais temporaire limité au loopback vers ce
+service a permis le canari intégré D21 : vrai modèle, vrais GET GitHub publics
+sur `microsoft/vscode`, sélection VS Code **synthétique via le protocole privé**.
+Le modèle a choisi l’issue observée `#345408` ; les deux observations GitHub
+et la référence `editor:1` ont été validées en 26,97 s. Le relais a été arrêté.
+Ce succès ne prouve pas une sélection dans un vrai VS Code ni l’autorisation
+GTK dans la fenêtre Tauri. Le VS Code Windows installé répond en version
+1.140.0 via WSL interop, mais aucun hôte d’extensions Linux/Remote-WSL isolé
+n’était disponible pour ce test. La fenêtre Tauri de production a démarré
+sous Xvfb avec ses ressources intégrées ; le parcours consentement → brief →
+redémarrage reste à accepter dans l’interface avec un Project stable.
