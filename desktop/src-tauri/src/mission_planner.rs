@@ -176,7 +176,9 @@ fn decode_generate(bytes: &[u8], model: &str) -> Result<String, NativeError> {
     let envelope: GenerateEnvelope =
         serde_json::from_slice(bytes).map_err(|_| error("PROVIDER_RESPONSE_INVALID"))?;
     #[cfg(test)]
-    if std::env::var("D19_ALLOW_LIVE_CANARY").as_deref() == Ok("1") {
+    if std::env::var("D19_ALLOW_LIVE_CANARY").as_deref() == Ok("1")
+        || std::env::var("D20_ALLOW_LIVE_CANARY").as_deref() == Ok("1")
+    {
         eprintln!(
             "D19_PROVIDER_ENVELOPE done={} reason={} response_bytes={}",
             envelope.done,

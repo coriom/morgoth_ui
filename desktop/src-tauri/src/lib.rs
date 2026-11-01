@@ -1562,8 +1562,10 @@ mod desktop {
     pub async fn github_disconnect(
         window: WebviewWindow,
         github: State<'_, std::sync::Arc<GithubGateway>>,
+        supervised: State<'_, std::sync::Arc<SupervisedLoop>>,
     ) -> Result<(), NativeError> {
         main_only(&window)?;
+        supervised.revoke_all().await;
         github.disconnect().await;
         Ok(())
     }
@@ -1644,6 +1646,79 @@ mod desktop {
         runner
             .prepare(&planner, &github, &project_id, model, objective)
             .await
+    }
+    #[tauri::command]
+    #[allow(clippy::too_many_arguments)]
+    pub async fn investigation_prepare(
+        window: WebviewWindow,
+        app: tauri::AppHandle,
+        supervisor: State<'_, ManagementSupervisor>,
+        github: State<'_, std::sync::Arc<GithubGateway>>,
+        planner: State<'_, std::sync::Arc<MissionPlanner>>,
+        runner: State<'_, std::sync::Arc<SupervisedLoop>>,
+        project_id: String,
+        model: String,
+        objective: String,
+    ) -> Result<SessionPreview, NativeError> {
+        main_only(&window)?;
+        verified_backup_project(&supervisor, &project_id).await?;
+        preferred_workflow_project(&workflow_store(&app)?, &project_id)?;
+        runner
+            .prepare_investigation(&planner, &github, &project_id, model, objective)
+            .await
+    }
+    #[tauri::command]
+    #[allow(clippy::too_many_arguments)]
+    pub async fn investigation_execute(
+        window: WebviewWindow,
+        app: tauri::AppHandle,
+        supervisor: State<'_, ManagementSupervisor>,
+        github: State<'_, std::sync::Arc<GithubGateway>>,
+        planner: State<'_, std::sync::Arc<MissionPlanner>>,
+        runner: State<'_, std::sync::Arc<SupervisedLoop>>,
+        project_id: String,
+        preview_id: String,
+        context_digest: String,
+    ) -> Result<SessionView, NativeError> {
+        main_only(&window)?;
+        verified_backup_project(&supervisor, &project_id).await?;
+        preferred_workflow_project(&workflow_store(&app)?, &project_id)?;
+        let preview = runner.pending(&project_id, &preview_id).await?;
+        if preview.mode != "GITHUB_ISSUE_INVESTIGATION_V1"
+            || preview.context_digest != context_digest
+        {
+            return Err(NativeError::new(
+                "SUPERVISED_CONTEXT_CHANGED",
+                "Contexte modifié.",
+            ));
+        }
+        let question = format!("Autoriser une enquête supervisée de dix minutes ?\nProject : {}\nGitHub : {} (id {}, {})\nModèle local : {}\nÉtape fixe : jusqu'à 10 issues ouvertes. Le modèle choisit un numéro observé, puis Rust lit cette issue et le modèle propose une analyse.\nAu plus 2 lectures GitHub et 2 tours de modèle ; plafond absolu 3/3. Aucune écriture.\nContexte SHA-256 : {}",
+            project_id, preview.repository, preview.repository_id,
+            if preview.repository_private { "privé" } else { "public" }, preview.model, preview.context_digest);
+        if !confirm_workflow(&app, question).await? {
+            return Err(NativeError::new(
+                "SUPERVISED_CONSENT_REFUSED",
+                "Enquête annulée.",
+            ));
+        }
+        verified_backup_project(&supervisor, &project_id).await?;
+        preferred_workflow_project(&workflow_store(&app)?, &project_id)?;
+        let session = runner.start(&github, &project_id, &preview_id).await?;
+        let result = runner
+            .run_issue_investigation(&planner, &github, &project_id, &session.session_id)
+            .await;
+        if verified_backup_project(&supervisor, &project_id)
+            .await
+            .is_err()
+            || preferred_workflow_project(&workflow_store(&app)?, &project_id).is_err()
+        {
+            let _ = runner.stop(&project_id).await;
+            return Err(NativeError::new(
+                "SUPERVISED_PROJECT_CHANGED",
+                "Project changé.",
+            ));
+        }
+        result
     }
     #[tauri::command]
     #[allow(clippy::too_many_arguments)]
@@ -2678,9 +2753,18 @@ mod desktop {
     pub async fn preferred_project_set(
         window: WebviewWindow,
         app: tauri::AppHandle,
+        supervised: State<'_, std::sync::Arc<SupervisedLoop>>,
         project_id: Option<String>,
     ) -> Result<(), NativeError> {
         main_only(&window)?;
+        let previous = draft_job({
+            let store = draft_store(&app)?;
+            move || store.preferred()
+        })
+        .await?;
+        if previous != project_id {
+            supervised.revoke_all().await;
+        }
         let store = draft_store(&app)?;
         draft_job(move || store.set_preferred(project_id)).await
     }
@@ -3005,6 +3089,8 @@ mod desktop {
                 planner_adopt_local,
                 planner_handoff_github,
                 supervised_prepare,
+                investigation_prepare,
+                investigation_execute,
                 supervised_start,
                 supervised_step,
                 supervised_status,

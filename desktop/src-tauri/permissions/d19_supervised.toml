@@ -3,6 +3,14 @@ identifier = "allow-supervised-prepare"
 description = "Prepare one bounded, Project-scoped, already-authorized GitHub read session."
 commands.allow = ["supervised_prepare"]
 [[permission]]
+identifier = "allow-investigation-prepare"
+description = "Prepare a bounded issue investigation in the authorized repository."
+commands.allow = ["investigation_prepare"]
+[[permission]]
+identifier = "allow-investigation-execute"
+description = "After native consent, run the fixed read-only issue investigation with bounded automatic continuation."
+commands.allow = ["investigation_execute"]
+[[permission]]
 identifier = "allow-supervised-start"
 description = "Start the reviewed read-only scope after native human consent."
 commands.allow = ["supervised_start"]

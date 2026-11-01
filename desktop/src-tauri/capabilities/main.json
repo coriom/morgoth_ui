@@ -56,6 +56,8 @@
     "allow-planner-adopt-local",
     "allow-planner-handoff-github",
     "allow-supervised-prepare",
+    "allow-investigation-prepare",
+    "allow-investigation-execute",
     "allow-supervised-start",
     "allow-supervised-step",
     "allow-supervised-status",

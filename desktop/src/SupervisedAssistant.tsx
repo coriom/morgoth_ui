@@ -7,6 +7,7 @@ type PlannerStatus = { schema_version: 1; enabled: boolean; service_state: strin
 type GithubStatus = { status: string; repository: string | null; repository_id: number | null;
   visibility: string | null; expires_in_seconds: number | null };
 type Preview = { schema_version: 1; preview_id: string; project_id: string; repository: string;
+  mode: string;
   repository_id: number; repository_private: boolean; model: string; objective: string;
   exact_model_context: string; context_digest: string; expires_at_ms: number;
   max_reads: number; max_turns: number; duration_seconds: number };
@@ -18,6 +19,7 @@ type Observation = { reference: string; operation: string; repository: string; r
     default_branch?: string; head_sha?: string;
   } };
 type Session = { schema_version: 1; session_id: string; project_id: string; repository: string;
+  mode: string; phase: string; selected_issue: number | null; selection_reason: string | null;
   repository_id: number; repository_private: boolean; model: string; status: string;
   turns: number; reads: number; observations: Observation[]; last_proposal: string | null;
   final_report: { summary: string; findings: Finding[]; uncertainties: string[];
@@ -38,8 +40,16 @@ const labels: Record<string, string> = {
   GITHUB_READ_FAILED: "Lecture GitHub refusée ou indisponible. Aucun résultat inventé.",
   BUDGET_EXCEEDED: "Budget de la session atteint. Aucun autre appel exécuté.",
   MODEL_RESPONSE_INVALID: "Réponse du modèle incompatible. Aucun appel exécuté.",
-  SESSION_STOPPED: "Session arrêtée. Aucun autre appel autorisé."
+  SESSION_STOPPED: "Session arrêtée. Aucun autre appel autorisé.",
+  ISSUE_SELECTION_REFUSED: "Le modèle n’a pas choisi une issue réellement observée.",
+  NO_ELIGIBLE_ISSUES: "Aucune issue ouverte éligible dans la page consultée.",
+  SOURCE_CHANGED: "L’issue a changé depuis l’enquête. Préparez une nouvelle enquête.",
+  REPORT_INVALID: "L’analyse ne cite pas correctement l’issue lue. Rapport refusé."
 };
+const phases: Record<string, string> = {AUTHORIZED:"Autorisation accordée",DISCOVERING_ISSUES:"Lecture des issues ouvertes",
+  SELECTING_ISSUE:"Choix parmi les issues observées",READING_ISSUE:"Lecture exacte de l’issue",
+  ANALYZING:"Analyse des observations",COMPLETED:"Rapport disponible",NO_ISSUES:"Aucune issue ouverte éligible",
+  FAILED:"Enquête interrompue",STOPPED:"Arrêtée",EXPIRED:"Expirée"};
 function message(error: unknown): string {
   const value = error as { code?: unknown; kind?: unknown } | null;
   const code = typeof value?.code === "string" ? value.code : typeof value?.kind === "string" ? value.kind : "";
@@ -55,6 +65,7 @@ export function SupervisedAssistant({ projectId, verified, onCreated, onGithubRe
   const [planner, setPlanner] = useState<PlannerStatus | null>(null);
   const [github, setGithub] = useState<GithubStatus | null>(null);
   const [model, setModel] = useState("");
+  const [mode, setMode] = useState<"MANUAL_READ_V1" | "GITHUB_ISSUE_INVESTIGATION_V1">("GITHUB_ISSUE_INVESTIGATION_V1");
   const [objective, setObjective] = useState("");
   const [preview, setPreview] = useState<Preview | null>(null);
   const [session, setSession] = useState<Session | null>(null);
@@ -62,6 +73,7 @@ export function SupervisedAssistant({ projectId, verified, onCreated, onGithubRe
   const [fields, setFields] = useState<BriefFields | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [executing, setExecuting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
   const refresh = async () => {
@@ -84,11 +96,20 @@ export function SupervisedAssistant({ projectId, verified, onCreated, onGithubRe
     }).catch(() => undefined);
     return () => { live = false; void invoke("supervised_stop", { projectId }).catch(() => undefined); };
   }, [projectId, expanded]);
+  useEffect(() => {
+    if (!executing || !expanded) return;
+    const timer = window.setInterval(() => {
+      void invoke<Session | null>("supervised_status", { projectId }).then(value => {
+        if (value?.project_id === projectId) setSession(value);
+      }).catch(() => undefined);
+    }, 700);
+    return () => window.clearInterval(timer);
+  }, [executing, expanded, projectId]);
   const prepare = async () => {
     if (busy || !verified || !model || !objective.trim()) return;
     setBusy(true); setError(null); setResult(null);
     try {
-      const p = await invoke<Preview>("supervised_prepare", { projectId, model, objective });
+      const p = await invoke<Preview>(mode === "GITHUB_ISSUE_INVESTIGATION_V1" ? "investigation_prepare" : "supervised_prepare", { projectId, model, objective });
       if (p.schema_version !== 1 || p.project_id !== projectId || !uuid(p.preview_id) || p.context_digest.length !== 64) throw Error("INVALID_PREVIEW");
       setPreview(p); setSession(null); setFields(null);
     } catch (cause) { setError(message(cause)); }
@@ -98,12 +119,13 @@ export function SupervisedAssistant({ projectId, verified, onCreated, onGithubRe
     if (!preview || busy) return;
     setBusy(true); setError(null);
     try {
-      const s = await invoke<Session>("supervised_start", { projectId, previewId: preview.preview_id,
+      if (preview.mode === "GITHUB_ISSUE_INVESTIGATION_V1") setExecuting(true);
+      const s = await invoke<Session>(preview.mode === "GITHUB_ISSUE_INVESTIGATION_V1" ? "investigation_execute" : "supervised_start", { projectId, previewId: preview.preview_id,
         contextDigest: preview.context_digest });
       if (s.schema_version !== 1 || s.project_id !== projectId || !uuid(s.session_id)) throw Error("INVALID_SESSION");
       setSession(s); setPreview(null);
     } catch (cause) { setError(message(cause)); }
-    finally { setBusy(false); }
+    finally { setBusy(false); setExecuting(false); }
   };
   const step = async () => {
     if (!session || busy) return;
@@ -154,8 +176,8 @@ export function SupervisedAssistant({ projectId, verified, onCreated, onGithubRe
     finally { setBusy(false); }
   };
   return <details className="planner-assistant supervised-assistant" onToggle={event => setExpanded(event.currentTarget.open)}>
-    <summary>Assistant · exécution supervisée</summary>
-    <p>Le modèle propose une lecture GitHub. Rust contrôle le dépôt, l’action et la preuve avant tout nouvel appel.</p>
+    <summary>Assistant · enquête supervisée</summary>
+    <p>Une autorisation bornée couvre les lectures GitHub nécessaires. Rust contrôle chaque opération et chaque preuve.</p>
     {!verified && <p role="status">Choisissez un Project géré et vérifié.</p>}
     {github?.status !== "AUTHORIZED" && <p role="status">Autorisez un dépôt dans Réglages → Connexions et applications → GitHub.</p>}
     {planner && (!planner.enabled ? <p>Capacité locale désactivée pour cette session.</p>
@@ -170,6 +192,11 @@ export function SupervisedAssistant({ projectId, verified, onCreated, onGithubRe
         <option value="">Choisir un modèle</option>
         {planner?.installed_models.map(item => <option key={item.id} value={item.id}>{item.id}</option>)}
       </select>
+      <label htmlFor="supervised-mode">Mode</label>
+      <select id="supervised-mode" value={mode} onChange={event => { setMode(event.target.value as typeof mode); setPreview(null); }}>
+        <option value="GITHUB_ISSUE_INVESTIGATION_V1">Enquête supervisée · issues</option>
+        <option value="MANUAL_READ_V1">Lecture pas à pas</option>
+      </select>
       <div className="editor-actions"><button type="button" onClick={() => void refresh().catch(cause => setError(message(cause)))}>Actualiser</button>
         <button type="button" disabled={busy || !verified || !planner?.enabled || planner.service_state !== "REACHABLE" ||
           github?.status !== "AUTHORIZED" || !model || !objective.trim() || !!session && ["READY", "RUNNING", "PAUSED"].includes(session.status)}
@@ -180,24 +207,26 @@ export function SupervisedAssistant({ projectId, verified, onCreated, onGithubRe
     {preview && <section className="workflow-preview" aria-label="Périmètre de la session supervisée">
       <h3>Autorisation avant lecture</h3>
       <p>{preview.repository} · {preview.repository_private ? "Dépôt privé" : "Dépôt public"} · {preview.model}</p>
-      <p>Au plus {preview.max_reads} lectures GitHub, {preview.max_turns} tours de modèle, {preview.duration_seconds / 60} minutes. Aucune écriture.</p>
+      <p>{preview.mode === "GITHUB_ISSUE_INVESTIGATION_V1" ? "Enquête : liste bornée des issues ouvertes, choix du modèle parmi les numéros observés, lecture exacte, analyse. Jusqu’à 2 lectures et 2 tours ; plafond 3/3." : `Au plus ${preview.max_reads} lectures GitHub et ${preview.max_turns} tours de modèle.`} Durée : {preview.duration_seconds / 60} minutes. Aucune écriture.</p>
       {preview.repository_private && <p className="notice warn">Des extraits privés peuvent être transmis au modèle local après votre accord.</p>}
-      <label htmlFor="supervised-context">Contexte exact du premier tour</label>
+      <label htmlFor="supervised-context">Contexte de la session</label>
       <textarea id="supervised-context" readOnly rows={8} value={preview.exact_model_context} />
-      <div className="editor-actions"><button type="button" disabled={busy} onClick={() => void start()}>Autoriser la session…</button>
+      <div className="editor-actions"><button type="button" disabled={busy} onClick={() => void start()}>Autoriser et lancer…</button>
         <button type="button" onClick={() => setPreview(null)}>Annuler</button></div>
     </section>}
     {session && <section className="workflow-preview" aria-label="Exécution supervisée">
       <h3>Session · {labels[session.status] ?? session.status}</h3>
+      {session.mode === "GITHUB_ISSUE_INVESTIGATION_V1" && <p role="status">Étape : {phases[session.phase] ?? session.phase} {session.selected_issue ? `· issue #${session.selected_issue} choisie par le modèle` : ""}</p>}
+      {session.selection_reason && <p><strong>Raison proposée par le modèle :</strong> {session.selection_reason}</p>}
       <p>{session.repository} · {session.reads}/3 lectures · {session.turns}/3 tours · modèle {session.model}</p>
       {session.last_proposal && <p><strong>Proposition du modèle :</strong> {session.last_proposal}</p>}
       {session.observations.map(item => <section key={item.reference} className="supervised-observation">
-        <h4>{item.reference} · {item.operation} · lecture vérifiée</h4>
+        <h4>{item.reference} · {item.operation === "LIST_OPEN_ISSUES" ? "Liste ouverte par Rust" : item.operation === "READ_ISSUE" ? "Issue choisie par le modèle, lue par Rust" : item.operation} · lecture vérifiée</h4>
         <p>Dépôt {item.repository} #{item.repository_id} · {new Date(item.read_at_ms).toLocaleString("fr-FR")} · empreinte {item.digest.slice(0, 12)}…{item.truncated ? " · projection tronquée" : ""}</p>
         {item.operation === "REPOSITORY_OVERVIEW" ?
           <p>Branche {item.data.default_branch} · HEAD {item.data.head_sha?.slice(0, 12)}… · mis à jour {item.data.updated_at}</p>
           : item.data.items ? <ul>{item.data.items.map(issue => <li key={issue.number}>#{issue.number} · {issue.title} ({issue.state})</li>)}</ul>
-            : <><p>#{item.data.number} · {item.data.title} ({item.data.state})</p><p>{item.data.body_excerpt}</p></>}
+            : <><p>#{item.data.number} · {item.data.title} ({item.data.state}) · {item.data.updated_at}</p><p>Source : {item.data.url}</p><p>Déclaration externe non vérifiée {item.truncated ? "(extrait tronqué)" : ""} : {item.data.body_excerpt || "Aucune description."}</p></>}
       </section>)}
       {session.final_report && <section><h4>Interprétation du modèle · à vérifier</h4>
         <p>{session.final_report.summary}</p>
@@ -207,10 +236,10 @@ export function SupervisedAssistant({ projectId, verified, onCreated, onGithubRe
         <h4>Étapes suggérées</h4>{list(session.final_report.next_steps)}
         <h4>Vérification humaine</h4>{list(session.final_report.verification_criteria)}</section>}
       <div className="editor-actions">
-        {(["READY", "PAUSED"].includes(session.status)) && <button type="button" disabled={busy || session.turns >= 3}
+        {session.mode !== "GITHUB_ISSUE_INVESTIGATION_V1" && (["READY", "PAUSED"].includes(session.status)) && <button type="button" disabled={busy || session.turns >= 3}
           onClick={() => void step()}>{busy ? "Analyse en cours…" : session.turns === 0 ? "Lancer le premier tour" : "Poursuivre un tour"}</button>}
         {(["READY", "RUNNING", "PAUSED"].includes(session.status)) && <button type="button" onClick={() => void stop()}>Arrêter et révoquer</button>}
-        {session.status === "COMPLETED" && <button type="button" onClick={() => void prepareBrief()}>Préparer un brief local</button>}
+        {session.status === "COMPLETED" && session.final_report && <button type="button" onClick={() => void prepareBrief()}>Préparer un brief local</button>}
       </div>
       {session.error_code && <p role="alert">Échec : {labels[session.error_code] ?? session.error_code}</p>}
     </section>}

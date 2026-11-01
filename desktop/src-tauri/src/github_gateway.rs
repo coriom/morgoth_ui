@@ -489,7 +489,7 @@ impl GithubGateway {
     ) -> Result<Value, &'static str> {
         if !matches!(
             operation,
-            "overview" | "branches" | "commits" | "issues" | "pulls" | "pull_files"
+            "overview" | "branches" | "commits" | "issues" | "open_issues" | "pulls" | "pull_files"
         ) {
             return Err("GITHUB_OPERATION_REFUSED");
         }
@@ -579,11 +579,22 @@ impl GithubGateway {
                 }
                 json!({"kind":"commits","repository":name,"branch":selected,"items":output,"read_at_ms":timestamp()})
             }
-            "issues" => {
+            "issues" | "open_issues" => {
                 let values = entries(
                     self.get(
                         &format!("{prefix}/issues"),
-                        &[("state", "all"), ("per_page", "10"), ("page", "1")],
+                        &[
+                            (
+                                "state",
+                                if operation == "open_issues" {
+                                    "open"
+                                } else {
+                                    "all"
+                                },
+                            ),
+                            ("per_page", "10"),
+                            ("page", "1"),
+                        ],
                         token,
                     )
                     .await?,
@@ -613,7 +624,7 @@ impl GithubGateway {
                         .collect::<String>();
                     output.push(json!({"number":n,"title":title,"state":text(&item["state"],16)?,"labels":labels,"created_at":text(&item["created_at"],48)?,"updated_at":text(&item["updated_at"],48)?,"excerpt":body,"url":projected_url(&name,&format!("/issues/{n}"))}));
                 }
-                json!({"kind":"issues","repository":name,"items":output,"read_at_ms":timestamp()})
+                json!({"kind":if operation == "open_issues" { "open_issues" } else { "issues" },"repository":name,"items":output,"read_at_ms":timestamp()})
             }
             "pulls" => {
                 let values = entries(
