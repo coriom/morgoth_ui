@@ -1667,6 +1667,128 @@ mod desktop {
             .prepare_investigation(&planner, &github, &project_id, model, objective)
             .await
     }
+    async fn read_vscode_selection(
+        vscode: &std::sync::Arc<VsCodeGateway>,
+    ) -> Result<(serde_json::Value, (String, String)), NativeError> {
+        let gateway = vscode.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            let before = gateway.session_binding()?;
+            let value = gateway.call("selection")?;
+            let after = gateway.session_binding()?;
+            if before != after {
+                return Err("VSCODE_AUTHORIZATION_REQUIRED");
+            }
+            Ok((value, after))
+        })
+        .await
+        .map_err(|_| connector_error("VSCODE_UNAVAILABLE"))?
+        .map_err(connector_error)
+    }
+    #[tauri::command]
+    pub async fn investigation_capture_editor(
+        window: WebviewWindow,
+        app: tauri::AppHandle,
+        supervisor: State<'_, ManagementSupervisor>,
+        vscode: State<'_, std::sync::Arc<VsCodeGateway>>,
+        runner: State<'_, std::sync::Arc<SupervisedLoop>>,
+        project_id: String,
+    ) -> Result<crate::supervised_loop::EditorSelection, NativeError> {
+        main_only(&window)?;
+        verified_backup_project(&supervisor, &project_id).await?;
+        preferred_workflow_project(&workflow_store(&app)?, &project_id)?;
+        let view = vscode.view();
+        if view.status != "AUTHORIZED" {
+            return Err(connector_error("VSCODE_AUTHORIZATION_REQUIRED"));
+        }
+        let question = format!("Lire UNE FOIS le passage actuellement sélectionné dans VS Code ?\nProject : {}\nEspace associé : {}\nMaximum : 1 Kio. Le texte exact sera affiché avant toute inférence et restera éphémère. Aucune autre fenêtre ou fichier ne sera lu.", project_id, view.workspace.as_deref().unwrap_or("inconnu"));
+        if !confirm_workflow(&app, question).await? {
+            return Err(connector_error("CONSENT_REFUSED"));
+        }
+        verified_backup_project(&supervisor, &project_id).await?;
+        preferred_workflow_project(&workflow_store(&app)?, &project_id)?;
+        let (value, binding) = read_vscode_selection(&vscode).await?;
+        runner.capture_editor(&project_id, &value, &binding).await
+    }
+    #[tauri::command]
+    #[allow(clippy::too_many_arguments)]
+    pub async fn investigation_prepare_editor(
+        window: WebviewWindow,
+        app: tauri::AppHandle,
+        supervisor: State<'_, ManagementSupervisor>,
+        github: State<'_, std::sync::Arc<GithubGateway>>,
+        vscode: State<'_, std::sync::Arc<VsCodeGateway>>,
+        planner: State<'_, std::sync::Arc<MissionPlanner>>,
+        runner: State<'_, std::sync::Arc<SupervisedLoop>>,
+        project_id: String,
+        model: String,
+        objective: String,
+    ) -> Result<SessionPreview, NativeError> {
+        main_only(&window)?;
+        verified_backup_project(&supervisor, &project_id).await?;
+        preferred_workflow_project(&workflow_store(&app)?, &project_id)?;
+        runner
+            .prepare_editor_investigation(&planner, &github, &vscode, &project_id, model, objective)
+            .await
+    }
+    #[tauri::command]
+    #[allow(clippy::too_many_arguments)]
+    pub async fn investigation_execute_editor(
+        window: WebviewWindow,
+        app: tauri::AppHandle,
+        supervisor: State<'_, ManagementSupervisor>,
+        github: State<'_, std::sync::Arc<GithubGateway>>,
+        vscode: State<'_, std::sync::Arc<VsCodeGateway>>,
+        planner: State<'_, std::sync::Arc<MissionPlanner>>,
+        runner: State<'_, std::sync::Arc<SupervisedLoop>>,
+        project_id: String,
+        preview_id: String,
+        context_digest: String,
+    ) -> Result<SessionView, NativeError> {
+        main_only(&window)?;
+        verified_backup_project(&supervisor, &project_id).await?;
+        preferred_workflow_project(&workflow_store(&app)?, &project_id)?;
+        let preview = runner.pending(&project_id, &preview_id).await?;
+        if preview.mode != "GITHUB_ISSUE_INVESTIGATION_WITH_EDITOR_CONTEXT_V1"
+            || preview.context_digest != context_digest
+        {
+            return Err(NativeError::new(
+                "SUPERVISED_CONTEXT_CHANGED",
+                "Contexte modifié.",
+            ));
+        }
+        let editor = preview.editor.as_ref().ok_or_else(|| {
+            NativeError::new("EDITOR_SELECTION_MISSING", "Sélection VS Code absente.")
+        })?;
+        let question = format!("Autoriser cette enquête locale de dix minutes ?\nProject : {}\nGitHub : {} (id {}, {})\nVS Code : {} / {} · version {} · SHA-256 {}\nModèle : {}\nLe passage sélectionné sera transmis au modèle local. Au plus deux lectures GitHub, deux inférences ; plafond 3/3. Aucune écriture. Le brief exigera un nouvel accord.\nContexte SHA-256 : {}", project_id, preview.repository, preview.repository_id, if preview.repository_private { "privé" } else { "public" }, editor.workspace, editor.document, editor.document_version, editor.digest, preview.model, preview.context_digest);
+        if !confirm_workflow(&app, question).await? {
+            return Err(NativeError::new(
+                "SUPERVISED_CONSENT_REFUSED",
+                "Enquête annulée.",
+            ));
+        }
+        verified_backup_project(&supervisor, &project_id).await?;
+        preferred_workflow_project(&workflow_store(&app)?, &project_id)?;
+        let (value, binding) = read_vscode_selection(&vscode).await?;
+        runner
+            .verify_pending_editor(&project_id, &preview_id, &value, &binding)
+            .await?;
+        let session = runner.start(&github, &project_id, &preview_id).await?;
+        let result = runner
+            .run_editor_investigation(&planner, &github, &vscode, &project_id, &session.session_id)
+            .await;
+        if verified_backup_project(&supervisor, &project_id)
+            .await
+            .is_err()
+            || preferred_workflow_project(&workflow_store(&app)?, &project_id).is_err()
+        {
+            let _ = runner.stop(&project_id).await;
+            return Err(NativeError::new(
+                "SUPERVISED_PROJECT_CHANGED",
+                "Project changé.",
+            ));
+        }
+        result
+    }
     #[tauri::command]
     #[allow(clippy::too_many_arguments)]
     pub async fn investigation_execute(
@@ -1736,7 +1858,7 @@ mod desktop {
         verified_backup_project(&supervisor, &project_id).await?;
         preferred_workflow_project(&workflow_store(&app)?, &project_id)?;
         let preview = runner.pending(&project_id, &preview_id).await?;
-        if preview.context_digest != context_digest {
+        if preview.mode != "MANUAL_READ_V1" || preview.context_digest != context_digest {
             return Err(NativeError::new(
                 "SUPERVISED_CONTEXT_CHANGED",
                 "Contexte modifié.",
@@ -3091,6 +3213,9 @@ mod desktop {
                 supervised_prepare,
                 investigation_prepare,
                 investigation_execute,
+                investigation_capture_editor,
+                investigation_prepare_editor,
+                investigation_execute_editor,
                 supervised_start,
                 supervised_step,
                 supervised_status,

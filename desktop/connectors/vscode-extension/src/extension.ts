@@ -43,6 +43,7 @@ function editorMetadata(includeSelection: boolean): Record<string, unknown> {
   const real = fs.realpathSync(document.uri.fsPath);
   if (!real.startsWith(current.root + path.sep) || !ALLOWED.has(path.extname(real).toLowerCase())) throw Error("DOCUMENT_REFUSED");
   const relative = path.relative(current.root, real);
+  if (Buffer.byteLength(relative, "utf8") > 96) throw Error("DOCUMENT_REFUSED");
   const selectedCharacters = document.offsetAt(editor.selection.end) - document.offsetAt(editor.selection.start);
   if (includeSelection && selectedCharacters > MAX_SELECTION) throw Error("SELECTION_TOO_LARGE");
   const selected = includeSelection ? document.getText(editor.selection) : "";
@@ -114,7 +115,7 @@ function onConnection(socket: net.Socket): void {
         if (!extensionRoot) throw Error("EXTENSION_UNAVAILABLE");
         const extensionSha = createHash("sha256").update(fs.readFileSync(path.join(extensionRoot, "out", "extension.js"))).digest("hex");
         const protocolSha = createHash("sha256").update(fs.readFileSync(path.join(extensionRoot, "out", "protocol.js"))).digest("hex");
-        reply(socket, req.id, { extension: EXTENSION_ID, version: "0.2.0", host: vscode.env.remoteName ?? "linux-local",
+        reply(socket, req.id, { extension: EXTENSION_ID, version: "0.2.1", host: vscode.env.remoteName ?? "linux-local",
           extension_sha256: extensionSha, extension_protocol_sha256: protocolSha,
           workspace: current.label, workspace_hash: current.hash, trusted: true, folders: 1, session, expires_in_seconds: 600 });
       } else {

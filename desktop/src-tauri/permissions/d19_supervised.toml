@@ -11,6 +11,18 @@ identifier = "allow-investigation-execute"
 description = "After native consent, run the fixed read-only issue investigation with bounded automatic continuation."
 commands.allow = ["investigation_execute"]
 [[permission]]
+identifier = "allow-investigation-capture-editor"
+description = "After separate native consent, capture one bounded selection from the paired VS Code editor."
+commands.allow = ["investigation_capture_editor"]
+[[permission]]
+identifier = "allow-investigation-prepare-editor"
+description = "Preview one GitHub issue investigation bound to an approved ephemeral editor snapshot."
+commands.allow = ["investigation_prepare_editor"]
+[[permission]]
+identifier = "allow-investigation-execute-editor"
+description = "After native consent, execute the fixed investigation with the exact authorized editor snapshot."
+commands.allow = ["investigation_execute_editor"]
+[[permission]]
 identifier = "allow-supervised-start"
 description = "Start the reviewed read-only scope after native human consent."
 commands.allow = ["supervised_start"]

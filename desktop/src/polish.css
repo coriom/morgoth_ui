@@ -297,3 +297,4 @@ html[data-text-scale="140"] .palette-launch kbd { display: none; }
 .supervised-assistant .supervised-observation { padding: .7rem 0; border-top: 1px solid var(--border); }
 .supervised-assistant .supervised-observation p { overflow-wrap: anywhere; }
 .supervised-assistant .supervised-observation li { overflow-wrap: anywhere; }
+.supervised-assistant .supervised-observation pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 14rem; overflow: auto; }

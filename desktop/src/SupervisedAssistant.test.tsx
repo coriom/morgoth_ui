@@ -89,4 +89,27 @@ describe("supervised mission assistant", () => {
     expect(call).not.toHaveBeenCalledWith("supervised_step", expect.anything());
     expect(screen.getByText("Signalement présent")).toBeTruthy();
   });
+  it("requires a separate native VS Code capture and shows exact context before the combined session", async () => {
+    const call = vi.mocked(invoke);
+    const editor = {workspace:"fixture",workspace_hash:"a".repeat(64),document:"src/sample.ts",language:"typescript",
+      document_version:3,selected_text:"function verify() { return true; }",length:34,digest:"b".repeat(64),captured_at_ms:Date.now()};
+    const combined = {...preview,mode:"GITHUB_ISSUE_INVESTIGATION_WITH_EDITOR_CONTEXT_V1",editor,
+      exact_model_context:`Passage approuvé: ${editor.selected_text}`};
+    call.mockImplementation(async name => name === "planner_status" ? planner : name === "github_status" ? github :
+      name === "supervised_status" ? null : name === "investigation_capture_editor" ? editor :
+      name === "investigation_prepare_editor" ? combined : undefined);
+    render(<SupervisedAssistant projectId="alpha" verified onCreated={async () => undefined} onGithubReady={vi.fn()} />);
+    fireEvent.click(screen.getByText("Assistant · enquête supervisée"));
+    await screen.findByRole("option", {name:"qwen3:4b-instruct"});
+    fireEvent.change(screen.getByLabelText("Mode"), {target:{value:"GITHUB_ISSUE_INVESTIGATION_WITH_EDITOR_CONTEXT_V1"}});
+    fireEvent.change(screen.getByLabelText("Objectif"), {target:{value:"Comparer l’issue à la sélection"}});
+    fireEvent.change(screen.getByLabelText("Modèle local installé"), {target:{value:"qwen3:4b-instruct"}});
+    expect((screen.getByRole("button", {name:"Prévoir la session"}) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole("button", {name:"Autoriser la lecture de la sélection…"}));
+    expect((await screen.findByLabelText("Passage VS Code sélectionné") as HTMLTextAreaElement).value).toBe(editor.selected_text);
+    fireEvent.click(screen.getByRole("button", {name:"Prévoir la session"}));
+    expect((await screen.findByLabelText("Contexte VS Code exact") as HTMLTextAreaElement).value).toBe(editor.selected_text);
+    expect(call).toHaveBeenCalledWith("investigation_prepare_editor", {projectId:"alpha",model:"qwen3:4b-instruct",objective:"Comparer l’issue à la sélection"});
+    expect(call).not.toHaveBeenCalledWith("investigation_execute_editor", expect.anything());
+  });
 });

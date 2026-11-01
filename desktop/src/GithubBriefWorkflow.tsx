@@ -59,7 +59,7 @@ export function GithubBriefWorkflow({ projectId, verified, onCreated, transfer }
     if (!transfer || transfer.preview.project_id !== projectId) return;
     setPreview(transfer.preview); setFields(transfer.fields); setReceipt(null); setHandoff(null); setError(null);
     detailsRef.current?.setAttribute("open", "");
-    window.setTimeout(() => titleRef.current?.focus(), 0);
+    window.setTimeout(() => { detailsRef.current?.scrollIntoView({ block: "start" }); titleRef.current?.focus(); }, 0);
   }, [transfer?.nonce, projectId]);
   const refresh = async () => {
     setStatus(await invoke<GithubStatus>("github_status"));

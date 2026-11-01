@@ -177,6 +177,21 @@ fn exchange(
     }
 }
 impl VsCodeGateway {
+    /// Opaque native-only binding. A pairing or revocation changes this value.
+    pub fn session_binding(&self) -> Result<(String, String), &'static str> {
+        let state = self.0.lock().map_err(|_| "VSCODE_UNAVAILABLE")?;
+        let session = state
+            .session
+            .as_ref()
+            .ok_or("VSCODE_AUTHORIZATION_REQUIRED")?;
+        if session.expiry <= Instant::now() || validate_socket(&session.socket_path).is_err() {
+            return Err("VSCODE_AUTHORIZATION_EXPIRED");
+        }
+        Ok((
+            format!("{:x}", sha2::Sha256::digest(session.secret.as_bytes())),
+            session.workspace_hash.clone(),
+        ))
+    }
     pub fn view(&self) -> VsCodeView {
         let available = socket_path().is_ok();
         let Ok(mut state) = self.0.lock() else {
@@ -304,7 +319,7 @@ impl VsCodeGateway {
             .ok_or("VSCODE_PROTOCOL_INVALID")?;
         let host = data["host"].as_str().ok_or("VSCODE_PROTOCOL_INVALID")?;
         if data["extension"] != "coriom.morgoth-vscode-connector"
-            || data["version"] != "0.2.0"
+            || data["version"] != "0.2.1"
             || data["extension_sha256"] != extension_sha
             || data["extension_protocol_sha256"] != protocol_sha
             || data["trusted"] != true
@@ -333,6 +348,10 @@ impl VsCodeGateway {
         state.revoked = false;
         drop(state);
         Ok(self.view())
+    }
+    #[cfg(test)]
+    pub(crate) fn pair_fixture_at(&self, path: PathBuf) -> Result<VsCodeView, &'static str> {
+        self.pair_at(&"c".repeat(32), path, &"d".repeat(64), &"e".repeat(64))
     }
     pub fn call(&self, op: &'static str) -> Result<Value, &'static str> {
         if !["metadata", "selection", "scratch"].contains(&op) {
@@ -363,10 +382,12 @@ impl VsCodeGateway {
                     return Err("VSCODE_WORKSPACE_CHANGED");
                 }
                 if op == "selection"
-                    && value["selected_text"]
-                        .as_str()
-                        .is_none_or(|text| text.len() > 1024)
+                    && value["workspace_hash"] == session.workspace_hash
+                    && (value["editor"].is_null() || value["selected_text"] == "")
                 {
+                    return Err("VSCODE_SELECTION_UNAVAILABLE");
+                }
+                if op == "selection" && !valid_selection(&value, &session.workspace_hash) {
                     state.session = None;
                     state.revoked = true;
                     return Err("VSCODE_PROTOCOL_INVALID");
@@ -472,6 +493,43 @@ impl VsCodeGateway {
     }
 }
 
+/// Validate the complete extension projection, not just the selected bytes.
+pub fn valid_selection(value: &Value, workspace_hash: &str) -> bool {
+    let Some(editor) = value.get("editor").and_then(Value::as_object) else {
+        return false;
+    };
+    let Some(text) = value.get("selected_text").and_then(Value::as_str) else {
+        return false;
+    };
+    let Some(document) = editor.get("document").and_then(Value::as_str) else {
+        return false;
+    };
+    let Some(language) = editor.get("language").and_then(Value::as_str) else {
+        return false;
+    };
+    value["workspace_hash"] == workspace_hash
+        && value["workspace"]
+            .as_str()
+            .is_some_and(|s| !s.is_empty() && s.len() <= 384)
+        && !text.is_empty()
+        && text.len() <= 1024
+        && !text.contains('\0')
+        && editor.get("selected_length").and_then(Value::as_u64) == Some(text.len() as u64)
+        && editor
+            .get("version")
+            .and_then(Value::as_u64)
+            .is_some_and(|v| v > 0)
+        && !document.is_empty()
+        && document.len() <= 384
+        && !document.starts_with('/')
+        && !document.split('/').any(|part| part == ".." || part == ".")
+        && ["md", "txt", "ts", "js"]
+            .iter()
+            .any(|ext| document.ends_with(&format!(".{ext}")))
+        && !language.is_empty()
+        && language.len() <= 80
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -513,13 +571,13 @@ mod tests {
                 assert_eq!(request["op"], op);
                 let data = match op {
                     "pair" => {
-                        json!({"extension":"coriom.morgoth-vscode-connector","version":"0.2.0","extension_sha256":"d".repeat(64),"extension_protocol_sha256":"e".repeat(64),"host":"wsl","workspace":"synthetic","workspace_hash":"a".repeat(64),"trusted":true,"folders":1,"session":"b".repeat(32),"expires_in_seconds":600})
+                        json!({"extension":"coriom.morgoth-vscode-connector","version":"0.2.1","extension_sha256":"d".repeat(64),"extension_protocol_sha256":"e".repeat(64),"host":"wsl","workspace":"synthetic","workspace_hash":"a".repeat(64),"trusted":true,"folders":1,"session":"b".repeat(32),"expires_in_seconds":600})
                     }
                     "metadata" => {
                         json!({"workspace_hash":"a".repeat(64),"editor":{"document":"sample.md","version":1}})
                     }
                     "selection" => {
-                        json!({"workspace_hash":"a".repeat(64),"selected_text":"Synthetic"})
+                        json!({"workspace":"synthetic","workspace_hash":"a".repeat(64),"selected_text":"Synthetic","editor":{"document":"sample.md","language":"markdown","version":1,"dirty":false,"selected_length":9}})
                     }
                     "scratch" => {
                         json!({"operation":"open_scratch","status":"VERIFIED","text":"Morgoth D15 integration verified.","unsaved":true})
@@ -583,6 +641,18 @@ mod tests {
             validate_socket(&path).unwrap_err(),
             "VSCODE_SOCKET_UNTRUSTED"
         );
+    }
+    #[test]
+    fn selection_projection_rejects_empty_foreign_and_oversized_content() {
+        let mut value = json!({"workspace":"synthetic","workspace_hash":"a".repeat(64),"selected_text":"Synthetic","editor":{"document":"src/sample.ts","language":"typescript","version":3,"selected_length":9}});
+        assert!(valid_selection(&value, &"a".repeat(64)));
+        value["editor"]["document"] = json!("../private.ts");
+        assert!(!valid_selection(&value, &"a".repeat(64)));
+        value["editor"]["document"] = json!("src/sample.ts");
+        value["selected_text"] = json!("");
+        assert!(!valid_selection(&value, &"a".repeat(64)));
+        value["selected_text"] = json!("X".repeat(1025));
+        assert!(!valid_selection(&value, &"a".repeat(64)));
     }
     #[test]
     #[ignore = "requires an isolated real VS Code Extension Development Host and test-owned pairing code"]
