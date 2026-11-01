@@ -85,6 +85,17 @@ unchanged. See `docs/DESKTOP-D2-*.md` for exact evidence and limitations.
 
 # PROGRESS.md — Morgoth UI Development Tracker
 
+## 2026-11-01 — Desktop D22 real cross-application acceptance
+
+The isolated D22 branch adds a repeatable real installed-VSIX acceptance path:
+actual VS Code editor selection, private Rust pairing, public GitHub issue
+reads, local Ollama reasoning, D17 draft creation and verified unsaved editor
+handoff. A separate-process test reopens the same fixture brief. The complete
+native GTK approval journey remains a distinct acceptance gate. The Desktop
+Python suite now selects the exact pinned D9 backend before discovering every
+test; no backend file or dependency changed. See
+`../docs/DESKTOP-D22-NATIVE-ACCEPTANCE.md` for evidence and operator steps.
+
 ## 2026-10-27 — Desktop D9 Structured Memory Explorer candidate
 
 The isolated D9 Desktop branch adds a third, read-only Knowledge source for

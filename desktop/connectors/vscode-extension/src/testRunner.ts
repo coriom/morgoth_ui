@@ -27,11 +27,26 @@ async function request(socket: net.Socket, id: number, op: string, extra: Record
 }
 export async function run(): Promise<void> {
   assert.equal(process.platform, "linux");
+  if (process.env.MORGOTH_D22_RUST_PROBE && !vscode.workspace.isTrusted) {
+    console.log("D22_WAITING_FOR_SYNTHETIC_WORKSPACE_TRUST");
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => { subscription.dispose(); reject(Error("SYNTHETIC_WORKSPACE_TRUST_TIMEOUT")); }, 60_000);
+      const subscription = vscode.workspace.onDidGrantWorkspaceTrust(() => { clearTimeout(timer); subscription.dispose(); resolve(); });
+    });
+  }
+  if (process.env.MORGOTH_D22_RUST_PROBE) console.log(`D22_HOST_STATE folders=${vscode.workspace.workspaceFolders?.length ?? 0} trusted=${vscode.workspace.isTrusted}`);
   const root = vscode.workspace.workspaceFolders?.[0];
   assert.ok(root && vscode.workspace.workspaceFolders?.length === 1 && vscode.workspace.isTrusted);
-  const document = await vscode.workspace.openTextDocument(vscode.Uri.joinPath(root.uri, "sample.md"));
+  const d22 = process.env.MORGOTH_D22_RUST_PROBE !== undefined;
+  const file = d22 ? "sample.ts" : "sample.md";
+  const document = await vscode.workspace.openTextDocument(vscode.Uri.joinPath(root.uri, file));
   const editor = await vscode.window.showTextDocument(document);
-  editor.selection = new vscode.Selection(0, 0, 0, 9);
+  const marker = "D22_EDITOR_CONTEXT";
+  const position = d22 ? document.lineAt(0).text.indexOf(marker) : 0;
+  assert.ok(position >= 0);
+  editor.selection = new vscode.Selection(0, position, 0, position + (d22 ? marker.length : 9));
+  const original = d22 ? fs.readFileSync(document.uri.fsPath) : undefined;
+  if (d22) assert.equal(document.getText(editor.selection), marker);
   const extension = vscode.extensions.getExtension("coriom.morgoth-vscode-connector");
   assert.ok(extension);
   await extension.activate();
@@ -44,6 +59,35 @@ export async function run(): Promise<void> {
   assert.match(code, /^[a-f0-9]{32}$/);
   const dir = process.env.MORGOTH_D15_SOCKET_DIR;
   assert.ok(dir);
+  if (d22) {
+    assert.ok(installed, "D22 requires the installed VSIX");
+    const executable = process.env.MORGOTH_D22_RUST_PROBE!;
+    const acceptanceRoot = process.env.MORGOTH_D22_ACCEPTANCE_ROOT;
+    assert.ok(path.isAbsolute(executable) && acceptanceRoot && path.isAbsolute(acceptanceRoot));
+    const installedRoot = extension.extensionPath;
+    assert.ok(installedRoot.startsWith(path.resolve(process.env.MORGOTH_D22_EXTENSIONS_DIR!) + path.sep));
+    const exitCode = await new Promise<number>((resolve, reject) => {
+      const child = spawn(executable, ["supervised_loop::tests::real_installed_vscode_github_ollama_and_brief", "--exact", "--ignored", "--nocapture"], {
+        env: { HOME: process.env.HOME ?? "", MORGOTH_D15_SOCKET_DIR: dir, MORGOTH_D15_TEST_PAIR_CODE: code,
+          MORGOTH_D15_EXTENSION_SHA256: createHash("sha256").update(fs.readFileSync(path.join(installedRoot,"out","extension.js"))).digest("hex"),
+          MORGOTH_D15_PROTOCOL_SHA256: createHash("sha256").update(fs.readFileSync(path.join(installedRoot,"out","protocol.js"))).digest("hex"),
+          MORGOTH_D22_ACCEPTANCE_ROOT: acceptanceRoot, D22_ALLOW_LIVE_CANARY: "1" },
+        stdio: ["ignore", "pipe", "pipe"], timeout: 240_000,
+      });
+      let output = "";
+      child.stdout.on("data", chunk => { output += String(chunk).slice(0, 4096); });
+      child.stderr.on("data", chunk => { output += String(chunk).slice(0, 4096); });
+      child.once("error", reject);
+      child.once("close", value => { console.log((output.match(/D22_REAL_CROSS_APP_PASS[^\n]*/)?.[0]) ?? "D22_RUST_PROBE_FAILED"); resolve(value ?? -1); });
+    });
+    assert.equal(exitCode, 0);
+    assert.equal(vscode.window.activeTextEditor?.document.uri.scheme, "untitled");
+    assert.match(vscode.window.activeTextEditor.document.getText(), /^# GitHub · microsoft\/vscode/);
+    assert.deepEqual(fs.readFileSync(document.uri.fsPath), original);
+    await vscode.commands.executeCommand("morgoth.disconnectWorkspace");
+    console.log("D22_REAL_VSCODE_API_PASS installed=1 selection=real scratch=verified source_file=unchanged");
+    return;
+  }
   if (process.env.MORGOTH_D15_EXTERNAL_PAIR_FILE) {
     const receipt = process.env.MORGOTH_D15_EXTERNAL_PAIR_FILE;
     assert.ok(path.isAbsolute(receipt));

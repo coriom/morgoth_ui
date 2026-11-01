@@ -2205,6 +2205,176 @@ mod tests {
         server.join().unwrap();
     }
     #[tokio::test]
+    #[ignore = "Requires an explicitly installed VSIX in a real isolated Linux VS Code host, public GitHub and local Ollama"]
+    async fn real_installed_vscode_github_ollama_and_brief() {
+        use crate::{drafts::DraftStore, workflow_runner::WorkflowRunner};
+        assert_eq!(std::env::var("D22_ALLOW_LIVE_CANARY").as_deref(), Ok("1"));
+        let root = PathBuf::from(std::env::var("MORGOTH_D22_ACCEPTANCE_ROOT").unwrap());
+        assert!(root.is_absolute() && root.is_dir());
+        let started = Instant::now();
+        let project = "d22_fixture";
+        let vscode = VsCodeGateway::default();
+        let code = std::env::var("MORGOTH_D15_TEST_PAIR_CODE").unwrap();
+        assert_eq!(vscode.pair(&code).unwrap().status, "AUTHORIZED");
+        let binding = vscode.session_binding().unwrap();
+        let selected = vscode.call("selection").unwrap();
+        assert_eq!(selected["selected_text"], "D22_EDITOR_CONTEXT");
+        assert_eq!(selected["editor"]["document"], "sample.ts");
+        assert_eq!(selected["editor"]["selected_length"], 18);
+        assert!(crate::vscode_gateway::valid_selection(
+            &selected, &binding.1
+        ));
+
+        let planner = MissionPlanner::new(11434, true).unwrap();
+        let github = GithubGateway::new();
+        github.select("microsoft/vscode".into()).await.unwrap();
+        github
+            .authorize("microsoft/vscode", false, None)
+            .await
+            .unwrap();
+        let runner = SupervisedLoop::new(root.join("supervised-receipts"));
+        let snapshot = runner
+            .capture_editor(project, &selected, &binding)
+            .await
+            .unwrap();
+        assert_eq!(snapshot.digest, hash(b"D22_EDITOR_CONTEXT"));
+        assert_eq!(snapshot.length, 18);
+        assert_eq!(
+            snapshot.document_version,
+            selected["editor"]["version"].as_u64().unwrap()
+        );
+        let preview = runner.prepare_editor_investigation(&planner, &github, &vscode, project,
+            "qwen3:4b-instruct".into(),
+            "Choisis une issue ouverte observée. Compare prudemment son signalement au passage synthétique sélectionné dans VS Code ; cite les observations et propose des vérifications sans affirmer une causalité.".into()).await.unwrap();
+        let checked = vscode.call("selection").unwrap();
+        runner
+            .verify_pending_editor(
+                project,
+                &preview.preview_id,
+                &checked,
+                &vscode.session_binding().unwrap(),
+            )
+            .await
+            .unwrap();
+        let session = runner
+            .start(&github, project, &preview.preview_id)
+            .await
+            .unwrap();
+        let result = runner
+            .run_editor_investigation(&planner, &github, &vscode, project, &session.session_id)
+            .await
+            .unwrap();
+        assert_eq!(result.status, "COMPLETED");
+        assert_eq!((result.reads, result.turns), (2, 2));
+        assert!(result
+            .final_report
+            .as_ref()
+            .unwrap()
+            .findings
+            .iter()
+            .any(|f| f.source_ref == "obs:2"));
+        assert!(result
+            .final_report
+            .as_ref()
+            .unwrap()
+            .findings
+            .iter()
+            .any(|f| f.source_ref == "editor:1"));
+        let issue = result.selected_issue.unwrap();
+        assert_eq!(result.observations[1].data["number"], issue);
+
+        // This test's explicit local write is separate from the investigation grant.
+        // The production path still requires its own native GTK confirmation.
+        let fields = runner
+            .brief_fields(project, &session.session_id)
+            .await
+            .unwrap();
+        let workflows = WorkflowRunner::new(root.join("workflow-receipts-v1"));
+        let brief_preview = runner
+            .handoff_github(&workflows, &github, project, &session.session_id)
+            .await
+            .unwrap();
+        let drafts_root = root.join("mission-workspace-v1");
+        let drafts = DraftStore::new(drafts_root.clone());
+        let receipt = workflows
+            .confirm(
+                &github,
+                &drafts,
+                &brief_preview.workflow_id,
+                project,
+                fields.clone(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(receipt.draft_id, brief_preview.workflow_id);
+        assert_eq!(receipt.draft_revision, 1);
+        assert!(workflows
+            .confirm(
+                &github,
+                &drafts,
+                &brief_preview.workflow_id,
+                project,
+                fields
+            )
+            .await
+            .is_err());
+        drop(drafts);
+        let reopened = DraftStore::new(drafts_root);
+        let draft = reopened.get(project, &receipt.draft_id).unwrap();
+        assert_eq!(draft.project_id, project);
+        assert_eq!(draft.revision, 1);
+        assert_eq!(reopened.list(project).unwrap().len(), 1);
+        assert!(draft.objective.contains("editor:1"));
+        let outgoing = workflows
+            .handoff_preview(&reopened, &vscode, project, &receipt.workflow_id)
+            .unwrap();
+        let done = workflows
+            .handoff(
+                &reopened,
+                &vscode,
+                project,
+                &receipt.workflow_id,
+                &outgoing.sha256,
+                &outgoing.workspace_hash,
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            (done.state.as_str(), done.handoff_state.as_str()),
+            ("COMPLETED", "VERIFIED")
+        );
+        vscode.disconnect().unwrap();
+        assert_eq!(
+            vscode.call("metadata").unwrap_err(),
+            "VSCODE_AUTHORIZATION_REQUIRED"
+        );
+        github.disconnect().await;
+        eprintln!("D22_REAL_CROSS_APP_PASS issue={issue} editor_sha={} obs1={} obs2={} draft_id={} revision={} handoff=VERIFIED seconds={}",
+            snapshot.digest, result.observations[0].digest, result.observations[1].digest,
+            receipt.draft_id, draft.revision, started.elapsed().as_secs());
+    }
+    #[test]
+    #[ignore = "Reads only the stable synthetic D22 brief from a fresh process"]
+    fn real_d22_brief_reopens_after_process_exit() {
+        use crate::drafts::DraftStore;
+        assert_eq!(std::env::var("D22_ALLOW_REOPEN").as_deref(), Ok("1"));
+        let root = PathBuf::from(std::env::var("MORGOTH_D22_ACCEPTANCE_ROOT").unwrap());
+        let id = std::env::var("MORGOTH_D22_DRAFT_ID").unwrap();
+        let store = DraftStore::new(root.join("mission-workspace-v1"));
+        let draft = store.get("d22_fixture", &id).unwrap();
+        assert_eq!(draft.project_id, "d22_fixture");
+        assert_eq!(draft.draft_id, id);
+        assert_eq!(draft.revision, 1);
+        assert!(draft.title.contains("microsoft/vscode"));
+        assert!(draft.objective.contains("obs:2"));
+        assert!(draft.objective.contains("editor:1"));
+        assert_eq!(store.list("d22_fixture").unwrap().len(), 1);
+        eprintln!(
+            "D22_FRESH_PROCESS_DRAFT_REOPEN_PASS draft_id={} revision={}",
+            id, draft.revision
+        );
+    }
+    #[tokio::test]
     async fn investigation_auto_continues_two_real_fixture_reads_and_requires_d17_write() {
         let outputs = vec![
             json!({"version":1,"issue_number":7,"reason":"Issue éligible observée"}).to_string(),
