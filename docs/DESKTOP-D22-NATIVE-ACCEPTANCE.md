@@ -37,7 +37,7 @@ et une navigation dans la fenêtre Tauri.
 | --- | --- | --- |
 | 1 · code et tests | Contrats Rust/React, tests de refus, suite Python Desktop épinglée | Les fixtures ne sont pas des applications réelles |
 | 2 · intégration réelle | VSIX installé, API VS Code, sélection réelle, GitHub public, Ollama local, brief relu, onglet non enregistré | Le test pilote les appels Rust directement |
-| 3 · Desktop natif | Release Tauri, actifs embarqués et fenêtre à vérifier séparément | Aucun consentement GTK complet n'est déduit du niveau 2 |
+| 3 · Desktop natif | Release Tauri scellée, fenêtre Accueil 1120×780 rendue sous Xvfb avec WebKitGTK en mode logiciel | Aucun consentement GTK complet n'est déduit du niveau 2 |
 | 4 · usage opérateur | Parcours dans la session WSLg personnelle | À faire volontairement par l'opérateur |
 
 ## Parcours opérateur restant
@@ -87,6 +87,14 @@ installation Windows locale seule ne rejoint pas le socket Unix WSL.
 Le Desktop démarre sans Vite, Node, VS Code, GitHub ou Ollama ; Python
 Management du backend épinglé reste nécessaire. L'inférence est optionnelle
 et désactivée sans `MORGOTH_DESKTOP_PLANNER_ENABLED=1`.
+
+Le smoke natif D22 a démarré la release dans un Xvfb jetable avec le
+Management home et les données XDG synthétiques. La fenêtre 1120×780 a rendu
+l'accueil et le contrôle de taille de texte. Une première capture vide avec
+le rendu graphique par défaut a été corrigée dans **l'environnement de test**
+avec `LIBGL_ALWAYS_SOFTWARE=1`, `WEBKIT_DISABLE_COMPOSITING_MODE=1` et
+`WEBKIT_DISABLE_DMABUF_RENDERER=1`. Cela ne qualifie pas à lui seul les gestes
+de consentement GTK ni la session WSLg personnelle.
 
 La suite Python active se lance avec :
 

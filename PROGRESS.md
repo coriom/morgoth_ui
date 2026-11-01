@@ -90,8 +90,9 @@ unchanged. See `docs/DESKTOP-D2-*.md` for exact evidence and limitations.
 The isolated D22 branch adds a repeatable real installed-VSIX acceptance path:
 actual VS Code editor selection, private Rust pairing, public GitHub issue
 reads, local Ollama reasoning, D17 draft creation and verified unsaved editor
-handoff. A separate-process test reopens the same fixture brief. The complete
-native GTK approval journey remains a distinct acceptance gate. The Desktop
+handoff. A separate-process test reopens the same fixture brief. The sealed
+Tauri release renders its 1120x780 Home window under a disposable Xvfb display.
+The complete native GTK approval journey remains a distinct acceptance gate. The Desktop
 Python suite now selects the exact pinned D9 backend before discovering every
 test; no backend file or dependency changed. See
 `../docs/DESKTOP-D22-NATIVE-ACCEPTANCE.md` for evidence and operator steps.
