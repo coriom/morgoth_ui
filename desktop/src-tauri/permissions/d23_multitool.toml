@@ -1,0 +1,14 @@
+[[permission]]
+identifier = "allow-multitool-prepare"
+description = "Prepare one bounded GitHub and optional approved VS Code read scope."
+commands.allow = ["multitool_prepare"]
+
+[[permission]]
+identifier = "allow-multitool-start"
+description = "Authorize one native confirmed multi-tool session."
+commands.allow = ["multitool_start"]
+
+[[permission]]
+identifier = "allow-multitool-run"
+description = "Run only the fixed model-proposed read allowlist."
+commands.allow = ["multitool_run"]

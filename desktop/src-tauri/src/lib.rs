@@ -1732,6 +1732,102 @@ mod desktop {
     }
     #[tauri::command]
     #[allow(clippy::too_many_arguments)]
+    pub async fn multitool_prepare(
+        window: WebviewWindow,
+        app: tauri::AppHandle,
+        supervisor: State<'_, ManagementSupervisor>,
+        github: State<'_, std::sync::Arc<GithubGateway>>,
+        vscode: State<'_, std::sync::Arc<VsCodeGateway>>,
+        planner: State<'_, std::sync::Arc<MissionPlanner>>,
+        runner: State<'_, std::sync::Arc<SupervisedLoop>>,
+        project_id: String,
+        model: String,
+        objective: String,
+    ) -> Result<SessionPreview, NativeError> {
+        main_only(&window)?;
+        verified_backup_project(&supervisor, &project_id).await?;
+        preferred_workflow_project(&workflow_store(&app)?, &project_id)?;
+        runner
+            .prepare_dynamic(&planner, &github, &vscode, &project_id, model, objective)
+            .await
+    }
+    #[tauri::command]
+    #[allow(clippy::too_many_arguments)]
+    pub async fn multitool_start(
+        window: WebviewWindow,
+        app: tauri::AppHandle,
+        supervisor: State<'_, ManagementSupervisor>,
+        github: State<'_, std::sync::Arc<GithubGateway>>,
+        vscode: State<'_, std::sync::Arc<VsCodeGateway>>,
+        runner: State<'_, std::sync::Arc<SupervisedLoop>>,
+        project_id: String,
+        preview_id: String,
+        context_digest: String,
+    ) -> Result<SessionView, NativeError> {
+        main_only(&window)?;
+        verified_backup_project(&supervisor, &project_id).await?;
+        preferred_workflow_project(&workflow_store(&app)?, &project_id)?;
+        let preview = runner.pending(&project_id, &preview_id).await?;
+        if preview.mode != "DYNAMIC_MULTITOOL_V1" || preview.context_digest != context_digest {
+            return Err(NativeError::new(
+                "SUPERVISED_CONTEXT_CHANGED",
+                "Contexte modifié.",
+            ));
+        }
+        let question = format!("Autoriser une recherche multi-outils de dix minutes ?\nProject : {}\nGitHub : {} (id {})\nVS Code : {}\nModèle : {}\nAu plus 3 lectures GitHub, 1 lecture de la sélection approuvée, 4 tours de modèle. Aucune écriture.\nContexte SHA-256 : {}",
+            project_id, preview.repository, preview.repository_id,
+            preview.editor.as_ref().map(|e| format!("{} / {} · version {} · SHA-256 {}", e.workspace, e.document, e.document_version, e.digest)).unwrap_or_else(|| "aucune sélection".into()),
+            preview.model, preview.context_digest);
+        if !confirm_workflow(&app, question).await? {
+            return Err(NativeError::new(
+                "SUPERVISED_CONSENT_REFUSED",
+                "Session annulée.",
+            ));
+        }
+        verified_backup_project(&supervisor, &project_id).await?;
+        preferred_workflow_project(&workflow_store(&app)?, &project_id)?;
+        if preview.editor.is_some() {
+            let (value, binding) = read_vscode_selection(&vscode).await?;
+            runner
+                .verify_pending_editor(&project_id, &preview_id, &value, &binding)
+                .await?;
+        }
+        runner.start(&github, &project_id, &preview_id).await
+    }
+    #[tauri::command]
+    #[allow(clippy::too_many_arguments)]
+    pub async fn multitool_run(
+        window: WebviewWindow,
+        app: tauri::AppHandle,
+        supervisor: State<'_, ManagementSupervisor>,
+        github: State<'_, std::sync::Arc<GithubGateway>>,
+        vscode: State<'_, std::sync::Arc<VsCodeGateway>>,
+        planner: State<'_, std::sync::Arc<MissionPlanner>>,
+        runner: State<'_, std::sync::Arc<SupervisedLoop>>,
+        project_id: String,
+        session_id: String,
+    ) -> Result<SessionView, NativeError> {
+        main_only(&window)?;
+        verified_backup_project(&supervisor, &project_id).await?;
+        preferred_workflow_project(&workflow_store(&app)?, &project_id)?;
+        let result = runner
+            .run_dynamic(&planner, &github, &vscode, &project_id, &session_id)
+            .await;
+        if verified_backup_project(&supervisor, &project_id)
+            .await
+            .is_err()
+            || preferred_workflow_project(&workflow_store(&app)?, &project_id).is_err()
+        {
+            let _ = runner.stop(&project_id).await;
+            return Err(NativeError::new(
+                "SUPERVISED_PROJECT_CHANGED",
+                "Project changé.",
+            ));
+        }
+        result
+    }
+    #[tauri::command]
+    #[allow(clippy::too_many_arguments)]
     pub async fn investigation_execute_editor(
         window: WebviewWindow,
         app: tauri::AppHandle,
@@ -3216,6 +3312,9 @@ mod desktop {
                 investigation_capture_editor,
                 investigation_prepare_editor,
                 investigation_execute_editor,
+                multitool_prepare,
+                multitool_start,
+                multitool_run,
                 supervised_start,
                 supervised_step,
                 supervised_status,

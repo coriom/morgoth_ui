@@ -178,6 +178,7 @@ fn decode_generate(bytes: &[u8], model: &str) -> Result<String, NativeError> {
     #[cfg(test)]
     if std::env::var("D19_ALLOW_LIVE_CANARY").as_deref() == Ok("1")
         || std::env::var("D20_ALLOW_LIVE_CANARY").as_deref() == Ok("1")
+        || std::env::var("D23_ALLOW_LIVE_CANARY").as_deref() == Ok("1")
     {
         eprintln!(
             "D19_PROVIDER_ENVELOPE done={} reason={} response_bytes={}",

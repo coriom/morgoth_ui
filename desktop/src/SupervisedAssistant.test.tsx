@@ -112,4 +112,28 @@ describe("supervised mission assistant", () => {
     expect(call).toHaveBeenCalledWith("investigation_prepare_editor", {projectId:"alpha",model:"qwen3:4b-instruct",objective:"Comparer l’issue à la sélection"});
     expect(call).not.toHaveBeenCalledWith("investigation_execute_editor", expect.anything());
   });
+  it("exposes Stop while the first dynamic read is pending and ignores its late result", async () => {
+    const call = vi.mocked(invoke);
+    let finishRun: ((value: typeof session) => void) | undefined;
+    const running = new Promise<typeof session>(resolve => { finishRun = resolve; });
+    const dynamic = {...session,mode:"DYNAMIC_MULTITOOL_V1",phase:"MODEL_ROUTING",status:"READY"};
+    call.mockImplementation(async name => name === "planner_status" ? planner : name === "github_status" ? github :
+      name === "supervised_status" ? null : name === "multitool_prepare" ? {...preview,mode:"DYNAMIC_MULTITOOL_V1",editor:null,max_turns:4} :
+      name === "multitool_start" ? dynamic : name === "multitool_run" ? running :
+      name === "supervised_stop" ? {...dynamic,status:"STOPPED"} : undefined);
+    render(<SupervisedAssistant projectId="alpha" verified onCreated={async () => undefined} onGithubReady={vi.fn()} />);
+    fireEvent.click(screen.getByText("Assistant · enquête supervisée"));
+    await screen.findByRole("option", {name:"qwen3:4b-instruct"});
+    fireEvent.change(screen.getByLabelText("Mode"), {target:{value:"DYNAMIC_MULTITOOL_V1"}});
+    fireEvent.change(screen.getByLabelText("Objectif"), {target:{value:"Comparer deux sources"}});
+    fireEvent.change(screen.getByLabelText("Modèle local installé"), {target:{value:"qwen3:4b-instruct"}});
+    fireEvent.click(screen.getByRole("button", {name:"Prévoir la session"}));
+    await screen.findByLabelText("Contexte de la session");
+    fireEvent.click(screen.getByRole("button", {name:"Autoriser et lancer…"}));
+    await waitFor(() => expect(call).toHaveBeenCalledWith("multitool_run", {projectId:"alpha",sessionId:id}));
+    fireEvent.click(screen.getByRole("button", {name:"Arrêter et révoquer"}));
+    expect(await screen.findByText(/Session · Arrêtée/)).toBeTruthy();
+    finishRun?.({...dynamic,status:"COMPLETED"});
+    await waitFor(() => expect(screen.getByText(/Session · Arrêtée/)).toBeTruthy());
+  });
 });

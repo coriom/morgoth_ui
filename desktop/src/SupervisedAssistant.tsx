@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { BriefFields, GithubWorkflowPreview, GithubWorkflowTransfer } from "./GithubBriefWorkflow";
 
@@ -18,7 +18,7 @@ type Observation = { reference: string; operation: string; repository: string; r
   read_at_ms: number; digest: string; truncated: boolean; data: {
     items?: { number: number; title: string; state: string; updated_at: string; url: string }[];
     number?: number; title?: string; state?: string; updated_at?: string; url?: string; body_excerpt?: string;
-    default_branch?: string; head_sha?: string;
+    default_branch?: string; head_sha?: string; document?: string; selected_text?: string;
   } };
 type Session = { schema_version: 1; session_id: string; project_id: string; repository: string;
   mode: string; phase: string; selected_issue: number | null; selection_reason: string | null;
@@ -73,7 +73,7 @@ export function SupervisedAssistant({ projectId, verified, onCreated, onGithubRe
   const [planner, setPlanner] = useState<PlannerStatus | null>(null);
   const [github, setGithub] = useState<GithubStatus | null>(null);
   const [model, setModel] = useState("");
-  const [mode, setMode] = useState<"MANUAL_READ_V1" | "GITHUB_ISSUE_INVESTIGATION_V1" | "GITHUB_ISSUE_INVESTIGATION_WITH_EDITOR_CONTEXT_V1">("GITHUB_ISSUE_INVESTIGATION_V1");
+  const [mode, setMode] = useState<"MANUAL_READ_V1" | "GITHUB_ISSUE_INVESTIGATION_V1" | "GITHUB_ISSUE_INVESTIGATION_WITH_EDITOR_CONTEXT_V1" | "DYNAMIC_MULTITOOL_V1">("GITHUB_ISSUE_INVESTIGATION_V1");
   const [editor, setEditor] = useState<EditorSelection | null>(null);
   const [objective, setObjective] = useState("");
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -85,6 +85,9 @@ export function SupervisedAssistant({ projectId, verified, onCreated, onGithubRe
   const [executing, setExecuting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
+  const currentProject = useRef(projectId);
+  const stoppedSession = useRef<string | null>(null);
+  currentProject.current = projectId;
   const refresh = async () => {
     const [p, g] = await Promise.all([
       invoke<PlannerStatus>("planner_status"), invoke<GithubStatus>("github_status")]);
@@ -109,7 +112,7 @@ export function SupervisedAssistant({ projectId, verified, onCreated, onGithubRe
     if (!executing || !expanded) return;
     const timer = window.setInterval(() => {
       void invoke<Session | null>("supervised_status", { projectId }).then(value => {
-        if (value?.project_id === projectId) setSession(value);
+        if (currentProject.current === projectId && value?.project_id === projectId) setSession(value);
       }).catch(() => undefined);
     }, 700);
     return () => window.clearInterval(timer);
@@ -118,7 +121,7 @@ export function SupervisedAssistant({ projectId, verified, onCreated, onGithubRe
     if (busy || !verified || !model || !objective.trim()) return;
     setBusy(true); setError(null); setResult(null);
     try {
-      const command = mode === "MANUAL_READ_V1" ? "supervised_prepare" : mode === "GITHUB_ISSUE_INVESTIGATION_V1" ? "investigation_prepare" : "investigation_prepare_editor";
+      const command = mode === "DYNAMIC_MULTITOOL_V1" ? "multitool_prepare" : mode === "MANUAL_READ_V1" ? "supervised_prepare" : mode === "GITHUB_ISSUE_INVESTIGATION_V1" ? "investigation_prepare" : "investigation_prepare_editor";
       const p = await invoke<Preview>(command, { projectId, model, objective });
       if (p.schema_version !== 1 || p.project_id !== projectId || !uuid(p.preview_id) || p.context_digest.length !== 64) throw Error("INVALID_PREVIEW");
       setPreview(p); setSession(null); setFields(null);
@@ -130,13 +133,25 @@ export function SupervisedAssistant({ projectId, verified, onCreated, onGithubRe
     setBusy(true); setError(null);
     try {
       if (preview.mode !== "MANUAL_READ_V1") setExecuting(true);
-      const command = preview.mode === "MANUAL_READ_V1" ? "supervised_start" : preview.mode === "GITHUB_ISSUE_INVESTIGATION_V1" ? "investigation_execute" : "investigation_execute_editor";
+      const command = preview.mode === "DYNAMIC_MULTITOOL_V1" ? "multitool_start" : preview.mode === "MANUAL_READ_V1" ? "supervised_start" : preview.mode === "GITHUB_ISSUE_INVESTIGATION_V1" ? "investigation_execute" : "investigation_execute_editor";
       const s = await invoke<Session>(command, { projectId, previewId: preview.preview_id,
         contextDigest: preview.context_digest });
       if (s.schema_version !== 1 || s.project_id !== projectId || !uuid(s.session_id)) throw Error("INVALID_SESSION");
+      if (currentProject.current !== projectId) { setExecuting(false); return; }
+      stoppedSession.current = null;
       setSession(s); setPreview(null);
-    } catch (cause) { setError(message(cause)); }
-    finally { setBusy(false); setExecuting(false); }
+      if (preview.mode === "DYNAMIC_MULTITOOL_V1") {
+        setBusy(false);
+        void invoke<Session>("multitool_run", { projectId, sessionId: s.session_id }).then(value => {
+          if (currentProject.current === projectId && stoppedSession.current !== s.session_id && value.session_id === s.session_id && value.project_id === projectId) setSession(value);
+        }).catch(cause => { if (currentProject.current !== projectId || stoppedSession.current === s.session_id) return;
+          setError(message(cause)); void invoke<Session | null>("supervised_status", { projectId }).then(value => {
+            if (currentProject.current === projectId && stoppedSession.current !== s.session_id) setSession(value);
+          }).catch(() => undefined); })
+          .finally(() => setExecuting(false));
+      }
+    } catch (cause) { setError(message(cause)); setExecuting(false); }
+    finally { setBusy(false); if (preview?.mode !== "DYNAMIC_MULTITOOL_V1") setExecuting(false); }
   };
   const captureEditor = async () => {
     if (busy || !verified) return;
@@ -162,7 +177,8 @@ export function SupervisedAssistant({ projectId, verified, onCreated, onGithubRe
   };
   const stop = async () => {
     if (!session) { setPreview(null); return; }
-    try { setSession(await invoke<Session>("supervised_stop", { projectId })); setError(null); }
+    stoppedSession.current = session.session_id;
+    try { setSession(await invoke<Session>("supervised_stop", { projectId })); setExecuting(false); setError(null); }
     catch (cause) { setError(message(cause)); }
   };
   const prepareBrief = async () => {
@@ -217,9 +233,10 @@ export function SupervisedAssistant({ projectId, verified, onCreated, onGithubRe
       <select id="supervised-mode" value={mode} onChange={event => { setMode(event.target.value as typeof mode); setPreview(null); }}>
         <option value="GITHUB_ISSUE_INVESTIGATION_V1">Enquête supervisée · issues</option>
         <option value="GITHUB_ISSUE_INVESTIGATION_WITH_EDITOR_CONTEXT_V1">Enquête · issue et sélection VS Code</option>
+        <option value="DYNAMIC_MULTITOOL_V1">Recherche multi-outils · choix du modèle</option>
         <option value="MANUAL_READ_V1">Lecture pas à pas</option>
       </select>
-      {mode === "GITHUB_ISSUE_INVESTIGATION_WITH_EDITOR_CONTEXT_V1" && <section aria-label="Sélection VS Code approuvée">
+      {(mode === "GITHUB_ISSUE_INVESTIGATION_WITH_EDITOR_CONTEXT_V1" || mode === "DYNAMIC_MULTITOOL_V1") && <section aria-label="Sélection VS Code approuvée">
         <p>Dans l’espace VS Code associé, sélectionnez un passage d’un document texte. La lecture exige un accord natif distinct ; aucun autre fichier ne sera consulté.</p>
         <button type="button" disabled={busy || !verified} onClick={() => void captureEditor()}>Autoriser la lecture de la sélection…</button>
         {editor && <><p>Instantané editor:1 · {editor.workspace} / {editor.document} · version {editor.document_version} · {editor.length} octets · SHA-256 {editor.digest.slice(0, 12)}…</p>
@@ -235,7 +252,7 @@ export function SupervisedAssistant({ projectId, verified, onCreated, onGithubRe
     {preview && <section className="workflow-preview" aria-label="Périmètre de la session supervisée">
       <h3>Autorisation avant lecture</h3>
       <p>{preview.repository} · {preview.repository_private ? "Dépôt privé" : "Dépôt public"} · {preview.model}</p>
-      <p>{preview.mode !== "MANUAL_READ_V1" ? "Enquête : liste bornée des issues ouvertes, choix du modèle parmi les numéros observés, lecture exacte, analyse. Jusqu’à 2 lectures et 2 tours ; plafond 3/3." : `Au plus ${preview.max_reads} lectures GitHub et ${preview.max_turns} tours de modèle.`} Durée : {preview.duration_seconds / 60} minutes. Aucune écriture.</p>
+      <p>{preview.mode === "DYNAMIC_MULTITOOL_V1" ? `Le modèle choisit ses lectures : ${preview.max_reads} GitHub, ${preview.editor ? "1 sélection VS Code" : "aucune sélection VS Code"}, ${preview.max_turns} tours.` : preview.mode !== "MANUAL_READ_V1" ? "Enquête : liste bornée des issues ouvertes, choix du modèle parmi les numéros observés, lecture exacte, analyse. Jusqu’à 2 lectures et 2 tours ; plafond 3/3." : `Au plus ${preview.max_reads} lectures GitHub et ${preview.max_turns} tours de modèle.`} Durée : {preview.duration_seconds / 60} minutes. Aucune écriture.</p>
       {preview.editor && <p>Instantané VS Code editor:1 : {preview.editor.workspace} / {preview.editor.document} · version {preview.editor.document_version} · capture {new Date(preview.editor.captured_at_ms).toLocaleString("fr-FR")} · SHA-256 {preview.editor.digest}. Le passage exact ci-dessous ira seulement au modèle local après votre accord.</p>}
       {preview.editor && <textarea readOnly rows={6} aria-label="Contexte VS Code exact" value={preview.editor.selected_text} />}
       {preview.repository_private && <p className="notice warn">Des extraits privés peuvent être transmis au modèle local après votre accord.</p>}
@@ -247,14 +264,14 @@ export function SupervisedAssistant({ projectId, verified, onCreated, onGithubRe
     {session && <section className="workflow-preview" aria-label="Exécution supervisée">
       <h3>Session · {labels[session.status] ?? session.status}</h3>
       {session.mode !== "MANUAL_READ_V1" && <p role="status">Étape : {phases[session.phase] ?? session.phase} {session.selected_issue ? `· issue #${session.selected_issue} choisie par le modèle` : ""}</p>}
-      {session.editor && <section className="supervised-observation"><h4>editor:1 · sélection VS Code autorisée</h4><p>{session.editor.workspace} / {session.editor.document} · version {session.editor.document_version} · capture {new Date(session.editor.captured_at_ms).toLocaleString("fr-FR")} · empreinte {session.editor.digest.slice(0, 12)}…</p><p>Instantané ; l’éditeur peut avoir changé depuis la capture.</p><pre>{session.editor.selected_text}</pre></section>}
+      {session.editor && session.mode !== "DYNAMIC_MULTITOOL_V1" && <section className="supervised-observation"><h4>editor:1 · sélection VS Code autorisée</h4><p>{session.editor.workspace} / {session.editor.document} · version {session.editor.document_version} · capture {new Date(session.editor.captured_at_ms).toLocaleString("fr-FR")} · empreinte {session.editor.digest.slice(0, 12)}…</p><p>Instantané ; l’éditeur peut avoir changé depuis la capture.</p><pre>{session.editor.selected_text}</pre></section>}
       {session.selection_reason && <p><strong>Raison proposée par le modèle :</strong> {session.selection_reason}</p>}
-      <p>{session.repository} · {session.reads}/3 lectures · {session.turns}/3 tours · modèle {session.model}</p>
+      <p>{session.repository} · {session.reads}/3 lectures GitHub · {session.turns}/{session.mode === "DYNAMIC_MULTITOOL_V1" ? 4 : 3} tours · modèle {session.model}</p>
       {session.last_proposal && <p><strong>Proposition du modèle :</strong> {session.last_proposal}</p>}
       {session.observations.map(item => <section key={item.reference} className="supervised-observation">
         <h4>{item.reference} · {item.operation === "LIST_OPEN_ISSUES" ? "Liste ouverte par Rust" : item.operation === "READ_ISSUE" ? "Issue choisie par le modèle, lue par Rust" : item.operation} · lecture vérifiée</h4>
         <p>Dépôt {item.repository} #{item.repository_id} · {new Date(item.read_at_ms).toLocaleString("fr-FR")} · empreinte {item.digest.slice(0, 12)}…{item.truncated ? " · projection tronquée" : ""}</p>
-        {item.operation === "REPOSITORY_OVERVIEW" ?
+        {item.operation === "VSCODE_READ_APPROVED_SELECTION" ? <p>{item.data.document} · sélection vérifiée : {item.data.selected_text}</p> : item.operation === "REPOSITORY_OVERVIEW" ?
           <p>Branche {item.data.default_branch} · HEAD {item.data.head_sha?.slice(0, 12)}… · mis à jour {item.data.updated_at}</p>
           : item.data.items ? <ul>{item.data.items.map(issue => <li key={issue.number}>#{issue.number} · {issue.title} ({issue.state})</li>)}</ul>
             : <><p>#{item.data.number} · {item.data.title} ({item.data.state}) · {item.data.updated_at}</p><p>Source : {item.data.url}</p><p>Déclaration externe non vérifiée {item.truncated ? "(extrait tronqué)" : ""} : {item.data.body_excerpt || "Aucune description."}</p></>}
