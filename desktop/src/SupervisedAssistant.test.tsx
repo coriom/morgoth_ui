@@ -109,7 +109,7 @@ describe("supervised mission assistant", () => {
     expect((await screen.findByLabelText("Passage VS Code sélectionné") as HTMLTextAreaElement).value).toBe(editor.selected_text);
     fireEvent.click(screen.getByRole("button", {name:"Prévoir la session"}));
     expect((await screen.findByLabelText("Contexte VS Code exact") as HTMLTextAreaElement).value).toBe(editor.selected_text);
-    expect(call).toHaveBeenCalledWith("investigation_prepare_editor", {projectId:"alpha",model:"qwen3:4b-instruct",objective:"Comparer l’issue à la sélection"});
+    expect(call).toHaveBeenCalledWith("investigation_prepare_editor", {projectId:"alpha",model:"qwen3:4b-instruct",objective:"Comparer l’issue à la sélection",evidenceGoal:"COMPARE_GITHUB_AND_EDITOR_V1"});
     expect(call).not.toHaveBeenCalledWith("investigation_execute_editor", expect.anything());
   });
   it("exposes Stop while the first dynamic read is pending and ignores its late result", async () => {
@@ -125,6 +125,7 @@ describe("supervised mission assistant", () => {
     fireEvent.click(screen.getByText("Assistant · enquête supervisée"));
     await screen.findByRole("option", {name:"qwen3:4b-instruct"});
     fireEvent.change(screen.getByLabelText("Mode"), {target:{value:"DYNAMIC_MULTITOOL_V1"}});
+    fireEvent.change(screen.getByLabelText("Preuves requises"), {target:{value:"EXPLORE_V1"}});
     fireEvent.change(screen.getByLabelText("Objectif"), {target:{value:"Comparer deux sources"}});
     fireEvent.change(screen.getByLabelText("Modèle local installé"), {target:{value:"qwen3:4b-instruct"}});
     fireEvent.click(screen.getByRole("button", {name:"Prévoir la session"}));

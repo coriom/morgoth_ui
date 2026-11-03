@@ -1743,12 +1743,23 @@ mod desktop {
         project_id: String,
         model: String,
         objective: String,
+        evidence_goal: String,
     ) -> Result<SessionPreview, NativeError> {
         main_only(&window)?;
         verified_backup_project(&supervisor, &project_id).await?;
         preferred_workflow_project(&workflow_store(&app)?, &project_id)?;
         runner
-            .prepare_dynamic(&planner, &github, &vscode, &project_id, model, objective)
+            .prepare_dynamic(
+                &planner,
+                &github,
+                &vscode,
+                &project_id,
+                supervised_loop::DynamicRequest {
+                    model,
+                    objective,
+                    evidence_goal,
+                },
+            )
             .await
     }
     #[tauri::command]
@@ -1774,8 +1785,8 @@ mod desktop {
                 "Contexte modifié.",
             ));
         }
-        let question = format!("Autoriser une recherche multi-outils de dix minutes ?\nProject : {}\nGitHub : {} (id {})\nVS Code : {}\nModèle : {}\nAu plus 3 lectures GitHub, 1 lecture de la sélection approuvée, 4 tours de modèle. Aucune écriture.\nContexte SHA-256 : {}",
-            project_id, preview.repository, preview.repository_id,
+        let question = format!("Autoriser une recherche multi-outils de dix minutes ?\nProject : {}\nObjectif de preuve : {}\nGitHub : {} (id {})\nVS Code : {}\nModèle : {}\nAu plus 3 lectures GitHub, 1 lecture de la sélection approuvée, 4 tours de modèle dont un pour le rapport. Aucune écriture.\nContexte SHA-256 : {}",
+            project_id, preview.evidence_goal, preview.repository, preview.repository_id,
             preview.editor.as_ref().map(|e| format!("{} / {} · version {} · SHA-256 {}", e.workspace, e.document, e.document_version, e.digest)).unwrap_or_else(|| "aucune sélection".into()),
             preview.model, preview.context_digest);
         if !confirm_workflow(&app, question).await? {

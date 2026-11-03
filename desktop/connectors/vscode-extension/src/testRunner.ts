@@ -72,7 +72,8 @@ export async function run(): Promise<void> {
           MORGOTH_D15_EXTENSION_SHA256: createHash("sha256").update(fs.readFileSync(path.join(installedRoot,"out","extension.js"))).digest("hex"),
           MORGOTH_D15_PROTOCOL_SHA256: createHash("sha256").update(fs.readFileSync(path.join(installedRoot,"out","protocol.js"))).digest("hex"),
           MORGOTH_D22_ACCEPTANCE_ROOT: acceptanceRoot, MORGOTH_D23_ACCEPTANCE_ROOT: acceptanceRoot,
-          D22_ALLOW_LIVE_CANARY: "1", D23_ALLOW_LIVE_CANARY: "1" },
+          D22_ALLOW_LIVE_CANARY: "1", D23_ALLOW_LIVE_CANARY: "1", D24_ALLOW_LIVE_CANARY: "1",
+          D24_CANARY_GOAL: process.env.D24_CANARY_GOAL ?? "COMPARE_ISSUE_AND_EDITOR_V1" },
         stdio: ["ignore", "pipe", "pipe"], timeout: 240_000,
       });
       let output = "";
@@ -80,7 +81,8 @@ export async function run(): Promise<void> {
       child.stderr.on("data", chunk => { output += String(chunk).slice(0, 4096); });
       child.once("error", reject);
       child.once("close", value => {
-        console.log((output.match(/D2[23]_REAL_[A-Z_]+PASS[^\n]*/)?.[0]) ?? "D23_RUST_PROBE_FAILED");
+        console.log((output.match(/D2[234]_REAL_[A-Z_]+PASS[^\n]*/)?.[0]) ?? "D24_RUST_PROBE_FAILED");
+        for (const line of output.match(/D24_INFERENCE_METRICS [^\n]*/g) ?? []) console.log(line);
         if (value !== 0) console.log(output.slice(-1200));
         resolve(value ?? -1);
       });

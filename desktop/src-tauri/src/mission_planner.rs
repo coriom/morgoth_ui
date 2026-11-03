@@ -168,6 +168,68 @@ struct GenerateEnvelope {
     response: String,
     done: bool,
     done_reason: Option<String>,
+    total_duration: Option<u64>,
+    load_duration: Option<u64>,
+    prompt_eval_count: Option<u32>,
+    prompt_eval_duration: Option<u64>,
+    eval_count: Option<u32>,
+    eval_duration: Option<u64>,
+}
+#[derive(Clone, Debug, Serialize)]
+pub struct InferenceMetrics {
+    pub stage: &'static str,
+    pub wall_ms: u64,
+    pub total_ms: Option<u64>,
+    pub load_ms: Option<u64>,
+    pub prompt_tokens: Option<u32>,
+    pub prompt_eval_ms: Option<u64>,
+    pub output_tokens: Option<u32>,
+    pub eval_ms: Option<u64>,
+    pub output_bytes: usize,
+}
+pub struct InferenceReply {
+    pub text: String,
+    pub metrics: InferenceMetrics,
+}
+fn decode_generate_observed(
+    bytes: &[u8],
+    model: &str,
+    stage: &'static str,
+    wall_ms: u64,
+) -> Result<InferenceReply, NativeError> {
+    if bytes.len() > MAX_RESPONSE {
+        return Err(error("PROVIDER_RESPONSE_TOO_LARGE"));
+    }
+    let envelope: GenerateEnvelope =
+        serde_json::from_slice(bytes).map_err(|_| error("PROVIDER_RESPONSE_INVALID"))?;
+    #[cfg(test)]
+    if std::env::var("D24_ALLOW_LIVE_CANARY").as_deref() == Ok("1") {
+        eprintln!("D24_PROVIDER_ENVELOPE stage={stage} done={} reason={} model_match={} output_bytes={} output_tokens={}",
+            envelope.done, envelope.done_reason.as_deref().unwrap_or("none"),
+            envelope.model == model, envelope.response.len(), envelope.eval_count.unwrap_or(0));
+    }
+    if envelope.model != model
+        || !envelope.done
+        || envelope.done_reason.as_deref() != Some("stop")
+        || envelope.response.len() > 12_000
+    {
+        return Err(error("PROVIDER_RESPONSE_INVALID"));
+    }
+    let metrics = InferenceMetrics {
+        stage,
+        wall_ms,
+        total_ms: envelope.total_duration.map(|v| v / 1_000_000),
+        load_ms: envelope.load_duration.map(|v| v / 1_000_000),
+        prompt_tokens: envelope.prompt_eval_count,
+        prompt_eval_ms: envelope.prompt_eval_duration.map(|v| v / 1_000_000),
+        output_tokens: envelope.eval_count,
+        eval_ms: envelope.eval_duration.map(|v| v / 1_000_000),
+        output_bytes: envelope.response.len(),
+    };
+    Ok(InferenceReply {
+        text: envelope.response,
+        metrics,
+    })
 }
 fn decode_generate(bytes: &[u8], model: &str) -> Result<String, NativeError> {
     if bytes.len() > MAX_RESPONSE {
@@ -492,9 +554,26 @@ impl MissionPlanner {
         schema: serde_json::Value,
         cancel: Arc<Notify>,
     ) -> Result<String, NativeError> {
-        if !self.enabled || prompt.len() > 12_000 {
+        Ok(self
+            .infer_supervised_stage(model, prompt, schema, "LEGACY", cancel)
+            .await?
+            .text)
+    }
+    /// A bounded proposal stage. This returns only text and non-sensitive timing/count metrics;
+    /// execution authority remains with the native caller.
+    pub async fn infer_supervised_stage(
+        &self,
+        model: &str,
+        prompt: &str,
+        schema: serde_json::Value,
+        stage: &'static str,
+        cancel: Arc<Notify>,
+    ) -> Result<InferenceReply, NativeError> {
+        if !self.enabled || prompt.len() > 12_000 || !matches!(stage, "ACTION" | "FINAL" | "LEGACY")
+        {
             return Err(error("PLANNER_DISABLED"));
         }
+        let started = Instant::now();
         let _gate = tokio::select! {
             _ = cancel.notified() => return Err(error("CANCELLED")),
             gate = self.inference_gate.lock() => gate,
@@ -505,6 +584,12 @@ impl MissionPlanner {
         };
         Self::fitness(&observed, model)?;
         let url = format!("http://127.0.0.1:{}/api/generate", self.port);
+        let predict = match stage {
+            "ACTION" => 160,
+            "FINAL" => 560,
+            _ => 500,
+        };
+        let keep_alive = if stage == "LEGACY" { "60s" } else { "2m" };
         let request = async {
             let response = self
                 .http
@@ -512,8 +597,8 @@ impl MissionPlanner {
                 .header(header::ACCEPT, "application/json")
                 .json(
                     &serde_json::json!({"model":model,"prompt":prompt,"stream":false,
-                    "format":schema,"think":false,"keep_alive":"60s",
-                    "options":{"temperature":0,"num_predict":500,"num_ctx":2048}}),
+                    "format":schema,"think":false,"keep_alive":keep_alive,
+                    "options":{"temperature":0,"num_predict":predict,"num_ctx":2048}}),
                 )
                 .send()
                 .await
@@ -548,7 +633,7 @@ impl MissionPlanner {
                 }
                 body.extend_from_slice(&chunk);
             }
-            decode_generate(&body, model)
+            decode_generate_observed(&body, model, stage, started.elapsed().as_millis() as u64)
         };
         tokio::select! { _ = cancel.notified() => Err(error("CANCELLED")), value = request => value }
     }

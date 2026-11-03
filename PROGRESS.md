@@ -1,3 +1,7 @@
+## 2026-11-03 — Desktop D24 qualified bounded multi-tool reports
+
+The isolated D24 branch separates short model action proposals from final evidence reports, reserves the final inference turn, and binds dynamic routing to a native evidence goal. Real isolated VS Code 1.140.0/VSIX selection, public `microsoft/vscode` reads and local `qwen3:4b-instruct` completed both the two-source basic and exact-issue canaries with native-validated `editor:1` and `obs:N` references. The first model choice had multiple eligible connector families. Stop and receipt boundaries, previous guided recipes, D17 write consent and the pinned D9 backend remain unchanged. Full operator GTK acceptance remains pending. See `docs/DESKTOP-D24-MULTITOOL-QUALIFICATION.md`. No dependency or broader model authority was added.
+
 ## 2026-10-29 — Desktop D13 Windows test application connector
 
 An isolated Tauri branch adds a Windows companion and a dedicated WinForms test
