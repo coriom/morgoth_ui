@@ -16,6 +16,11 @@ window probes with native-window, React-mounted and Management-ready signals
 (10.6 s and 2.5 s). Active suites passed: 88 Vitest, 105 Rust plus 13 ignored,
 24 Python Desktop, and the VS Code protocol test. Full native consent, brief
 creation/restart and personal WSLg acceptance remain unverified.
+An additional synthetic-data WSLg probe found a 15-second Management startup
+timeout under heavy host load and an explicit Wayland GTK initialization panic.
+The startup limit is now a bounded 30 seconds; Tauri construction panics are
+sanitized and stop the owned Management child. These WSLg behaviors require
+requalification on the final sealed binary.
 
 ## 2026-11-03 — Desktop D24 qualified bounded multi-tool reports
 

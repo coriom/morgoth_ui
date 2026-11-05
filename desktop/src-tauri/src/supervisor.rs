@@ -15,7 +15,7 @@ use std::{
 };
 
 pub const BACKEND_SHA: &str = "a91377c9ace8d70bf64aa44b3bd54773af612e3a";
-const STARTUP_LIMIT: Duration = Duration::from_secs(15);
+const STARTUP_LIMIT: Duration = Duration::from_secs(30);
 const STOP_GRACE: Duration = Duration::from_secs(3);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]

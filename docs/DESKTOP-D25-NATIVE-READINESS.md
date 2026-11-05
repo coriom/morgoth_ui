@@ -36,6 +36,11 @@ Une erreur de construction Tauri produit `STARTUP_FAILED=TAURI_RUNTIME` ; une
 erreur de fenêtre produit `STARTUP_FAILED=MAIN_WINDOW_CREATE`. Le superviseur
 produit `MANAGEMENT_FAILED=<code fixe>`. `WEBVIEW_DOCUMENT_LOADED` atteste le
 chargement du document, pas une validation visuelle de tous les contrôles React.
+Une panique d'initialisation GTK lors de la construction Tauri est rattrapée,
+classée `STARTUP_FAILED=GTK_BACKEND_INIT` et arrête le processus Management
+possédé ; les autres paniques de construction sont classées
+`STARTUP_FAILED=TAURI_RUNTIME_PANIC`. La limite de disponibilité Management
+est de 30 secondes après le lancement de son processus, contre 15 auparavant.
 
 `scripts/native_window_probe.py` lance la release scellée sur un affichage
 X11 que le test déclare isolé, cherche sa fenêtre, puis attend le montage
@@ -76,6 +81,13 @@ L'absence de fenêtre du contrôle D24 n'a pas été reproduite ; sa cause exact
 reste inconnue. Aucune création de brief approuvée depuis Tauri ni réouverture
 du même UUID après redémarrage n'a été démontrée en D25. Ces gestes restent
 des conditions d'acceptation, et non des résultats inférés des tests de stockage.
+
+Un essai supplémentaire sur le WSLg courant avec données synthétiques a
+atteint la création de la fenêtre. En X11, React s'est monté, mais Management
+a atteint son ancienne limite de 15 secondes sous une charge système élevée ;
+ce résultat a motivé la limite bornée de 30 secondes. En Wayland explicite,
+GTK a refusé de s'initialiser. Ces essais ne qualifient pas à eux seuls la
+session WSLg personnelle ; la cause de l'absence de fenêtre D24 reste ouverte.
 
 ## Lancement normal
 

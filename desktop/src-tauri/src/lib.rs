@@ -3261,7 +3261,7 @@ mod desktop {
         let research = ResearchEngineSupervisor::new(config, supervisor.clone());
         let on_exit = supervisor.clone();
         let research_on_exit = research.clone();
-        let app = tauri::Builder::default()
+        let builder = tauri::Builder::default()
             .manage(supervisor)
             .manage(research)
             .manage(std::sync::Arc::new(Gateway::default()))
@@ -3413,14 +3413,38 @@ mod desktop {
                 workspace_backup_export,
                 workspace_restore_preview,
                 workspace_restore_apply,
-            ])
-            .build(tauri::generate_context!());
+            ]);
+        let previous_panic_hook = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_| eprintln!("STARTUP_FAILED=RUNTIME_PANIC")));
+        let app = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            builder.build(tauri::generate_context!())
+        }));
+        std::panic::set_hook(previous_panic_hook);
         let app = match app {
-            Ok(app) => app,
-            Err(_) => {
+            Ok(Ok(app)) => app,
+            Ok(Err(_)) => {
                 research_on_exit.stop();
                 on_exit.stop();
                 eprintln!("STARTUP_FAILED=TAURI_RUNTIME");
+                return;
+            }
+            Err(error) => {
+                research_on_exit.stop();
+                on_exit.stop();
+                let gtk_failure = error
+                    .downcast_ref::<String>()
+                    .is_some_and(|message| message.contains("Failed to initialize gtk backend"))
+                    || error.downcast_ref::<&str>().is_some_and(|message| {
+                        message.contains("Failed to initialize gtk backend")
+                    });
+                eprintln!(
+                    "STARTUP_FAILED={}",
+                    if gtk_failure {
+                        "GTK_BACKEND_INIT"
+                    } else {
+                        "TAURI_RUNTIME_PANIC"
+                    }
+                );
                 return;
             }
         };
