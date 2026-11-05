@@ -41,6 +41,9 @@ classée `STARTUP_FAILED=GTK_BACKEND_INIT` et arrête le processus Management
 possédé ; les autres paniques de construction sont classées
 `STARTUP_FAILED=TAURI_RUNTIME_PANIC`. La limite de disponibilité Management
 est de 30 secondes après le lancement de son processus, contre 15 auparavant.
+Les échecs de configuration ou de construction Tauri quittent désormais avec
+un code non nul. Le test Wayland synthétique a vérifié le nettoyage de
+l'autorité Management après la panique GTK.
 
 `scripts/native_window_probe.py` lance la release scellée sur un affichage
 X11 que le test déclare isolé, cherche sa fenêtre, puis attend le montage
@@ -64,11 +67,15 @@ jetable a produit ces mêmes preuves en 2,5 s. Un relevé X11 ponctuellement
 lent est désormais réessayé jusqu'à l'échéance globale du probe. Le lancement
 sans serveur d'affichage refuse avec `DISPLAY_UNAVAILABLE`.
 
-Les tests automatiques actifs ont passé : 88 Vitest, 105 Rust (13 tests
+Les tests automatiques actifs ont passé : 88 Vitest, 100 Rust (13 tests
 externes ignorés), 24 Python Desktop et le test du protocole VS Code. TypeScript,
 contrat Management, Vite, formatage Rust, Clippy strict, compilation VSIX et
 vérification du reçu ont passé. Les vrais canaris GitHub/VS Code/Ollama de D24
 restent la qualification de la boucle multi-outils ; D25 ne les a pas relancés.
+Un premier passage Rust a révélé une fixture de propriété de port ambiguë :
+son processus prétendument indépendant pouvait hériter du descripteur du
+socket. Le test impose maintenant `FD_CLOEXEC` et libère son processus avant
+l'assertion ; la suite complète finale passe sans échec.
 
 | Niveau | Résultat D25 |
 | --- | --- |

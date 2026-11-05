@@ -538,6 +538,7 @@ pub(crate) fn drain<R: Read + Send + 'static>(pipe: Option<R>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::fd::AsRawFd;
 
     fn private_home() -> TempHome {
         let dir = tempfile::Builder::new()
@@ -729,12 +730,17 @@ mod tests {
     fn occupied_port_never_qualifies_as_owned_listener() {
         let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
         let port = listener.local_addr().unwrap().port();
-        let mut unrelated = Command::new("/usr/bin/sleep").arg("30").spawn().unwrap();
+        let fd = listener.as_raw_fd();
+        let flags = unsafe { libc::fcntl(fd, libc::F_GETFD) };
+        assert!(flags >= 0);
         assert_eq!(
-            child_owns_listener(port, unrelated.id()).unwrap_err(),
-            "PORT_NOT_OWNED"
+            unsafe { libc::fcntl(fd, libc::F_SETFD, flags | libc::FD_CLOEXEC) },
+            0
         );
+        let mut unrelated = Command::new("/usr/bin/sleep").arg("30").spawn().unwrap();
+        let ownership = child_owns_listener(port, unrelated.id());
         unrelated.kill().unwrap();
         unrelated.wait().unwrap();
+        assert_eq!(ownership.unwrap_err(), "PORT_NOT_OWNED");
     }
 }

@@ -3248,12 +3248,12 @@ mod desktop {
         }
         result
     }
-    pub fn run() {
+    pub fn run() -> std::process::ExitCode {
         let planner = match MissionPlanner::from_environment() {
             Ok(value) => value,
             Err(_) => {
                 eprintln!("PLANNER_CONFIG_REJECTED");
-                return;
+                return std::process::ExitCode::FAILURE;
             }
         };
         let config = SupervisorConfig::from_environment();
@@ -3426,7 +3426,7 @@ mod desktop {
                 research_on_exit.stop();
                 on_exit.stop();
                 eprintln!("STARTUP_FAILED=TAURI_RUNTIME");
-                return;
+                return std::process::ExitCode::FAILURE;
             }
             Err(error) => {
                 research_on_exit.stop();
@@ -3445,7 +3445,7 @@ mod desktop {
                         "TAURI_RUNTIME_PANIC"
                     }
                 );
-                return;
+                return std::process::ExitCode::FAILURE;
             }
         };
         app.run(move |_, event| {
@@ -3454,6 +3454,7 @@ mod desktop {
                 on_exit.stop();
             }
         });
+        std::process::ExitCode::SUCCESS
     }
 }
 #[cfg(feature = "desktop")]
