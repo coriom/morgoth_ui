@@ -30,6 +30,16 @@ class LauncherDiagnostics(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "^RELEASE_BINARY_MISSING$"):
                 launch_d11.main()
 
+    def test_missing_display_is_explicit(self):
+        with patch.dict("os.environ", {"DISPLAY": "", "WAYLAND_DISPLAY": ""}):
+            with self.assertRaisesRegex(RuntimeError, "^DISPLAY_UNAVAILABLE$"):
+                launch_d11.require_display()
+
+    def test_either_supported_display_locator_is_accepted(self):
+        for key in ("DISPLAY", "WAYLAND_DISPLAY"):
+            with self.subTest(key=key), patch.dict("os.environ", {"DISPLAY": "", "WAYLAND_DISPLAY": "", key: "test"}):
+                launch_d11.require_display()
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -3259,6 +3259,7 @@ mod desktop {
             .manage(Mutex::new(None::<PendingRestore>))
             .manage(Mutex::new(PendingImport::default()))
             .setup(|app| {
+                eprintln!("TAURI_SETUP_STARTED");
                 let workflow_root = app
                     .path()
                     .app_local_data_dir()?
@@ -3277,13 +3278,22 @@ mod desktop {
                 WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
                     .title("Morgoth · Command Center")
                     .inner_size(1120.0, 780.0)
+                    .on_page_load(|_, payload| {
+                        if payload.event() == tauri::webview::PageLoadEvent::Finished {
+                            eprintln!("WEBVIEW_DOCUMENT_LOADED");
+                        }
+                    })
                     .on_navigation(move |url| {
                         let origin = url.origin().ascii_serialization();
                         origin == expected
                             || (url.scheme() == "tauri" && url.host_str() == Some("localhost"))
                     })
                     .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
-                    .build()?;
+                    .build()
+                    .inspect_err(|_| {
+                        eprintln!("STARTUP_FAILED=MAIN_WINDOW_CREATE");
+                    })?;
+                eprintln!("MAIN_WINDOW_CREATED");
                 Ok(())
             })
             .invoke_handler(tauri::generate_handler![
@@ -3387,8 +3397,16 @@ mod desktop {
                 workspace_restore_preview,
                 workspace_restore_apply,
             ])
-            .build(tauri::generate_context!())
-            .expect("Morgoth desktop runtime failed");
+            .build(tauri::generate_context!());
+        let app = match app {
+            Ok(app) => app,
+            Err(_) => {
+                research_on_exit.stop();
+                on_exit.stop();
+                eprintln!("STARTUP_FAILED=TAURI_RUNTIME");
+                return;
+            }
+        };
         app.run(move |_, event| {
             if let tauri::RunEvent::Exit = event {
                 research_on_exit.stop();

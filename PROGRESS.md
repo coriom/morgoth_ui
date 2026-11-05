@@ -1,3 +1,15 @@
+## 2026-11-05 — Desktop D25 native readiness candidate
+
+The isolated D25 branch adds bounded, sanitized release and Tauri startup
+phases, an explicit no-display refusal, an isolated native-window probe, and
+elapsed-time feedback during an approved model operation. Reproduction with
+the sealed D24 binary showed both persistent and disposable windows within a
+second under a private Xvfb display; the earlier persistent absence is not
+reproduced, and its exact test-environment cause remains unknown. D24 connector
+authority, D17 write consent, the D9 backend pin, and personal data remain
+unchanged. Native GTK workflow and personal WSLg acceptance are separate
+pending gates. See `docs/DESKTOP-D25-NATIVE-READINESS.md`. No dependency added.
+
 ## 2026-11-03 — Desktop D24 qualified bounded multi-tool reports
 
 The isolated D24 branch separates short model action proposals from final evidence reports, reserves the final inference turn, and binds dynamic routing to a native evidence goal. Real isolated VS Code 1.140.0/VSIX selection, public `microsoft/vscode` reads and local `qwen3:4b-instruct` completed both the two-source basic and exact-issue canaries with native-validated `editor:1` and `obs:N` references. The first model choice had multiple eligible connector families. Stop and receipt boundaries, previous guided recipes, D17 write consent and the pinned D9 backend remain unchanged. Full operator GTK acceptance remains pending. See `docs/DESKTOP-D24-MULTITOOL-QUALIFICATION.md`. No dependency or broader model authority was added.

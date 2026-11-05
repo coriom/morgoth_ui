@@ -308,21 +308,25 @@ impl ManagementSupervisor {
         thread::spawn(move || {
             let result = config.and_then(|config| worker.start_once(config));
             match result {
-                Ok(()) => loop {
-                    match worker.status().state {
-                        ManagementPhase::Ready => thread::sleep(Duration::from_millis(250)),
-                        ManagementPhase::Failed => {
-                            worker.stop_child(ManagementPhase::Failed);
-                            break;
+                Ok(()) => {
+                    eprintln!("MANAGEMENT_READY");
+                    loop {
+                        match worker.status().state {
+                            ManagementPhase::Ready => thread::sleep(Duration::from_millis(250)),
+                            ManagementPhase::Failed => {
+                                worker.stop_child(ManagementPhase::Failed);
+                                break;
+                            }
+                            _ => break,
                         }
-                        _ => break,
                     }
-                },
+                }
                 Err(code) => {
                     worker.stop_child(ManagementPhase::Failed);
                     let mut inner = worker.0.lock().expect("supervisor lock");
                     if inner.phase == ManagementPhase::Failed {
                         inner.diagnostic = Some(code);
+                        eprintln!("MANAGEMENT_FAILED={code}");
                     }
                 }
             }
@@ -396,6 +400,7 @@ impl ManagementSupervisor {
         inner.child = Some(child);
         inner.authority_dir = Some(authority);
         drop(inner);
+        eprintln!("MANAGEMENT_SUPERVISOR_STARTED");
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()

@@ -90,6 +90,7 @@ export function SupervisedAssistant({ projectId, verified, onCreated, onGithubRe
   const [expanded, setExpanded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [executing, setExecuting] = useState(false);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
   const currentProject = useRef(projectId);
@@ -118,6 +119,7 @@ export function SupervisedAssistant({ projectId, verified, onCreated, onGithubRe
   useEffect(() => {
     if (!executing || !expanded) return;
     const timer = window.setInterval(() => {
+      setElapsedSeconds(value => value + 1);
       void invoke<Session | null>("supervised_status", { projectId }).then(value => {
         if (currentProject.current === projectId && value?.project_id === projectId) setSession(value);
       }).catch(() => undefined);
@@ -148,6 +150,7 @@ export function SupervisedAssistant({ projectId, verified, onCreated, onGithubRe
       stoppedSession.current = null;
       setSession(s); setPreview(null);
       if (preview.mode === "DYNAMIC_MULTITOOL_V1") {
+        setElapsedSeconds(0);
         setBusy(false);
         void invoke<Session>("multitool_run", { projectId, sessionId: s.session_id }).then(value => {
           if (currentProject.current === projectId && stoppedSession.current !== s.session_id && value.session_id === s.session_id && value.project_id === projectId) setSession(value);
@@ -279,6 +282,7 @@ export function SupervisedAssistant({ projectId, verified, onCreated, onGithubRe
     {session && <section className="workflow-preview" aria-label="Exécution supervisée">
       <h3>Session · {labels[session.status] ?? session.status}</h3>
       {session.mode !== "MANUAL_READ_V1" && <p role="status">Étape : {phases[session.phase] ?? session.phase} {session.selected_issue ? `· issue #${session.selected_issue} choisie par le modèle` : ""}</p>}
+      {executing && <p role="status">Session en cours depuis {elapsedSeconds} s. Le chargement initial du modèle local peut prendre plusieurs dizaines de secondes. Arrêter reste disponible.</p>}
       {session.editor && session.mode !== "DYNAMIC_MULTITOOL_V1" && <section className="supervised-observation"><h4>editor:1 · sélection VS Code autorisée</h4><p>{session.editor.workspace} / {session.editor.document} · version {session.editor.document_version} · capture {new Date(session.editor.captured_at_ms).toLocaleString("fr-FR")} · empreinte {session.editor.digest.slice(0, 12)}…</p><p>Instantané ; l’éditeur peut avoir changé depuis la capture.</p><pre>{session.editor.selected_text}</pre></section>}
       {session.selection_reason && <p><strong>Raison proposée par le modèle :</strong> {session.selection_reason}</p>}
       <p>{session.repository} · {session.reads}/3 lectures GitHub · {session.turns}/{session.mode === "DYNAMIC_MULTITOOL_V1" ? 4 : 3} tours · modèle {session.model}</p>
