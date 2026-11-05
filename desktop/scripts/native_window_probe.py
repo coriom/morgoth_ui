@@ -62,11 +62,15 @@ def main() -> int:
         try:
             while time.monotonic() - started < args.timeout and process.poll() is None:
                 time.sleep(0.5)
-                tree = subprocess.run(["/usr/bin/xwininfo", "-root", "-tree"], env=env,
-                                      capture_output=True, text=True, timeout=5, check=False)
-                window_seen = tree.returncode == 0 and any(
-                    re.search(r'0x[0-9a-f]+\s+"Morgoth · Command Center"', line)
-                    for line in tree.stdout.splitlines())
+                try:
+                    tree = subprocess.run(["/usr/bin/xwininfo", "-root", "-tree"], env=env,
+                                          capture_output=True, text=True, timeout=5, check=False)
+                except subprocess.TimeoutExpired:
+                    tree = None
+                if tree is not None:
+                    window_seen = tree.returncode == 0 and any(
+                        re.search(r'0x[0-9a-f]+\s+"Morgoth · Command Center"', line)
+                        for line in tree.stdout.splitlines())
                 lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
                 stages = [stage for stage in STAGES if stage in lines]
                 if window_seen and "FRONTEND_MOUNTED" in stages and "MANAGEMENT_READY" in stages:
