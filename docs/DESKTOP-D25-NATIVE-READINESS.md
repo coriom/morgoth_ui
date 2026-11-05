@@ -50,6 +50,33 @@ Le clic d'approbation a été envoyé, mais aucun Project créé n'a été relu 
 le catalogue : cette écriture est **non vérifiée**. Le bus AT-SPI n'était pas
 accessible dans ce Xvfb. Aucun autre dialogue n'a été accepté par le test.
 
+## Qualification de la release D25
+
+La release scellée a passé les contrôles de reçu en modes persistant et jetable.
+Dans le même Xvfb privé, le catalogue synthétique persistant a produit une
+fenêtre détectée, `FRONTEND_MOUNTED` et `MANAGEMENT_READY` en 10,6 s. Le mode
+jetable a produit ces mêmes preuves en 2,5 s. Un relevé X11 ponctuellement
+lent est désormais réessayé jusqu'à l'échéance globale du probe. Le lancement
+sans serveur d'affichage refuse avec `DISPLAY_UNAVAILABLE`.
+
+Les tests automatiques actifs ont passé : 88 Vitest, 105 Rust (13 tests
+externes ignorés), 24 Python Desktop et le test du protocole VS Code. TypeScript,
+contrat Management, Vite, formatage Rust, Clippy strict, compilation VSIX et
+vérification du reçu ont passé. Les vrais canaris GitHub/VS Code/Ollama de D24
+restent la qualification de la boucle multi-outils ; D25 ne les a pas relancés.
+
+| Niveau | Résultat D25 |
+| --- | --- |
+| 1 — tests déterministes | Réussis pour les contrôles actifs ci-dessus. |
+| 2 — services et applications réels | Qualification D24 préservée ; aucun nouveau canari D25. |
+| 3 — application native isolée | Fenêtre et interface montées dans les deux modes ; vue Projets et dialogue natif observés. Création du Project et brief non vérifiés. |
+| 4 — session personnelle de l'opérateur | En attente. |
+
+L'absence de fenêtre du contrôle D24 n'a pas été reproduite ; sa cause exacte
+reste inconnue. Aucune création de brief approuvée depuis Tauri ni réouverture
+du même UUID après redémarrage n'a été démontrée en D25. Ces gestes restent
+des conditions d'acceptation, et non des résultats inférés des tests de stockage.
+
 ## Lancement normal
 
 Depuis `desktop/`, avec le Management home **existant** de l'opérateur :

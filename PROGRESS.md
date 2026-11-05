@@ -11,6 +11,11 @@ startup timeout, prompting a separate React-mounted acknowledgement. D24 connect
 authority, D17 write consent, the D9 backend pin, and personal data remain
 unchanged. Native GTK workflow and personal WSLg acceptance are separate
 pending gates. See `docs/DESKTOP-D25-NATIVE-READINESS.md`. No dependency added.
+The sealed D25 release then passed persistent and disposable isolated-Xvfb
+window probes with native-window, React-mounted and Management-ready signals
+(10.6 s and 2.5 s). Active suites passed: 88 Vitest, 105 Rust plus 13 ignored,
+24 Python Desktop, and the VS Code protocol test. Full native consent, brief
+creation/restart and personal WSLg acceptance remain unverified.
 
 ## 2026-11-03 — Desktop D24 qualified bounded multi-tool reports
 
