@@ -25,6 +25,10 @@ Startup construction failures now return a nonzero process exit code; the
 synthetic Wayland probe verified cleanup of the owned Management authority.
 A socket-ownership test fixture now closes its descriptor on exec and always
 reaps its unrelated child before assertion; the full Rust suite passes.
+The sealed release reached native-window creation, WebView document load,
+React mount and Management readiness on the current WSLg X11 display using
+only synthetic home/data. Native consent and personal operator acceptance
+remain separate gates.
 
 ## 2026-11-03 — Desktop D24 qualified bounded multi-tool reports
 

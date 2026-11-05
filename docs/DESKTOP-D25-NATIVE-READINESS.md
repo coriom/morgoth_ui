@@ -95,6 +95,13 @@ a atteint son ancienne limite de 15 secondes sous une charge système élevée ;
 ce résultat a motivé la limite bornée de 30 secondes. En Wayland explicite,
 GTK a refusé de s'initialiser. Ces essais ne qualifient pas à eux seuls la
 session WSLg personnelle ; la cause de l'absence de fenêtre D24 reste ouverte.
+La release scellée a ensuite atteint `MAIN_WINDOW_CREATED`,
+`WEBVIEW_DOCUMENT_LOADED`, `FRONTEND_MOUNTED` et `MANAGEMENT_READY` sur le WSLg
+courant avec `GDK_BACKEND=x11`, un HOME synthétique et un catalogue de test,
+en 2,0 s. Aucun titre ni contenu d'une autre fenêtre n'a été inspecté.
+En Wayland explicite, le même binaire refuse avec code de sortie 1 et
+`STARTUP_FAILED=GTK_BACKEND_INIT`, sans nouvelle autorité Management orpheline.
+Ce smoke n'a pas exercé les consentements ni l'usage personnel de l'opérateur.
 
 ## Lancement normal
 
