@@ -6,6 +6,7 @@
     "main"
   ],
   "permissions": [
+    "allow-desktop-ui-ready",
     "allow-management-runtime-status",
     "allow-management-status",
     "allow-list-domains",

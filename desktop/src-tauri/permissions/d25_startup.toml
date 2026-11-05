@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-desktop-ui-ready"
+description = "Acknowledge mounting of the fixed main-window React application."
+commands.allow = ["desktop_ui_ready"]

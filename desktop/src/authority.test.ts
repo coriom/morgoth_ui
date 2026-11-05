@@ -13,6 +13,7 @@ describe("Tauri D5 authority declaration", () => {
     expect(capability.windows).toEqual(["main"]);
     expect(capability.remote).toBeUndefined();
     expect(capability.permissions).toEqual([
+      "allow-desktop-ui-ready",
       "allow-management-runtime-status",
       "allow-management-status", "allow-list-domains", "allow-list-projects", "allow-create-project",
       "allow-get-project", "allow-validate-project",
@@ -39,6 +40,7 @@ describe("Tauri D5 authority declaration", () => {
     const native = readFileSync(resolve(process.cwd(), "src-tauri/src/lib.rs"), "utf8");
     const registered = native.match(/\.invoke_handler\(tauri::generate_handler!\[([\s\S]*?)\]\)/)?.[1];
     expect(registered?.replace(/\s/g, "").split(",").filter(Boolean)).toEqual([
+      "desktop_ui_ready",
       "connector_catalog", "connector_connect", "connector_test", "connector_disconnect",
       "vscode_status", "vscode_pair", "vscode_metadata", "vscode_selection", "vscode_scratch", "vscode_disconnect",
       "github_status", "github_select", "github_preview", "github_authorize", "github_read", "github_disconnect",

@@ -1080,8 +1080,16 @@ mod desktop {
     };
     use crate::workflow_runner::{BriefFields, HandoffPreview, Preview, Receipt, WorkflowRunner};
     use gtk::prelude::*;
-    use std::{path::PathBuf, sync::Mutex, time::Duration};
+    use std::{
+        path::PathBuf,
+        sync::{
+            atomic::{AtomicBool, Ordering},
+            Mutex,
+        },
+        time::Duration,
+    };
     use tauri::{Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+    static FRONTEND_MOUNTED: AtomicBool = AtomicBool::new(false);
     pub struct PendingRestore {
         project: String,
         path: PathBuf,
@@ -1362,6 +1370,14 @@ mod desktop {
         } else {
             Err(NativeError::new("DENIED", "Fenêtre non autorisée."))
         }
+    }
+    #[tauri::command]
+    fn desktop_ui_ready(window: WebviewWindow) -> Result<(), NativeError> {
+        main_only(&window)?;
+        if !FRONTEND_MOUNTED.swap(true, Ordering::AcqRel) {
+            eprintln!("FRONTEND_MOUNTED");
+        }
+        Ok(())
     }
     fn connector_error(code: &'static str) -> NativeError {
         NativeError::new(code, "Connecteur local indisponible ou refusé.")
@@ -3297,6 +3313,7 @@ mod desktop {
                 Ok(())
             })
             .invoke_handler(tauri::generate_handler![
+                desktop_ui_ready,
                 connector_catalog,
                 connector_connect,
                 connector_test,

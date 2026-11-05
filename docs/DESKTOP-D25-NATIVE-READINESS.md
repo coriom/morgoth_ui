@@ -10,6 +10,12 @@ donc pas reproduit. Il employait un environnement et une recherche de titre
 différents ; sa cause exacte reste indéterminée. La présence du processus
 seul ne constitue pas une preuve de fenêtre utilisable.
 
+Un essai ultérieur pendant une forte contention a produit une capture blanche
+malgré `MAIN_WINDOW_CREATED` et `WEBVIEW_DOCUMENT_LOADED`, puis
+`MANAGEMENT_FAILED=STARTUP_TIMEOUT`. Il ne prouve pas que ce délai explique
+l'absence de fenêtre rapportée en D24. Il montre pourquoi les étapes fenêtre,
+document, montage React et API prête doivent être suivies séparément.
+
 ## Diagnostics de démarrage
 
 `launch_d11.py` vérifie toujours la source, les empreintes du binaire, des
@@ -23,17 +29,26 @@ de WebView : `MANAGEMENT_SUPERVISOR_STARTED` après la création du processus
 backend, `TAURI_SETUP_STARTED`, `MAIN_WINDOW_CREATED`,
 `WEBVIEW_DOCUMENT_LOADED` après l'événement de fin de chargement du document,
 et `MANAGEMENT_READY` après la vérification de l'API du processus possédé.
+`FRONTEND_MOUNTED` est émis seulement après le montage de l'application React
+dans la fenêtre principale. Un document WebView chargé peut encore afficher
+du blanc si le front ne se monte pas ; la sonde requiert donc aussi ce signal.
 Une erreur de construction Tauri produit `STARTUP_FAILED=TAURI_RUNTIME` ; une
 erreur de fenêtre produit `STARTUP_FAILED=MAIN_WINDOW_CREATE`. Le superviseur
 produit `MANAGEMENT_FAILED=<code fixe>`. `WEBVIEW_DOCUMENT_LOADED` atteste le
 chargement du document, pas une validation visuelle de tous les contrôles React.
 
 `scripts/native_window_probe.py` lance la release scellée sur un affichage
-X11 que le test déclare isolé, cherche sa fenêtre et attend l'événement de
-chargement du document, au plus 45 secondes. Il ne rapporte que les phases,
-les codes d'échec et la durée. Son répertoire de données est privé et
+X11 que le test déclare isolé, cherche sa fenêtre, puis attend le montage
+React et la disponibilité de Management, au plus 45 secondes. Il ne rapporte
+que les phases, les codes d'échec et la durée. Son répertoire de données est privé et
 explicite. L'outil ne confirme aucun dialogue GTK et ne vaut pas acceptation
 du profil personnel.
+
+Un essai XTest limité dans cet affichage isolé a ouvert la vue Projets, rempli
+des champs synthétiques et affiché le véritable dialogue de confirmation.
+Le clic d'approbation a été envoyé, mais aucun Project créé n'a été relu dans
+le catalogue : cette écriture est **non vérifiée**. Le bus AT-SPI n'était pas
+accessible dans ce Xvfb. Aucun autre dialogue n'a été accepté par le test.
 
 ## Lancement normal
 

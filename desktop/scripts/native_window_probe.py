@@ -20,6 +20,7 @@ STAGES = (
     "TAURI_SETUP_STARTED",
     "MAIN_WINDOW_CREATED",
     "WEBVIEW_DOCUMENT_LOADED",
+    "FRONTEND_MOUNTED",
     "MANAGEMENT_READY",
 )
 
@@ -68,12 +69,12 @@ def main() -> int:
                     for line in tree.stdout.splitlines())
                 lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
                 stages = [stage for stage in STAGES if stage in lines]
-                if window_seen and "WEBVIEW_DOCUMENT_LOADED" in stages:
+                if window_seen and "FRONTEND_MOUNTED" in stages and "MANAGEMENT_READY" in stages:
                     break
             lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
             stages = [stage for stage in STAGES if stage in lines]
             failures = [line for line in lines if re.fullmatch(r"(?:STARTUP_FAILED|MANAGEMENT_FAILED|D25_LAUNCH_BLOCKED)=[A-Z_]+", line)]
-            passed = window_seen and "WEBVIEW_DOCUMENT_LOADED" in stages and process.poll() is None
+            passed = window_seen and "FRONTEND_MOUNTED" in stages and "MANAGEMENT_READY" in stages and process.poll() is None
             print("D25_NATIVE_WINDOW=" + ("PASS" if passed else "FAIL"))
             print("D25_NATIVE_STAGES=" + ",".join(stages))
             print("D25_NATIVE_FAILURES=" + ",".join(failures[:3]))

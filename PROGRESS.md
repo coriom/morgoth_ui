@@ -5,7 +5,9 @@ phases, an explicit no-display refusal, an isolated native-window probe, and
 elapsed-time feedback during an approved model operation. Reproduction with
 the sealed D24 binary showed both persistent and disposable windows within a
 second under a private Xvfb display; the earlier persistent absence is not
-reproduced, and its exact test-environment cause remains unknown. D24 connector
+reproduced, and its exact test-environment cause remains unknown. A later
+contended run rendered white after document load and reported a Management
+startup timeout, prompting a separate React-mounted acknowledgement. D24 connector
 authority, D17 write consent, the D9 backend pin, and personal data remain
 unchanged. Native GTK workflow and personal WSLg acceptance are separate
 pending gates. See `docs/DESKTOP-D25-NATIVE-READINESS.md`. No dependency added.
